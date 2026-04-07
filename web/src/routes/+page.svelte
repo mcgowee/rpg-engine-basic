@@ -9,6 +9,7 @@
 		id: number;
 		title: string;
 		genre: string;
+		cover_image: string;
 		updated_at: string;
 	};
 
@@ -17,6 +18,7 @@
 		title: string;
 		description: string;
 		genre: string;
+		cover_image: string;
 		author_uid: string;
 		play_count: number;
 	};
@@ -129,6 +131,11 @@
 				<ul class="card-grid">
 					{#each myPreview as s (s.id)}
 						<li class="card">
+							{#if s.cover_image}
+								<div class="card-banner" style="background-image: url('/images/covers/{s.cover_image}')"></div>
+							{:else if s.genre}
+								<div class="card-banner" style="background-image: url('/images/genre-{s.genre}.png')"></div>
+							{/if}
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-meta">
 								{s.genre || '—'} · {formatWhen(s.updated_at)}
@@ -163,6 +170,11 @@
 				<ul class="card-grid public">
 					{#each publicPreview as s (s.id)}
 						<li class="card">
+							{#if s.cover_image}
+								<div class="card-banner" style="background-image: url('/images/covers/{s.cover_image}')"></div>
+							{:else if s.genre}
+								<div class="card-banner" style="background-image: url('/images/genre-{s.genre}.png')"></div>
+							{/if}
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-desc">{s.description || 'No description.'}</p>
 							<p class="card-meta">
@@ -227,18 +239,19 @@
 	.card {
 		border: 1px solid #2a2f38;
 		border-radius: 10px;
-		padding: 1rem 1.1rem;
+		overflow: hidden;
 		background: #1a1d23;
 	}
-	.card-title { margin: 0 0 0.35rem; font-size: 1rem; line-height: 1.3; }
+	.card-banner { height: 100px; background-size: cover; background-position: center; opacity: 0.7; }
+	.card-title { margin: 0.6rem 1rem 0.35rem; font-size: 1rem; line-height: 1.3; }
 	.card-desc {
-		margin: 0 0 0.5rem; font-size: 0.88rem; line-height: 1.4;
+		margin: 0 0 0.5rem; padding: 0 1rem; font-size: 0.88rem; line-height: 1.4;
 		color: #bdc1c6;
 		display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
 		-webkit-box-orient: vertical; overflow: hidden;
 	}
-	.card-meta { margin: 0 0 0.5rem; font-size: 0.8rem; color: #9aa0a6; }
-	.card-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+	.card-meta { margin: 0 0 0.5rem; padding: 0 1rem; font-size: 0.8rem; color: #9aa0a6; }
+	.card-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0 1rem 0.75rem; }
 	.more { margin: 0.75rem 0 0; font-size: 0.95rem; }
 	.section-desc { font-size: 0.88rem; color: #9aa0a6; margin: 0 0 0.75rem; line-height: 1.45; }
 	.muted { color: #9aa0a6; }

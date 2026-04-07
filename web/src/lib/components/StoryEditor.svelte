@@ -24,6 +24,7 @@
 	let subgraphName = $state('conversation');
 	let notes = $state('');
 	let coverImage = $state('');
+	let coverCacheBust = $state('');
 	let generatingCover = $state(false);
 	let coverError = $state('');
 
@@ -272,6 +273,7 @@
 			const j = await r.json().catch(() => ({}));
 			if (r.ok && j.cover_image) {
 				coverImage = j.cover_image;
+				coverCacheBust = '?t=' + Date.now();
 			} else {
 				coverError = j.error ?? 'Cover generation failed';
 			}
@@ -472,7 +474,7 @@
 					<span class="hint">Generated from your story's title, genre, and description.</span>
 					{#if coverImage}
 						<div class="cover-preview">
-							<img src="/images/covers/{coverImage}" alt="Story cover" />
+							<img src="/images/covers/{coverImage}{coverCacheBust}" alt="Story cover" />
 						</div>
 					{:else}
 						<p class="muted" style="font-size:0.85rem">No cover image yet.</p>
