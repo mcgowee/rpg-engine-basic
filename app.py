@@ -1743,6 +1743,125 @@ Rewritten story:"""
 
 
 # ---------------------------------------------------------------------------
+@app.route("/books", methods=["GET"])
+@login_required
+def list_books():
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT b.id, b.story_id, b.title, b.created_at, b.updated_at,
+                      s.genre, s.cover_image
+               FROM books b LEFT JOIN stories s ON b.story_id = s.id
+               WHERE b.user_id = ?
+               ORDER BY b.updated_at DESC""",
+            (g.user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return jsonify([{
+        "id": r["id"],
+        "story_id": r["story_id"],
+        "title": r["title"],
+        "genre": r["genre"] or "",
+        "cover_image": r["cover_image"] or "",
+        "created_at": r["created_at"],
+        "updated_at": r["updated_at"],
+    } for r in rows])
+
+
+@app.route("/books", methods=["POST"])
+@login_required
+def save_book():
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    title = (data.get("title") or "").strip()
+    prose = (data.get("prose") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+    if not prose:
+        return jsonify({"error": "prose is required"}), 400
+
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "INSERT INTO books (story_id, user_id, title, prose) VALUES (?, ?, ?, ?)",
+            (story_id, g.user_id, title, prose),
+        )
+        conn.commit()
+        book_id = cur.lastrowid
+    finally:
+        conn.close()
+    return jsonify({"id": book_id, "title": title}), 201
+
+
+@app.route("/books/<int:book_id>", methods=["GET"])
+@login_required
+def get_book(book_id: int):
+    conn = get_db()
+    try:
+        row = conn.execute(
+            """SELECT b.*, s.genre, s.cover_image
+               FROM books b LEFT JOIN stories s ON b.story_id = s.id
+               WHERE b.id = ? AND b.user_id = ?""",
+            (book_id, g.user_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({
+        "id": row["id"],
+        "story_id": row["story_id"],
+        "title": row["title"],
+        "prose": row["prose"],
+        "genre": row["genre"] or "",
+        "cover_image": row["cover_image"] or "",
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    })
+
+
+@app.route("/books/<int:book_id>", methods=["PUT"])
+@login_required
+def update_book(book_id: int):
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?", (book_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        data = request.get_json(silent=True) or {}
+        conn.execute(
+            "UPDATE books SET title = ?, prose = ?, updated_at = datetime('now') WHERE id = ?",
+            (data.get("title", row["title"]), data.get("prose", row["prose"]), book_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/books/<int:book_id>", methods=["DELETE"])
+@login_required
+def delete_book(book_id: int):
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM books WHERE id = ? AND user_id = ?", (book_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
 # Cover image generation
 # ---------------------------------------------------------------------------
 

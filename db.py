@@ -72,6 +72,16 @@ def init_db():
             updated_at TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            story_id INTEGER NOT NULL REFERENCES stories(id),
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            title TEXT NOT NULL,
+            prose TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS saves (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             story_id INTEGER NOT NULL REFERENCES stories(id),
