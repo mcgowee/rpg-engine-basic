@@ -128,6 +128,24 @@
 	// Derived
 	let charCount = $derived(characterEntries.length);
 	let isAiBusy = $derived(generating || improvingField !== '');
+	let hasMoodAxes = $derived(characterEntries.some(c => c.moods.length > 0));
+
+	type SubgraphRec = { name: string; reason: string; match: boolean };
+	let subgraphRecs = $derived.by((): SubgraphRec[] => {
+		const recs: SubgraphRec[] = [];
+		if (charCount === 0) {
+			recs.push({ name: 'conversation', match: true, reason: 'No characters — narrator only, no memory' });
+			recs.push({ name: 'narrator_with_memory', match: true, reason: 'No characters — narrator remembers previous turns' });
+			recs.push({ name: 'full_conversation', match: true, reason: 'No characters — narrator + memory summary for longer stories' });
+		} else if (hasMoodAxes) {
+			recs.push({ name: 'conversation_with_mood', match: true, reason: 'Characters with mood axes — mood shifts tracked each turn' });
+			recs.push({ name: 'smart_conversation', match: false, reason: 'Has characters but skips mood tracking' });
+		} else {
+			recs.push({ name: 'smart_conversation', match: true, reason: 'Characters without mood axes — NPCs respond, mood skipped' });
+			recs.push({ name: 'conversation_with_mood', match: false, reason: 'Would track moods, but no axes defined yet' });
+		}
+		return recs;
+	});
 
 	const GENRES = ['mystery', 'thriller', 'drama', 'comedy', 'sci-fi', 'horror', 'fantasy'];
 
@@ -454,16 +472,34 @@
 
 	{#if activeTab === 'subgraph'}
 		<div class="tab-content">
+			<div class="sg-rec-box">
+				<strong class="sg-rec-title">Recommended for your story</strong>
+				<p class="sg-rec-desc">Based on {charCount === 0 ? 'no characters defined' : `${charCount} character${charCount === 1 ? '' : 's'}${hasMoodAxes ? ' with mood axes' : ''}`}:</p>
+				<ul class="sg-rec-list">
+					{#each subgraphRecs as rec (rec.name)}
+						<li class:best={rec.match}>
+							<button type="button" class="sg-rec-pick" class:active={subgraphName === rec.name}
+								onclick={() => subgraphName = rec.name}>
+								<code>{rec.name}</code>
+								{#if subgraphName === rec.name}<span class="sg-current">current</span>{/if}
+								{#if rec.match}<span class="sg-badge">recommended</span>{/if}
+							</button>
+							<span class="sg-rec-reason">{rec.reason}</span>
+						</li>
+					{/each}
+				</ul>
+			</div>
+
 			<label class="field">
 				<strong>Subgraph</strong>
-				<span class="hint">The graph pipeline that runs each turn when the player sends a message.</span>
+				<span class="hint">Or choose any available subgraph manually:</span>
 				<select bind:value={subgraphName}>
 					{#each subgraphs as sg}
 						<option value={sg.name}>{sg.name} — {sg.description || 'no description'}</option>
 					{/each}
 				</select>
 			</label>
-			<p class="hint">Manage subgraphs in the <a href="/graphs">Graph Editor</a>.</p>
+			<p class="hint">Manage subgraphs in the <a href="/graphs">Graph Editor</a>. Learn more in the <a href="/docs/engine">Engine Reference</a>.</p>
 		</div>
 	{/if}
 
@@ -613,6 +649,17 @@
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
 	.danger { color: #f28b82; border-color: #c5221f; }
+	.sg-rec-box { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1.25rem; background: #1a1d23; }
+	.sg-rec-title { font-size: 0.95rem; display: block; margin-bottom: 0.2rem; }
+	.sg-rec-desc { font-size: 0.82rem; color: #9aa0a6; margin: 0 0 0.65rem; }
+	.sg-rec-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+	.sg-rec-pick { display: block; width: 100%; text-align: left; background: #13151a; border: 1px solid #2a2f38; border-radius: 6px; padding: 0.5rem 0.75rem; color: #e8eaed; font: inherit; cursor: pointer; }
+	.sg-rec-pick:hover { border-color: #5f6368; }
+	.sg-rec-pick.active { border-color: #1a73e8; }
+	.sg-rec-pick code { font-size: 0.88rem; color: #8ab4f8; }
+	.sg-current { font-size: 0.7rem; background: #1a73e8; color: #fff; padding: 0.1rem 0.35rem; border-radius: 3px; margin-left: 0.4rem; vertical-align: middle; }
+	.sg-badge { font-size: 0.7rem; background: #1a3a1a; color: #81c995; padding: 0.1rem 0.35rem; border-radius: 3px; margin-left: 0.4rem; vertical-align: middle; }
+	.sg-rec-reason { display: block; font-size: 0.8rem; color: #9aa0a6; margin-top: 0.2rem; padding-left: 0.75rem; }
 	.field-head { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
 	.field-head strong { margin-bottom: 0; }
 	.ai-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.35rem; }
