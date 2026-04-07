@@ -164,6 +164,144 @@
 			</table>
 		</div>
 
+		<div class="section">
+			<h2>Builtin Stories</h2>
+			<p>These stories are seeded into every fresh database. They're public, so any user can play them. Each one demonstrates a different engine feature. Copy one to your account to edit it and see how changes affect gameplay.</p>
+
+			<div class="story-doc">
+				<h3>The Midnight Lighthouse</h3>
+				<dl class="story-meta">
+					<dt>Genre</dt><dd>Mystery</dd>
+					<dt>Subgraph</dt><dd><code>narrator_with_memory</code></dd>
+					<dt>Characters</dt><dd>None</dd>
+					<dt>Demonstrates</dt><dd>Narrator + memory — the simplest playable graph</dd>
+				</dl>
+				<p>A solo exploration story with no NPCs. The narrator describes scenes and remembers previous turns via the memory node. Good for testing how the narrator uses history context.</p>
+				<div class="try-this">
+					<strong>Try this:</strong> Play several turns, then reference something you did earlier. The narrator should remember it because memory records each turn in history, and the narrator reads the last few entries.
+				</div>
+				<div class="try-this">
+					<strong>Customize:</strong> Copy to your account, then edit the narrator prompt to change the tone (try making it humorous instead of gothic). Change the player background to see how the narrator adapts.
+				</div>
+			</div>
+
+			<div class="story-doc">
+				<h3>The Blackrock Keeper</h3>
+				<dl class="story-meta">
+					<dt>Genre</dt><dd>Mystery</dd>
+					<dt>Subgraph</dt><dd><code>smart_conversation</code></dd>
+					<dt>Characters</dt><dd>Old Silas (mood: 4)</dd>
+					<dt>Demonstrates</dt><dd>Conditional edges — same graph skips NPC when no characters exist</dd>
+				</dl>
+				<p>Same lighthouse setting as Midnight Lighthouse, but with Old Silas as an NPC. Uses <code>smart_conversation</code> which has a conditional edge after the narrator: if characters exist, route to NPC; otherwise skip to condense. This story has a character, so the NPC path runs.</p>
+				<div class="try-this">
+					<strong>Try this:</strong> Compare playing this vs. The Midnight Lighthouse. Both use similar settings, but this one has Silas responding in character after each narrator beat. The conditional edge is what makes this work — one graph handles both scenarios.
+				</div>
+				<div class="try-this">
+					<strong>Customize:</strong> Copy and remove Old Silas from the characters. Play again — the same <code>smart_conversation</code> subgraph now skips the NPC node entirely. That's the conditional edge in action.
+				</div>
+			</div>
+
+			<div class="story-doc">
+				<h3>The Last Train</h3>
+				<dl class="story-meta">
+					<dt>Genre</dt><dd>Thriller</dd>
+					<dt>Subgraph</dt><dd><code>smart_conversation</code></dd>
+					<dt>Characters</dt><dd>Diana (mood: 6), Gerald (mood: 3)</dd>
+					<dt>Demonstrates</dt><dd>Multiple NPCs with distinct personalities</dd>
+				</dl>
+				<p>Two NPCs on a late-night train, each with their own secrets and speaking style. Diana is calm and evasive; Gerald is nervous and paranoid. Both respond every turn after the narrator.</p>
+				<div class="try-this">
+					<strong>Try this:</strong> Address one character directly ("I turn to the nervous man") and see how both still respond but in their own way. Try being confrontational vs. sympathetic.
+				</div>
+				<div class="try-this">
+					<strong>Customize:</strong> Copy and edit a character's prompt to change their personality. Try making Diana panicked instead of calm, or give Gerald a reason to be confident. The NPC node sends each character's prompt to the LLM independently.
+				</div>
+			</div>
+
+			<div class="story-doc">
+				<h3>The Job Interview</h3>
+				<dl class="story-meta">
+					<dt>Genre</dt><dd>Drama</dd>
+					<dt>Subgraph</dt><dd><code>conversation_with_mood</code></dd>
+					<dt>Characters</dt><dd>Ms. Chen (mood: 5), Big Dave (mood: 7)</dd>
+					<dt>Demonstrates</dt><dd>Mood tracking with single mood number (legacy format)</dd>
+				</dl>
+				<p>Two interviewers with opposite personalities. The mood node runs before NPCs speak, adjusting each character's mood based on your actions. Watch the sidebar numbers change.</p>
+				<div class="try-this">
+					<strong>Try this:</strong> Give a confident, detailed answer and watch both moods go up. Then give a vague, evasive answer — Ms. Chen's mood drops faster than Big Dave's because her prompt makes her more critical.
+				</div>
+				<div class="try-this">
+					<strong>Customize:</strong> Copy and change the starting moods. Set Ms. Chen to 2 (very skeptical) and Big Dave to 9 (already loves you). See how starting mood affects the NPC's tone from the first turn.
+				</div>
+			</div>
+
+			<div class="story-doc">
+				<h3>The Interrogation</h3>
+				<dl class="story-meta">
+					<dt>Genre</dt><dd>Thriller</dd>
+					<dt>Subgraph</dt><dd><code>conversation_with_mood</code></dd>
+					<dt>Characters</dt><dd>Marcus Webb (3 mood axes)</dd>
+					<dt>Demonstrates</dt><dd>Mood axes — multiple emotional dimensions per character</dd>
+				</dl>
+				<p>One suspect with three emotional axes: cooperativeness (stonewalling → cooperative), anxiety (calm → panicking), and honesty (deceptive → truthful). Each axis shifts independently based on your interrogation approach.</p>
+				<div class="try-this">
+					<strong>Try this:</strong> Build trust slowly with empathetic questions — watch cooperativeness rise while honesty stays low. Then confront with evidence — honesty might jump but anxiety spikes. Each axis tells a different part of the story.
+				</div>
+				<div class="try-this">
+					<strong>Customize:</strong> Copy and add a new axis like "desperation" (calm → desperate) or change the labels. The mood node asks the LLM about each axis separately, so the labels directly affect what the LLM evaluates. Try renaming "honesty" to "guilt" and see how responses change.
+				</div>
+			</div>
+		</div>
+
+		<div class="section">
+			<h2>How to Customize a Story</h2>
+			<p>Every builtin story can be copied and edited. Here's what each field does and how changing it affects gameplay:</p>
+
+			<table class="state-table">
+				<thead>
+					<tr><th>Field</th><th>What it controls</th><th>What to try</th></tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td><strong>Narrator Prompt</strong></td>
+						<td>The system instructions the narrator LLM receives every turn. Controls tone, style, length, and what the narrator focuses on.</td>
+						<td>Change "gothic mystery" to "comedic adventure" and replay. The entire feel shifts because every narrator response follows this prompt.</td>
+					</tr>
+					<tr>
+						<td><strong>Opening</strong></td>
+						<td>The first text the player sees before any turns. Sets the scene.</td>
+						<td>Rewrite to start in a completely different location or situation. The narrator adapts to whatever context you establish.</td>
+					</tr>
+					<tr>
+						<td><strong>Player Name / Background</strong></td>
+						<td>Who the player is. The narrator and NPCs reference this in their prompts.</td>
+						<td>Change "veteran detective" to "nervous teenager" — NPCs will treat you differently because their prompts include your background.</td>
+					</tr>
+					<tr>
+						<td><strong>Character Prompt</strong></td>
+						<td>Each NPC's personality instructions. The LLM follows this when generating their dialogue.</td>
+						<td>Add specific speech patterns ("always speaks in rhyme") or secrets ("you know where the money is hidden but won't say").</td>
+					</tr>
+					<tr>
+						<td><strong>Character First Line</strong></td>
+						<td>What the NPC says when the game starts. Shown in the opening.</td>
+						<td>Set the tone for the character immediately. A friendly first line vs. a hostile one changes the whole dynamic.</td>
+					</tr>
+					<tr>
+						<td><strong>Mood / Mood Axes</strong></td>
+						<td>Starting emotional state. The mood node adjusts these each turn.</td>
+						<td>Start a character at mood 1 (very negative) vs. 9 (very positive) and see how their responses differ from turn one.</td>
+					</tr>
+					<tr>
+						<td><strong>Subgraph</strong></td>
+						<td>Which graph pipeline runs each turn. Determines which nodes execute and in what order.</td>
+						<td>Switch a story from <code>smart_conversation</code> to <code>conversation</code> — NPCs disappear because the narrator-only graph doesn't include the NPC node.</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+
 	{/if}
 </section>
 
@@ -187,6 +325,14 @@
 	.example { border-left: 3px solid #2a2f38; padding: 0.4rem 0 0.4rem 0.75rem; margin-bottom: 0.75rem; }
 	.example h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
 	.example p { margin: 0; font-size: 0.88rem; color: #bdc1c6; line-height: 1.45; }
+	.story-doc { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; background: #1a1d23; }
+	.story-doc h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+	.story-doc p { margin: 0.4rem 0; font-size: 0.88rem; color: #bdc1c6; }
+	.story-meta { margin: 0 0 0.5rem; display: grid; grid-template-columns: 7rem 1fr; gap: 0.2rem 0.5rem; font-size: 0.85rem; }
+	.story-meta dt { color: #9aa0a6; font-weight: 600; margin: 0; }
+	.story-meta dd { margin: 0; }
+	.try-this { margin: 0.5rem 0; padding: 0.5rem 0.75rem; background: #13151a; border-radius: 6px; font-size: 0.85rem; line-height: 1.5; color: #bdc1c6; }
+	.try-this strong { color: #8ab4f8; }
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 </style>
