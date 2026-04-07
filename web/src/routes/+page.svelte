@@ -196,23 +196,13 @@
 	.section { margin-bottom: 2rem; }
 	.section-head { margin-bottom: 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid #2a2f38; }
 	.hero {
-		background: linear-gradient(135deg, #0d1117 0%, #161b22 40%, #1a2332 70%, #0d1117 100%);
+		background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(15,17,20,0.85)), url('/images/hero.png') center/cover no-repeat;
 		border: 1px solid #2a2f38;
 		border-radius: 12px;
-		padding: 2rem 1.5rem;
+		padding: 2.5rem 1.5rem;
 		margin-bottom: 2rem;
 		position: relative;
 		overflow: hidden;
-	}
-	.hero::before {
-		content: '';
-		position: absolute;
-		top: -50%;
-		right: -20%;
-		width: 60%;
-		height: 200%;
-		background: radial-gradient(ellipse, rgba(26, 115, 232, 0.08) 0%, transparent 70%);
-		pointer-events: none;
 	}
 	.welcome .lede { margin: 0 0 1rem; color: #9aa0a6; line-height: 1.5; }
 	.quick-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }

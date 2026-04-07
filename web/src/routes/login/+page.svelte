@@ -60,6 +60,7 @@
 	<title>{mode === 'login' ? 'Login' : 'Register'} — RPG Engine</title>
 </svelte:head>
 
+<div class="login-page">
 <h1>{mode === 'login' ? 'Login' : 'Register'}</h1>
 
 <p class="auth-notice">Accounts here are just to keep track of your stories and saves — pick any username and a simple password. No email required, no personal info collected.</p>
@@ -92,8 +93,17 @@
 		{mode === 'login' ? 'Need an account? Register' : 'Have an account? Log in'}
 	</button>
 </p>
+</div>
 
 <style>
+	.login-page {
+		min-height: calc(100vh - 8rem);
+		background: linear-gradient(to right, rgba(15,17,20,0.92), rgba(15,17,20,0.6)), url('/images/login-bg.png') center/cover no-repeat;
+		padding: 3rem 2rem;
+		display: flex;
+		flex-direction: column;
+		max-width: 28rem;
+	}
 	form {
 		display: flex;
 		flex-direction: column;

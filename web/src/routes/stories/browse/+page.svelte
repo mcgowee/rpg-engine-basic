@@ -71,6 +71,9 @@
 		<ul class="cards">
 			{#each items as story (story.id)}
 				<li class="card">
+					{#if story.genre}
+						<div class="card-banner" style="background-image: url('/images/genre-{story.genre}.png')"></div>
+					{/if}
 					<h2 class="card-title">{story.title}</h2>
 					<p class="card-meta">
 						<span class="author">by {story.author_uid}</span>
@@ -112,14 +115,16 @@
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
-	.card { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; background: #1a1d23; }
-	.card-title { margin: 0 0 0.35rem; font-size: 1.15rem; }
+	.card { border: 1px solid #2a2f38; border-radius: 10px; overflow: hidden; background: #1a1d23; }
+	.card-banner { height: 120px; background-size: cover; background-position: center; opacity: 0.7; }
+	.card-title, .card-meta, .card-desc, .card-notes, .card-actions { padding: 0 1.1rem; }
+	.card-title { margin: 0.75rem 0 0.35rem; font-size: 1.15rem; }
 	.card-meta { margin: 0 0 0.75rem; font-size: 0.85rem; color: #9aa0a6; display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem; }
 	.author { font-weight: 600; color: #bdc1c6; }
 	.dot { color: #5f6368; }
 	.card-desc { margin: 0; font-size: 0.95rem; line-height: 1.45; color: #bdc1c6; }
 	.card-notes { margin: 0.35rem 0 0; font-size: 0.85rem; font-style: italic; color: #9aa0a6; }
-	.card-actions { margin: 0.75rem 0 0; display: flex; gap: 0.5rem; }
+	.card-actions { margin: 0.75rem 0 0; padding-bottom: 1rem !important; display: flex; gap: 0.5rem; }
 	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; }
 	.btn:hover { border-color: #5f6368; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
