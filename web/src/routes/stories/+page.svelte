@@ -263,6 +263,13 @@
 								>
 									Edit
 								</button>
+								<button
+									type="button"
+									class="linkish"
+									onclick={() => goto(`/stories/${row.id}/book`)}
+								>
+									Book
+								</button>
 								<button type="button" class="linkish" onclick={() => togglePublish(row)}>
 									{row.is_public ? 'Unpublish' : 'Publish'}
 								</button>

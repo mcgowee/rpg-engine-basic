@@ -1625,6 +1625,124 @@ Rules:
 
 
 # ---------------------------------------------------------------------------
+# Story book
+# ---------------------------------------------------------------------------
+
+@app.route("/stories/<int:story_id>/book-data", methods=["GET"])
+@login_required
+def story_book_data(story_id: int):
+    """Return story metadata + play history for book rendering."""
+    conn = get_db()
+    try:
+        story_row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND (user_id = ? OR is_public = 1)",
+            (story_id, g.user_id),
+        ).fetchone()
+        if not story_row:
+            return jsonify({"error": "Story not found"}), 404
+
+        # Get the latest save for this user
+        save_row = conn.execute(
+            """SELECT state FROM saves WHERE story_id = ? AND user_id = ?
+               ORDER BY saved_at DESC LIMIT 1""",
+            (story_id, g.user_id),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    history = []
+    if save_row:
+        try:
+            state = json.loads(save_row["state"])
+            history = state.get("history", [])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    characters = {}
+    try:
+        characters = json.loads(story_row["characters"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return jsonify({
+        "title": story_row["title"],
+        "description": story_row["description"],
+        "genre": story_row["genre"],
+        "opening": story_row["opening"],
+        "cover_image": story_row["cover_image"] or "",
+        "player_name": story_row["player_name"],
+        "player_background": story_row["player_background"],
+        "characters": characters,
+        "history": history,
+    })
+
+
+@app.route("/ai/generate-book", methods=["POST"])
+@login_required
+def ai_generate_book():
+    """Rewrite play history into polished prose."""
+    data = request.get_json(silent=True) or {}
+    history = data.get("history", [])
+    opening = (data.get("opening") or "").strip()
+    title = (data.get("title") or "Untitled").strip()
+    player_name = (data.get("player_name") or "the adventurer").strip()
+    characters = data.get("characters", {})
+
+    if not history:
+        return jsonify({"error": "No play history to convert"}), 400
+
+    # Build the raw transcript
+    transcript_lines = []
+    if opening:
+        transcript_lines.append(f"[Opening]\n{opening}")
+    for entry in history:
+        transcript_lines.append(str(entry))
+
+    transcript = "\n\n---\n\n".join(transcript_lines)
+
+    # Build character list
+    char_names = []
+    for key, val in characters.items():
+        if isinstance(val, dict):
+            label = key.replace("_", " ").title()
+            char_names.append(label)
+
+    char_block = f"\nCharacters: {', '.join(char_names)}" if char_names else ""
+
+    prompt = f"""You are a skilled fiction writer. Rewrite the following text RPG play session into a polished short story.
+
+Title: {title}
+Player character: {player_name}{char_block}
+
+Rules:
+- Write in third person past tense
+- Replace "Player:" actions with narrative prose about {player_name}
+- Keep all key events, dialogue, and character interactions
+- NPC dialogue should be in quotes with attribution
+- Add scene-setting descriptions and transitions between sections
+- Divide the story into short sections with "---" between them
+- Keep the tone and atmosphere of the original
+- Do NOT add events that didn't happen in the play session
+- Output ONLY the story prose, no title, no commentary
+
+Play session transcript:
+---
+{transcript}
+---
+
+Rewritten story:"""
+
+    try:
+        llm = get_llm(DEFAULT_MODEL)
+        raw = llm.invoke(prompt)
+        text = _llm_result_to_text(raw).strip()
+        return jsonify({"prose": text})
+    except Exception as e:
+        logger.exception("ai/generate-book failed")
+        return jsonify({"error": "The AI request failed. Try again later."}), 500
+
+
+# ---------------------------------------------------------------------------
 # Cover image generation
 # ---------------------------------------------------------------------------
 
