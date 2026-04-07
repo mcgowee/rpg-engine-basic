@@ -19,7 +19,7 @@
 	let playerName = $state('');
 	let subgraphName = $state('');
 	type MoodAxis = { axis: string; low: string; high: string; value: number };
-	type CharDisplay = { label: string; moods: MoodAxis[]; legacyMood?: number };
+	type CharDisplay = { label: string; moods: MoodAxis[]; legacyMood?: number; portrait?: string };
 	let characters = $state<CharDisplay[]>([]);
 	let memorySummary = $state('');
 	let turnCount = $state(0);
@@ -89,10 +89,12 @@
 			for (const [k, v] of Object.entries(charsObj)) {
 				if (!v || typeof v !== 'object') continue;
 				const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+				const portrait = typeof v.portrait === 'string' ? v.portrait : '';
 				const rawMoods = v.moods;
 				if (Array.isArray(rawMoods) && rawMoods.length > 0) {
 					parsed.push({
 						label,
+						portrait,
 						moods: rawMoods.map((m: Record<string, unknown>) => ({
 							axis: String(m.axis ?? 'mood'),
 							low: String(m.low ?? 'low'),
@@ -101,7 +103,7 @@
 						})),
 					});
 				} else {
-					parsed.push({ label, moods: [], legacyMood: Number(v.mood ?? 5) });
+					parsed.push({ label, portrait, moods: [], legacyMood: Number(v.mood ?? 5) });
 				}
 			}
 			characters = parsed;
@@ -316,6 +318,22 @@
 	<section class="page narrow"><p class="muted">Loading game…</p></section>
 {:else if storyId != null}
 	<div class="layout">
+		{#if hasCharacters}
+			<aside class="portrait-sidebar">
+				{#each characters as char (char.label)}
+					<div class="portrait-card">
+						{#if char.portrait}
+							<img src="/images/portraits/{char.portrait}" alt={char.label} class="portrait-img" />
+						{:else}
+							<div class="portrait-placeholder">
+								<Icon name="user" size={32} />
+							</div>
+						{/if}
+						<span class="portrait-name">{char.label}</span>
+					</div>
+				{/each}
+			</aside>
+		{/if}
 		<main class="main">
 			<div class="transcript-wrap">
 				<div class="transcript" bind:this={logEl}>
@@ -429,7 +447,12 @@
 
 <style>
 	.page.narrow { padding: 1rem; max-width: 40rem; }
-	.layout { display: flex; gap: 1rem; max-width: 1200px; margin: 0 auto; padding: 0 0.5rem 2rem; min-height: calc(100vh - 2rem); }
+	.layout { display: flex; gap: 0.75rem; max-width: 1300px; margin: 0 auto; padding: 0 0.5rem 2rem; min-height: calc(100vh - 2rem); }
+	.portrait-sidebar { width: 100px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.25rem; overflow-y: auto; max-height: calc(100vh - 2rem); }
+	.portrait-card { text-align: center; }
+	.portrait-img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
+	.portrait-placeholder { width: 100%; aspect-ratio: 2/3; border-radius: 8px; border: 1px solid #2a2f38; background: #1a1d23; display: flex; align-items: center; justify-content: center; color: #5f6368; }
+	.portrait-name { display: block; font-size: 0.72rem; color: #9aa0a6; margin-top: 0.25rem; line-height: 1.2; }
 	.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.75rem; }
 	.transcript-wrap { flex: 1; min-height: 200px; border: 1px solid #2a2f38; border-radius: 10px; background: #1a1d23; overflow: hidden; }
 	.transcript { height: min(60vh, 520px); overflow-y: auto; padding: 0.75rem; }
@@ -473,5 +496,5 @@
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.inline-err { margin: 0.35rem 0 0; font-size: 0.9rem; }
-	@media (max-width: 800px) { .layout { flex-direction: column; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } }
+	@media (max-width: 800px) { .layout { flex-direction: column; } .portrait-sidebar { display: none; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } }
 </style>

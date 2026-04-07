@@ -1689,6 +1689,92 @@ def ai_generate_cover():
     })
 
 
+@app.route("/ai/generate-portrait", methods=["POST"])
+@login_required
+def ai_generate_portrait():
+    import comfyui_client
+
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    character_key = (data.get("character_key") or "").strip()
+    if not character_key:
+        return jsonify({"error": "character_key is required"}), 400
+
+    if not comfyui_client.is_available():
+        return jsonify({"error": "Image generation not available (ComfyUI not running)"}), 503
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+
+        characters = json.loads(row["characters"] or "{}")
+        char_data = characters.get(character_key)
+        if not char_data or not isinstance(char_data, dict):
+            return jsonify({"error": f"Character '{character_key}' not found"}), 404
+
+        # Step 1: Use LLM to convert personality prompt to visual description
+        personality = char_data.get("prompt", "")
+        char_label = character_key.replace("_", " ").title()
+        genre = row["genre"] or "fantasy"
+
+        visual_prompt = f"""Based on this RPG character description, write a short physical appearance description (2-3 sentences) for generating a portrait image. Focus on: face, hair, clothing, expression, age, build. Do not include personality or behavior — only visual details.
+
+Character name: {char_label}
+Genre: {genre}
+Personality description: {personality}
+
+Physical appearance:"""
+
+        try:
+            llm = get_llm(DEFAULT_MODEL)
+            visual_desc = _llm_result_to_text(llm.invoke(visual_prompt)).strip()
+        except Exception as e:
+            logger.error("Portrait LLM failed: %s", e)
+            visual_desc = f"{char_label}, {genre} character"
+
+        # Step 2: Generate portrait via ComfyUI
+        comfyui_prompt = f"{visual_desc}, portrait, head and shoulders, dark atmospheric background, RPG character art, detailed face, cinematic lighting"
+
+        portraits_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "portraits")
+        os.makedirs(portraits_dir, exist_ok=True)
+
+        prefix = f"portrait_{story_id}_{character_key}"
+        comfyui_filename = comfyui_client.generate_image(comfyui_prompt, width=512, height=768, prefix=prefix)
+        if not comfyui_filename:
+            return jsonify({"error": "Portrait generation failed"}), 500
+
+        local_filename = f"story_{story_id}_{character_key}.png"
+        local_path = os.path.join(portraits_dir, local_filename)
+
+        if not comfyui_client.download_image(comfyui_filename, local_path):
+            return jsonify({"error": "Failed to save portrait"}), 500
+
+        # Step 3: Update character data with portrait filename
+        char_data["portrait"] = local_filename
+        characters[character_key] = char_data
+        conn.execute(
+            "UPDATE stories SET characters = ?, updated_at = datetime('now') WHERE id = ?",
+            (json.dumps(characters), story_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "portrait": local_filename,
+        "url": f"/images/portraits/{local_filename}",
+        "visual_description": visual_desc,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------

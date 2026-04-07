@@ -27,6 +27,8 @@
 	let coverCacheBust = $state('');
 	let generatingCover = $state(false);
 	let coverError = $state('');
+	let generatingPortrait = $state('');
+	let portraitError = $state('');
 
 	// Shared content
 	let narratorPrompt = $state('You are the narrator for a text adventure. Describe scenes in second person. End each beat with: What do you do?');
@@ -36,7 +38,7 @@
 
 	// Characters
 	type MoodAxis = { axis: string; low: string; high: string; value: number };
-	type CharEntry = { key: string; prompt: string; first_line: string; model: string; moods: MoodAxis[] };
+	type CharEntry = { key: string; prompt: string; first_line: string; model: string; moods: MoodAxis[]; portrait?: string };
 	let characterEntries = $state<CharEntry[]>([]);
 
 	function addCharacter() {
@@ -52,7 +54,10 @@
 		for (const c of characterEntries) {
 			const k = c.key.trim();
 			if (!k) continue;
-			out[k] = { prompt: c.prompt, first_line: c.first_line, model: c.model, moods: c.moods };
+			const entry: Record<string, unknown> = { prompt: c.prompt, first_line: c.first_line, model: c.model, moods: c.moods };
+			const portrait = (c.portrait ?? '').split('?')[0]; // strip cache buster
+			if (portrait) entry.portrait = portrait;
+			out[k] = entry;
 		}
 		return out;
 	}
@@ -77,6 +82,7 @@
 				first_line: String(v.first_line ?? ''),
 				model: String(v.model ?? 'default'),
 				moods,
+				portrait: String(v.portrait ?? ''),
 			};
 		});
 	}
@@ -281,6 +287,35 @@
 			coverError = 'Network error';
 		} finally {
 			generatingCover = false;
+		}
+	}
+
+	async function generatePortrait(charKey: string, charIdx: number) {
+		if (!storyId || generatingPortrait) return;
+		generatingPortrait = charKey;
+		portraitError = '';
+		try {
+			const r = await fetch('/api/ai/generate-portrait', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ story_id: storyId, character_key: charKey }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.portrait) {
+				// Update the character entry with the portrait filename
+				const entry = characterEntries[charIdx];
+				if (entry) {
+					// Store portrait in a way that gets saved with the character
+					(entry as Record<string, unknown>)['portrait'] = j.portrait + '?t=' + Date.now();
+					characterEntries = [...characterEntries]; // trigger reactivity
+				}
+			} else {
+				portraitError = j.error ?? 'Portrait generation failed';
+			}
+		} catch {
+			portraitError = 'Network error';
+		} finally {
+			generatingPortrait = '';
 		}
 	}
 
@@ -616,6 +651,24 @@
 						{@render aiButtons('character_first_line', () => char.first_line, (v) => char.first_line = v, { character_key: char.key, character_prompt: char.prompt })}
 					</div>
 
+					{#if mode === 'edit'}
+						<div class="field">
+							<strong>Portrait</strong>
+							{#if char.portrait}
+								<div class="portrait-preview">
+									<img src="/images/portraits/{char.portrait}" alt="{char.key} portrait" />
+								</div>
+							{/if}
+							<button type="button" class="btn sm"
+								disabled={generatingPortrait === char.key || !char.key.trim()}
+								title="Generate a portrait from this character's personality (requires ComfyUI)"
+								onclick={() => generatePortrait(char.key, idx)}>
+								{#if generatingPortrait === char.key}<span class="spinner"></span> Generating...{:else}🎨 Generate Portrait{/if}
+							</button>
+							{#if portraitError && generatingPortrait === ''}<p class="err" style="font-size:0.85rem">{portraitError}</p>{/if}
+						</div>
+					{/if}
+
 					<div class="field">
 						<div class="field-head">
 							<strong>Mood Axes</strong>
@@ -700,6 +753,8 @@
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
 	.cover-preview { margin: 0.5rem 0; }
 	.cover-preview img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
+	.portrait-preview { margin: 0.5rem 0; }
+	.portrait-preview img { max-width: 150px; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
 	.danger { color: #f28b82; border-color: #c5221f; }
 	.sg-rec-box { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1.25rem; background: #1a1d23; }
 	.sg-rec-title { font-size: 0.95rem; display: block; margin-bottom: 0.2rem; }
