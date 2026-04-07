@@ -1083,6 +1083,16 @@ def play_chat():
         if not isinstance(result, dict):
             result = dict(state)
 
+        # Ensure history is recorded even if subgraph has no memory node
+        response_text = result.get("response", "")
+        history = list(result.get("history") or state.get("history") or [])
+        turn_entry = f"Player: {message}\n{response_text}"
+        if not history or history[-1] != turn_entry:
+            history.append(turn_entry)
+            result["history"] = history
+        if "turn_count" not in result or result["turn_count"] == state.get("turn_count", 0):
+            result["turn_count"] = len(history)
+
         result["_story_id"] = story_id
         result["_subgraph_name"] = subgraph_name
         active_games[session_key] = result
