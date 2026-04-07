@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { fade, slide } from 'svelte/transition';
 	import { page } from '$app/state';
+	import { toast as globalToast, toastError } from '$lib/toast.svelte';
 
 	const SAVE_SLOT_COUNT = 5;
 
@@ -26,7 +27,6 @@
 	let message = $state('');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let actionOk = $state<string | null>(null);
 	let logEl = $state<HTMLDivElement | undefined>(undefined);
 
 	// Derived values
@@ -52,8 +52,7 @@
 	});
 
 	function toast(msg: string) {
-		actionOk = msg;
-		setTimeout(() => { actionOk = null; }, 2800);
+		globalToast(msg, 'success');
 	}
 
 	async function fetchSaves(sid: number) {
@@ -351,7 +350,6 @@
 		</main>
 
 		<aside class="sidebar">
-			{#if actionOk}<p class="ok toast" transition:fade={{ duration: 200 }}>{actionOk}</p>{/if}
 
 			<section class="side-block">
 				<h2>Status</h2>
@@ -474,6 +472,5 @@
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.inline-err { margin: 0.35rem 0 0; font-size: 0.9rem; }
-	.ok.toast { margin: 0 0 0.5rem; padding: 0.35rem 0.5rem; background: #1a2e1a; border: 1px solid #2a5a2a; border-radius: 8px; font-size: 0.85rem; color: #81c995; }
 	@media (max-width: 800px) { .layout { flex-direction: column; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } }
 </style>

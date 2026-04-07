@@ -122,6 +122,56 @@
 			main, section, .docs, .lobby, .editor-page, .hub, .page {
 				animation: fadeIn 0.15s ease-out;
 			}
+			/* Light theme overrides */
+			[data-theme="light"] {
+				background: #f8f9fa;
+				color: #1a1a1a;
+			}
+			[data-theme="light"] a { color: #1a73e8; }
+			[data-theme="light"] h1, [data-theme="light"] h2, [data-theme="light"] h3, [data-theme="light"] h4 { color: #1a1a1a; }
+			[data-theme="light"] input, [data-theme="light"] textarea, [data-theme="light"] select {
+				background: #fff;
+				color: #1a1a1a;
+				border-color: #ccc;
+			}
+			[data-theme="light"] input:focus, [data-theme="light"] textarea:focus, [data-theme="light"] select:focus {
+				border-color: #1a73e8;
+			}
+			[data-theme="light"] code { background: #eee; color: #1a73e8; }
+			[data-theme="light"] pre { background: #f0f0f0; border-color: #ddd; color: #1a1a1a; }
+			[data-theme="light"] th { border-color: #ddd; color: #555; }
+			[data-theme="light"] td { border-color: #eee; }
+			[data-theme="light"] fieldset { border-color: #ddd; }
+			[data-theme="light"] details summary { color: #1a73e8; }
+			/* Toast container */
+			.toast-container {
+				position: fixed;
+				top: 3.5rem;
+				right: 1rem;
+				z-index: 2000;
+				display: flex;
+				flex-direction: column;
+				gap: 0.5rem;
+				pointer-events: none;
+			}
+			.toast-item {
+				pointer-events: auto;
+				padding: 0.6rem 1rem;
+				border-radius: 8px;
+				font-size: 0.85rem;
+				max-width: 22rem;
+				box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+				animation: slideIn 0.2s ease-out;
+			}
+			@keyframes slideIn { from { transform: translateX(1rem); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+			.toast-info { background: #1a3a5c; color: #8ab4f8; border: 1px solid #2a4a6c; }
+			.toast-success { background: #1a3a1a; color: #81c995; border: 1px solid #2a5a2a; }
+			.toast-error { background: #3a1a1a; color: #f28b82; border: 1px solid #5c2020; }
+			.toast-warning { background: #3a3a1a; color: #f6b93b; border: 1px solid #5c5a20; }
+			[data-theme="light"] .toast-info { background: #e3f2fd; color: #1565c0; border-color: #bbdefb; }
+			[data-theme="light"] .toast-success { background: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
+			[data-theme="light"] .toast-error { background: #fce4ec; color: #c62828; border-color: #f8bbd0; }
+			[data-theme="light"] .toast-warning { background: #fff8e1; color: #f57f17; border-color: #ffecb3; }
 		</style>
 		%sveltekit.head%
 	</head>
