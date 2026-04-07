@@ -1,0 +1,21 @@
+[Unit]
+Description=RPG Engine Flask API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/rpg-engine
+Environment=PATH=/var/www/rpg-engine/.venv/bin:/usr/local/bin:/usr/bin
+EnvironmentFile=/var/www/rpg-engine/.env
+ExecStart=/var/www/rpg-engine/.venv/bin/gunicorn \
+    --bind 127.0.0.1:5051 \
+    --workers 1 \
+    --threads 4 \
+    --timeout 120 \
+    app:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

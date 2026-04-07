@@ -1,0 +1,17 @@
+[Unit]
+Description=RPG Engine SvelteKit Web
+After=network.target rpg-flask.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/rpg-engine/web
+Environment=NODE_ENV=production
+Environment=PORT=3002
+Environment=FLASK_API_URL=http://127.0.0.1:5051
+ExecStart=/usr/bin/node build
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
