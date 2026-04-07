@@ -3,6 +3,7 @@
 	import { fade, slide } from 'svelte/transition';
 	import { page } from '$app/state';
 	import { toast as globalToast, toastError } from '$lib/toast.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 
 	const SAVE_SLOT_COUNT = 5;
 
@@ -321,11 +322,11 @@
 					{#each transcript as entry, i (i)}
 						{#if entry.type === 'player'}
 							<div class="row player-row">
-								<div class="bubble player"><span class="prefix">You:</span>{entry.text}</div>
+								<div class="bubble player"><span class="prefix"><Icon name="user" size={12} /> You:</span>{entry.text}</div>
 							</div>
 						{:else}
 							<div class="row narrator-row">
-								<div class="bubble narrator"><span class="prefix">Narrator:</span>{entry.text}</div>
+								<div class="bubble narrator"><span class="prefix"><Icon name="book" size={12} /> Narrator:</span>{entry.text}</div>
 							</div>
 						{/if}
 					{/each}
@@ -404,9 +405,9 @@
 									{/if}
 								</div>
 								<div class="slot-actions">
-									<button type="button" class="btn sm" onclick={() => saveToSlot(slot)}>Save</button>
+									<button type="button" class="btn sm" onclick={() => saveToSlot(slot)}><Icon name="save" size={12} /> Save</button>
 									{#if row}
-										<button type="button" class="btn sm" onclick={() => loadFromSlot(slot)}>Load</button>
+										<button type="button" class="btn sm" onclick={() => loadFromSlot(slot)}><Icon name="upload" size={12} /> Load</button>
 									{/if}
 								</div>
 							</li>
@@ -418,7 +419,7 @@
 			<section class="side-block">
 				<h2>Actions</h2>
 				<button type="button" class="btn" onclick={() => togglePause()}>
-					{paused ? 'Unpause' : 'Pause'}
+					<Icon name={paused ? 'play' : 'pause'} size={14} /> {paused ? 'Unpause' : 'Pause'}
 				</button>
 				<p class="back"><a href="/stories">← Back to stories</a></p>
 			</section>

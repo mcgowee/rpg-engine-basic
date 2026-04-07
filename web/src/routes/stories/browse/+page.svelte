@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import Icon from '$lib/components/Icon.svelte';
 
 	type PublicStory = {
 		id: number;
@@ -86,7 +87,7 @@
 					{/if}
 					<p class="card-actions">
 						<button type="button" class="btn primary" onclick={() => goto(`/play?story_id=${story.id}`)}>
-							Play
+							<Icon name="play" size={12} /> Play
 						</button>
 						<button type="button" class="btn" onclick={async () => {
 							const r = await fetch(`/api/stories/${story.id}/copy`, {
@@ -95,7 +96,7 @@
 							});
 							if (r.ok) goto('/stories');
 						}}>
-							Copy to My Stories
+							<Icon name="copy" size={12} /> Copy to My Stories
 						</button>
 					</p>
 				</li>

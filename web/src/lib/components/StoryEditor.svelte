@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
+	import Icon from '$lib/components/Icon.svelte';
 
 	type Props = {
 		mode: 'create' | 'edit';
@@ -422,10 +423,10 @@
 	</div>
 
 	<div class="tabs">
-		<button type="button" class:active={activeTab === 'basics'} onclick={() => activeTab = 'basics'}>Basics</button>
-		<button type="button" class:active={activeTab === 'subgraph'} onclick={() => activeTab = 'subgraph'}>Subgraph</button>
-		<button type="button" class:active={activeTab === 'shared'} onclick={() => activeTab = 'shared'}>Shared Content</button>
-		<button type="button" class:active={activeTab === 'characters'} onclick={() => activeTab = 'characters'}>Characters</button>
+		<button type="button" class:active={activeTab === 'basics'} onclick={() => activeTab = 'basics'}><Icon name="edit" size={14} /> Basics</button>
+		<button type="button" class:active={activeTab === 'subgraph'} onclick={() => activeTab = 'subgraph'}><Icon name="git-branch" size={14} /> Subgraph</button>
+		<button type="button" class:active={activeTab === 'shared'} onclick={() => activeTab = 'shared'}><Icon name="settings" size={14} /> Shared Content</button>
+		<button type="button" class:active={activeTab === 'characters'} onclick={() => activeTab = 'characters'}><Icon name="users" size={14} /> Characters</button>
 	</div>
 
 	{#if activeTab === 'basics'}

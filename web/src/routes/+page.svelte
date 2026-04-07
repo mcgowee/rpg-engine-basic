@@ -3,6 +3,7 @@
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { authState } from '$lib/auth.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 
 	type MyStory = {
 		id: number;
@@ -99,16 +100,16 @@
 			<p><button type="button" class="btn" onclick={() => load()}>Retry</button></p>
 		{/if}
 
-		<div class="section welcome">
+		<div class="section welcome hero">
 			<h1>RPG Engine</h1>
 			<p class="lede">
 				Welcome back, <strong>{authState.uid ?? 'player'}</strong>. Play a story, create your own, or explore how the engine works.
 			</p>
 			<div class="quick-actions">
-				<button type="button" class="btn primary" onclick={() => goto('/stories/create')}>New Story</button>
-				<button type="button" class="btn" onclick={() => goto('/stories')}>My Stories</button>
-				<button type="button" class="btn" onclick={() => goto('/stories/browse')}>Browse Community</button>
-				<button type="button" class="btn" onclick={() => goto('/graphs')}>Graph Editor</button>
+				<button type="button" class="btn primary" onclick={() => goto('/stories/create')}><Icon name="plus" size={14} /> New Story</button>
+				<button type="button" class="btn" onclick={() => goto('/stories')}><Icon name="book" size={14} /> My Stories</button>
+				<button type="button" class="btn" onclick={() => goto('/stories/browse')}><Icon name="search" size={14} /> Browse Community</button>
+				<button type="button" class="btn" onclick={() => goto('/graphs')}><Icon name="git-branch" size={14} /> Graph Editor</button>
 			</div>
 		</div>
 
@@ -134,10 +135,10 @@
 							</p>
 							<div class="card-actions">
 								<button type="button" class="btn sm" onclick={() => goto(`/play?story_id=${s.id}`)}>
-									Play
+									<Icon name="play" size={12} /> Play
 								</button>
 								<button type="button" class="btn sm" onclick={() => goto(`/stories/${s.id}/edit`)}>
-									Edit
+									<Icon name="edit" size={12} /> Edit
 								</button>
 							</div>
 						</li>
@@ -169,7 +170,7 @@
 							</p>
 							<div class="card-actions">
 								<button type="button" class="btn sm primary" onclick={() => goto(`/play?story_id=${s.id}`)}>
-									Play
+									<Icon name="play" size={12} /> Play
 								</button>
 							</div>
 						</li>
@@ -194,6 +195,25 @@
 	h2 { margin: 0; font-size: 1.15rem; }
 	.section { margin-bottom: 2rem; }
 	.section-head { margin-bottom: 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid #2a2f38; }
+	.hero {
+		background: linear-gradient(135deg, #0d1117 0%, #161b22 40%, #1a2332 70%, #0d1117 100%);
+		border: 1px solid #2a2f38;
+		border-radius: 12px;
+		padding: 2rem 1.5rem;
+		margin-bottom: 2rem;
+		position: relative;
+		overflow: hidden;
+	}
+	.hero::before {
+		content: '';
+		position: absolute;
+		top: -50%;
+		right: -20%;
+		width: 60%;
+		height: 200%;
+		background: radial-gradient(ellipse, rgba(26, 115, 232, 0.08) 0%, transparent 70%);
+		pointer-events: none;
+	}
 	.welcome .lede { margin: 0 0 1rem; color: #9aa0a6; line-height: 1.5; }
 	.quick-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 	.btn {
