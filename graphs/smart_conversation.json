@@ -1,0 +1,26 @@
+{
+  "name": "smart_conversation",
+  "description": "Narrator responds, conditionally routes to NPCs if characters exist, then condense and memory",
+  "nodes": ["narrator", "npc", "condense", "memory"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "narrator"
+    }
+  },
+  "edges": [
+    { "from": "npc", "to": "condense" },
+    { "from": "condense", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ],
+  "conditional_edges": [
+    {
+      "from": "narrator",
+      "router": "route_after_narrator",
+      "mapping": {
+        "npc": "npc",
+        "condense": "condense"
+      }
+    }
+  ]
+}

@@ -9,7 +9,7 @@
 
 	let { mode, storyId }: Props = $props();
 
-	let activeTab = $state<'basics' | 'subgraph' | 'shared'>('basics');
+	let activeTab = $state<'basics' | 'subgraph' | 'shared' | 'characters'>('basics');
 	let loadDone = $state(false);
 	let saving = $state(false);
 	let errors = $state<string[]>([]);
@@ -20,12 +20,48 @@
 	let genre = $state('');
 	let opening = $state('');
 	let subgraphName = $state('conversation');
+	let notes = $state('');
 
 	// Shared content
 	let narratorPrompt = $state('You are the narrator for a text adventure. Describe scenes in second person. End each beat with: What do you do?');
 	let narratorModel = $state('default');
 	let playerName = $state('Adventurer');
 	let playerBackground = $state('');
+
+	// Characters
+	type CharEntry = { key: string; prompt: string; first_line: string; model: string; mood: number };
+	let characterEntries = $state<CharEntry[]>([]);
+
+	function addCharacter() {
+		characterEntries = [...characterEntries, { key: '', prompt: '', first_line: '', model: 'default', mood: 5 }];
+	}
+
+	function removeCharacter(idx: number) {
+		characterEntries = characterEntries.filter((_, i) => i !== idx);
+	}
+
+	function charactersToDict(): Record<string, unknown> {
+		const out: Record<string, unknown> = {};
+		for (const c of characterEntries) {
+			const k = c.key.trim();
+			if (!k) continue;
+			out[k] = { prompt: c.prompt, first_line: c.first_line, model: c.model, mood: c.mood };
+		}
+		return out;
+	}
+
+	function dictToCharEntries(d: Record<string, unknown>): CharEntry[] {
+		return Object.entries(d).map(([key, val]) => {
+			const v = val as Record<string, unknown>;
+			return {
+				key,
+				prompt: String(v.prompt ?? ''),
+				first_line: String(v.first_line ?? ''),
+				model: String(v.model ?? 'default'),
+				mood: Number(v.mood ?? 5),
+			};
+		});
+	}
 
 	// AI
 	let concept = $state('');
@@ -63,10 +99,14 @@
 					genre = s.genre ?? '';
 					opening = s.opening ?? '';
 					subgraphName = s.subgraph_name ?? 'conversation';
+					notes = s.notes ?? '';
 					narratorPrompt = s.narrator_prompt ?? '';
 					narratorModel = s.narrator_model ?? 'default';
 					playerName = s.player_name ?? 'Adventurer';
 					playerBackground = s.player_background ?? '';
+					if (s.characters && typeof s.characters === 'object') {
+						characterEntries = dictToCharEntries(s.characters);
+					}
 				}
 			} catch { /* ignore */ }
 		}
@@ -89,6 +129,8 @@
 				narrator_model: narratorModel.trim() || 'default',
 				player_name: playerName.trim() || 'Adventurer',
 				player_background: playerBackground.trim(),
+				characters: charactersToDict(),
+				notes: notes.trim(),
 			};
 			const url = mode === 'edit' ? `/api/stories/${storyId}` : '/api/stories';
 			const method = mode === 'edit' ? 'PUT' : 'POST';
@@ -167,6 +209,7 @@
 		<button type="button" class:active={activeTab === 'basics'} onclick={() => activeTab = 'basics'}>Basics</button>
 		<button type="button" class:active={activeTab === 'subgraph'} onclick={() => activeTab = 'subgraph'}>Subgraph</button>
 		<button type="button" class:active={activeTab === 'shared'} onclick={() => activeTab = 'shared'}>Shared Content</button>
+		<button type="button" class:active={activeTab === 'characters'} onclick={() => activeTab = 'characters'}>Characters</button>
 	</div>
 
 	{#if activeTab === 'basics'}
@@ -180,6 +223,12 @@
 				<strong>Description</strong>
 				<textarea rows="3" bind:value={description}></textarea>
 			</label>
+
+			<div class="field">
+				<strong>Notes</strong>
+				<span class="hint">Optional. Explain what this story demonstrates, tips for players, or design notes.</span>
+				<textarea rows="2" bind:value={notes}></textarea>
+			</div>
 
 			<label class="field">
 				<strong>Genre</strong>
@@ -258,6 +307,48 @@
 		</div>
 	{/if}
 
+	{#if activeTab === 'characters'}
+		<div class="tab-content">
+			{#if characterEntries.length === 0}
+				<p class="muted">No characters yet. Add one to bring NPCs into the story.</p>
+			{/if}
+
+			{#each characterEntries as char, idx (idx)}
+				<fieldset class="char-card">
+					<legend>Character {idx + 1}</legend>
+
+					<label class="field">
+						<strong>Key *</strong>
+						<span class="hint">Snake_case identifier (e.g. bartender, old_tom)</span>
+						<input type="text" bind:value={char.key} placeholder="e.g. bartender" />
+					</label>
+
+					<div class="field">
+						<strong>Personality Prompt *</strong>
+						<span class="hint">Instructions for how this NPC speaks and behaves.</span>
+						<textarea rows="3" bind:value={char.prompt} placeholder="You are a grumpy bartender who's seen too much..."></textarea>
+					</div>
+
+					<label class="field">
+						<strong>First Line</strong>
+						<span class="hint">What they say at the start of the game.</span>
+						<input type="text" bind:value={char.first_line} placeholder="What'll it be?" />
+					</label>
+
+					<label class="field">
+						<strong>Mood</strong>
+						<span class="hint">Starting mood 1-10 (5 = neutral). Used by mood node later.</span>
+						<input type="number" min="1" max="10" bind:value={char.mood} />
+					</label>
+
+					<button type="button" class="btn sm danger" onclick={() => removeCharacter(idx)}>Remove</button>
+				</fieldset>
+			{/each}
+
+			<button type="button" class="btn" onclick={() => addCharacter()}>Add character</button>
+		</div>
+	{/if}
+
 	{#if errors.length > 0}
 		<div class="err-box">{#each errors as e}<p class="err">{e}</p>{/each}</div>
 	{/if}
@@ -292,5 +383,8 @@
 	.err-box { margin-top: 1rem; }
 	.ok { color: #1b5e20; margin: 0.25rem 0; }
 	.muted { color: #666; }
+	.char-card { border: 1px solid #ddd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+	.char-card legend { font-weight: 600; }
+	.danger { color: #b00020; border-color: #b00020; }
 	a { color: #0066cc; }
 </style>

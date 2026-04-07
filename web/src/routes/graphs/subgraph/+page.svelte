@@ -315,28 +315,23 @@
 		storiesLoading = true;
 		storiesLoadError = null;
 		try {
-			const r = await fetch('/api/stories', { credentials: 'include' });
-			const j = (await r.json().catch(() => null)) as
-				| { error?: string }
-				| Record<string, unknown>[]
-				| null;
-			if (!r.ok) {
-				storiesLoadError =
-					j && typeof j === 'object' && !Array.isArray(j) && 'error' in j
-						? String((j as { error?: string }).error ?? '')
-						: '';
-				storiesLoadError = storiesLoadError || `Failed to load stories (${r.status})`;
-				return;
-			}
-			if (!Array.isArray(j)) {
-				storiesLoadError = 'Invalid stories response';
-				return;
-			}
+			// Fetch own stories and public stories in parallel
+			const [ownR, pubR] = await Promise.all([
+				fetch('/api/stories', { credentials: 'include' }),
+				fetch('/api/stories/public', { credentials: 'include' }),
+			]);
+			const ownJ = await ownR.json().catch(() => []);
+			const pubJ = await pubR.json().catch(() => ({}));
+			const ownList = Array.isArray(ownJ) ? ownJ : [];
+			const pubList = Array.isArray(pubJ) ? pubJ : (pubJ.stories ?? []);
+
+			const seen = new Set<number>();
 			const next: StoryListItem[] = [];
-			for (const raw of j) {
+			for (const raw of [...ownList, ...pubList]) {
 				const s = raw as { id?: unknown; title?: unknown };
 				const id = typeof s.id === 'number' ? s.id : Number(s.id);
-				if (!Number.isFinite(id) || id <= 0) continue;
+				if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+				seen.add(id);
 				const title =
 					typeof s.title === 'string' && s.title.trim() !== ''
 						? s.title

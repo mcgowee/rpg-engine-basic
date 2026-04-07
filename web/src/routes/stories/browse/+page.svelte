@@ -7,6 +7,7 @@
 		title: string;
 		description: string;
 		genre: string;
+		notes: string;
 		author_uid: string;
 		play_count: number;
 		created_at: string;
@@ -80,6 +81,9 @@
 						<span>{formatWhen(story.created_at)}</span>
 					</p>
 					<p class="card-desc">{story.description || 'No description.'}</p>
+					{#if story.notes}
+						<p class="card-notes">{story.notes}</p>
+					{/if}
 					<p class="card-actions">
 						<button type="button" class="btn primary" onclick={() => goto(`/play?story_id=${story.id}`)}>
 							Play
@@ -163,6 +167,12 @@
 		font-size: 0.95rem;
 		line-height: 1.45;
 		color: #333;
+	}
+	.card-notes {
+		margin: 0.35rem 0 0;
+		font-size: 0.85rem;
+		font-style: italic;
+		color: #555;
 	}
 	.card-actions {
 		margin: 0.75rem 0 0;

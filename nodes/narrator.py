@@ -38,14 +38,20 @@ def narrator_node(state: dict) -> dict:
     context_text = summary_block + recent_block
     context_section = f"\nContext:\n{context_text}\n" if context_text.strip() else ""
 
+    # Characters present
+    characters = state.get("characters") or {}
+    char_names = [k.replace("_", " ").title() for k in characters.keys()] if characters else []
+    chars_line = f"Characters present: {', '.join(char_names)}" if char_names else "Characters present: none"
+
     prompt = f"""{narrator_prompt}
 
 Game: {state.get("game_title", "Untitled")}
 Player: {player.get("name", "Adventurer")} — {player.get("background", "")}
+{chars_line}
 {context_section}
 Player just said: {state.get("message", "")}
 
-Narrate what happens next:"""
+Narrate what happens next (do not speak as an NPC — they will respond separately):"""
 
     try:
         narration = llm.invoke(prompt)

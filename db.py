@@ -63,6 +63,8 @@ def init_db():
             player_name TEXT DEFAULT 'Adventurer',
             player_background TEXT DEFAULT '',
             subgraph_name TEXT DEFAULT 'conversation',
+            characters TEXT DEFAULT '{}',
+            notes TEXT DEFAULT '',
             is_public BOOLEAN DEFAULT 0,
             play_count INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
@@ -154,11 +156,12 @@ def seed_builtin_stories():
             title = data.get("title", path.stem)
             if title in existing:
                 continue
+            characters = data.get("characters", {})
             conn.execute(
                 """INSERT INTO stories (user_id, title, description, genre, opening,
                       narrator_prompt, narrator_model, player_name, player_background,
-                      subgraph_name, is_public)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                      subgraph_name, characters, notes, is_public)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
                 (
                     system_uid,
                     title,
@@ -170,6 +173,8 @@ def seed_builtin_stories():
                     data.get("player_name", "Adventurer"),
                     data.get("player_background", ""),
                     data.get("subgraph_name", "conversation"),
+                    json.dumps(characters) if isinstance(characters, dict) else "{}",
+                    data.get("notes", ""),
                 ),
             )
         conn.commit()

@@ -8,5 +8,6 @@
   "narrator_model": "default",
   "player_name": "Morgan",
   "player_background": "A veteran lighthouse keeper called out of retirement to investigate why the Blackrock Light went dark during the worst storm of the season.",
-  "subgraph_name": "narrator_with_memory"
+  "subgraph_name": "narrator_with_memory",
+  "notes": "Demonstrates narrator + memory nodes. No NPCs — the narrator describes scenes and remembers previous turns."
 }

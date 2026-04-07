@@ -13,6 +13,11 @@
 
 	let transcript = $state<TranscriptEntry[]>([]);
 	let gameTitle = $state('');
+	let playerName = $state('');
+	let subgraphName = $state('');
+	let characterNames = $state<string[]>([]);
+	let characterMoods = $state<Record<string, number>>({});
+	let memorySummary = $state('');
 	let turnCount = $state(0);
 	let paused = $state(false);
 	let saves = $state<SaveRow[]>([]);
@@ -64,6 +69,25 @@
 		gameTitle = String(data.game_title ?? '');
 		turnCount = Number(data.turn_count ?? 0) || 0;
 		paused = Boolean(data.paused);
+		memorySummary = String(data.memory_summary ?? '');
+		if (data.player && typeof data.player === 'object') {
+			playerName = String((data.player as Record<string, unknown>).name ?? '');
+		}
+		if (data.subgraph_name) {
+			subgraphName = String(data.subgraph_name);
+		}
+		const chars = data.characters;
+		if (chars && typeof chars === 'object' && !Array.isArray(chars)) {
+			const charsObj = chars as Record<string, Record<string, unknown>>;
+			characterNames = Object.keys(charsObj).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+			const moods: Record<string, number> = {};
+			for (const [k, v] of Object.entries(charsObj)) {
+				if (v && typeof v === 'object' && 'mood' in v) {
+					moods[k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())] = Number(v.mood ?? 5);
+				}
+			}
+			characterMoods = moods;
+		}
 	}
 
 	async function boot() {
@@ -299,33 +323,55 @@
 				<h2>Status</h2>
 				<dl class="kv">
 					<dt>Title</dt><dd>{gameTitle || '—'}</dd>
+					{#if playerName}<dt>Player</dt><dd>{playerName}</dd>{/if}
 					<dt>Turns</dt><dd>{turnCount}</dd>
+					{#if subgraphName}<dt>Subgraph</dt><dd>{subgraphName}</dd>{/if}
 				</dl>
 			</section>
 
-			<section class="side-block saves-block">
-				<h2>Save / Load</h2>
-				<ul class="slot-list">
-					{#each slotIndices as slot}
-						{@const row = saves.find((s) => s.slot === slot)}
-						<li class="slot-row">
-							<div class="slot-info">
-								<strong>Slot {slot}</strong>
-								{#if row}
-									<span class="slot-meta">{row.turns} turns · {formatTs(row.timestamp)}</span>
-								{:else}
-									<span class="slot-meta muted">Empty</span>
-								{/if}
-							</div>
-							<div class="slot-actions">
-								<button type="button" class="btn sm" onclick={() => saveToSlot(slot)}>Save</button>
-								{#if row}
-									<button type="button" class="btn sm" onclick={() => loadFromSlot(slot)}>Load</button>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ul>
+			{#if Object.keys(characterMoods).length > 0}
+				<section class="side-block">
+					<h2>Characters</h2>
+					<ul class="char-list">
+						{#each Object.entries(characterMoods) as [name, mood] (name)}
+							<li>{name} <span class="mood-badge">mood: {mood}/10</span></li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+
+			<section class="side-block">
+				<details>
+					<summary>Memory (AI summary)</summary>
+					<p class="memory-text">{memorySummary || 'No summary yet.'}</p>
+				</details>
+			</section>
+
+			<section class="side-block">
+				<details>
+					<summary>Save / Load</summary>
+					<ul class="slot-list">
+						{#each slotIndices as slot}
+							{@const row = saves.find((s) => s.slot === slot)}
+							<li class="slot-row">
+								<div class="slot-info">
+									<strong>Slot {slot}</strong>
+									{#if row}
+										<span class="slot-meta">{row.turns} turns · {formatTs(row.timestamp)}</span>
+									{:else}
+										<span class="slot-meta muted">Empty</span>
+									{/if}
+								</div>
+								<div class="slot-actions">
+									<button type="button" class="btn sm" onclick={() => saveToSlot(slot)}>Save</button>
+									{#if row}
+										<button type="button" class="btn sm" onclick={() => loadFromSlot(slot)}>Load</button>
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
+				</details>
 			</section>
 
 			<section class="side-block">
@@ -368,7 +414,12 @@
 	.kv { margin: 0; display: grid; grid-template-columns: 5rem 1fr; gap: 0.25rem 0.5rem; font-size: 0.88rem; }
 	.kv dt { margin: 0; color: #555; font-weight: 600; }
 	.kv dd { margin: 0; }
-	.slot-list { list-style: none; margin: 0; padding: 0; }
+	.char-list { list-style: none; margin: 0; padding: 0; font-size: 0.88rem; }
+	.char-list li { margin-bottom: 0.3rem; }
+	.mood-badge { color: #666; font-size: 0.8rem; }
+	.memory-text { font-size: 0.85rem; line-height: 1.4; margin: 0.5rem 0 0; white-space: pre-wrap; color: #444; }
+	details summary { cursor: pointer; font-weight: 600; font-size: 0.95rem; }
+	.slot-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
 	.slot-row { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.65rem; padding-bottom: 0.5rem; border-bottom: 1px solid #f0f0f0; }
 	.slot-row:last-child { border-bottom: none; }
 	.slot-meta { display: block; font-size: 0.78rem; color: #444; margin-top: 0.15rem; }

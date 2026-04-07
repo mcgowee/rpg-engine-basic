@@ -546,6 +546,7 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         "description": r["description"],
         "genre": r["genre"],
         "subgraph_name": r["subgraph_name"],
+        "notes": r["notes"] or "",
         "is_public": bool(r["is_public"]),
         "play_count": r["play_count"],
         "created_at": r["created_at"],
@@ -557,6 +558,10 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         d["narrator_model"] = r["narrator_model"]
         d["player_name"] = r["player_name"]
         d["player_background"] = r["player_background"]
+        try:
+            d["characters"] = json.loads(r["characters"] or "{}")
+        except (json.JSONDecodeError, TypeError):
+            d["characters"] = {}
     return d
 
 
@@ -601,12 +606,16 @@ def create_story():
     title = (data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "title is required"}), 400
+    characters = data.get("characters", {})
+    if not isinstance(characters, dict):
+        characters = {}
     conn = get_db()
     try:
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, opening,
-                  narrator_prompt, narrator_model, player_name, player_background, subgraph_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  narrator_prompt, narrator_model, player_name, player_background,
+                  subgraph_name, characters, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -618,6 +627,8 @@ def create_story():
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
                 data.get("subgraph_name", "conversation"),
+                json.dumps(characters),
+                data.get("notes", ""),
             ),
         )
         conn.commit()
@@ -653,10 +664,13 @@ def update_story(story_id: int):
         if not row:
             return jsonify({"error": "Not found"}), 404
         data = request.get_json(silent=True) or {}
+        characters = data.get("characters")
+        characters_json = json.dumps(characters) if characters is not None else row["characters"]
         conn.execute(
             """UPDATE stories SET title = ?, description = ?, genre = ?, opening = ?,
                   narrator_prompt = ?, narrator_model = ?, player_name = ?,
-                  player_background = ?, subgraph_name = ?, updated_at = datetime('now')
+                  player_background = ?, subgraph_name = ?, characters = ?,
+                  notes = ?, updated_at = datetime('now')
                WHERE id = ?""",
             (
                 data.get("title", row["title"]),
@@ -668,6 +682,8 @@ def update_story(story_id: int):
                 data.get("player_name", row["player_name"]),
                 data.get("player_background", row["player_background"]),
                 data.get("subgraph_name", row["subgraph_name"]),
+                characters_json,
+                data.get("notes", row["notes"]),
                 story_id,
             ),
         )
@@ -727,8 +743,9 @@ def copy_story(story_id: int):
             return jsonify({"error": "Not found"}), 404
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, opening,
-                  narrator_prompt, narrator_model, player_name, player_background, subgraph_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  narrator_prompt, narrator_model, player_name, player_background,
+                  subgraph_name, characters, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 row["title"],
@@ -740,6 +757,8 @@ def copy_story(story_id: int):
                 row["player_name"],
                 row["player_background"],
                 row["subgraph_name"],
+                row["characters"] or "{}",
+                row["notes"] or "",
             ),
         )
         conn.commit()
@@ -774,6 +793,8 @@ def export_story(story_id: int):
         "player_name": row["player_name"],
         "player_background": row["player_background"],
         "subgraph_name": row["subgraph_name"],
+        "characters": json.loads(row["characters"] or "{}"),
+        "notes": row["notes"] or "",
     }
     slug = row["title"].lower().replace(" ", "_")[:50]
     return Response(
@@ -792,12 +813,16 @@ def import_story():
     title = (data.get("title") or "").strip()
     if not title:
         return jsonify({"error": "title is required"}), 400
+    characters = data.get("characters", {})
+    if not isinstance(characters, dict):
+        characters = {}
     conn = get_db()
     try:
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, opening,
-                  narrator_prompt, narrator_model, player_name, player_background, subgraph_name)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  narrator_prompt, narrator_model, player_name, player_background,
+                  subgraph_name, characters, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -809,6 +834,8 @@ def import_story():
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
                 data.get("subgraph_name", "conversation"),
+                json.dumps(characters),
+                data.get("notes", ""),
             ),
         )
         conn.commit()
@@ -856,6 +883,7 @@ def _build_state_from_story(row) -> dict:
             "name": row["player_name"] or "Adventurer",
             "background": row["player_background"] or "",
         },
+        "characters": json.loads(row["characters"] or "{}"),
         "game_title": row["title"],
         "opening": row["opening"] or "",
         "paused": False,
@@ -920,6 +948,10 @@ def play_start():
             "game_title": state["game_title"],
             "turn_count": state["turn_count"],
             "paused": state["paused"],
+            "characters": state.get("characters", {}),
+            "memory_summary": state.get("memory_summary", ""),
+            "player": state.get("player", {}),
+            "subgraph_name": state.get("_subgraph_name", ""),
         },
     })
 
@@ -1013,6 +1045,10 @@ def play_chat():
             "game_title": result.get("game_title", ""),
             "turn_count": result.get("turn_count", 0),
             "paused": result.get("paused", False),
+            "characters": result.get("characters", {}),
+            "memory_summary": result.get("memory_summary", ""),
+            "player": result.get("player", {}),
+            "subgraph_name": result.get("_subgraph_name", ""),
         })
     finally:
         adv_lock.release()
@@ -1082,6 +1118,10 @@ def play_status():
         "game_title": state.get("game_title", ""),
         "turn_count": state.get("turn_count", 0),
         "paused": state.get("paused", False),
+        "characters": state.get("characters", {}),
+        "memory_summary": state.get("memory_summary", ""),
+        "player": state.get("player", {}),
+        "subgraph_name": state.get("_subgraph_name", ""),
         "save_slots": save_slots,
     }
     if state.get("turn_count", 0) == 0 and state.get("opening"):

@@ -14,6 +14,7 @@ class State(TypedDict):
     memory_summary: str
     narrator: dict
     player: dict
+    characters: dict
     game_title: str
     opening: str
     paused: bool
