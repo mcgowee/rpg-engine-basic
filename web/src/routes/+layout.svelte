@@ -63,6 +63,7 @@
 				<a href="/" class:active={currentPath === '/'}>Lobby</a>
 				<a href="/stories" class:active={currentPath.startsWith('/stories') && !currentPath.includes('browse')}>Stories</a>
 				<a href="/stories/browse" class:active={currentPath.includes('browse')}>Browse</a>
+				<a href="/books" class:active={currentPath === '/books'}>Books</a>
 				<a href="/graphs" class:active={currentPath.startsWith('/graphs')}>Graphs</a>
 				<a href="/docs" class:active={currentPath.startsWith('/docs')}>Docs</a>
 			</nav>
