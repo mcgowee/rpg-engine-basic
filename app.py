@@ -1189,8 +1189,8 @@ def play_status():
         "subgraph_name": state.get("_subgraph_name", ""),
         "save_slots": save_slots,
     }
-    if state.get("turn_count", 0) == 0 and state.get("opening"):
-        payload["empty_history_opening"] = state["opening"]
+    if state.get("opening"):
+        payload["opening"] = state["opening"]
 
     return jsonify(payload)
 

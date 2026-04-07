@@ -132,10 +132,14 @@
 						turns: Number(o.turns ?? 0) || 0,
 					}));
 				}
-				// Rebuild transcript from history
+				// Rebuild transcript — opening first, then history
+				const entries: TranscriptEntry[] = [];
+				const opening = String(data.opening ?? data.empty_history_opening ?? '').trim();
+				if (opening) {
+					entries.push({ type: 'narrator', text: opening });
+				}
 				const hist = data.history;
 				if (Array.isArray(hist) && hist.length > 0) {
-					const entries: TranscriptEntry[] = [];
 					for (const h of hist) {
 						const s = String(h);
 						const nl = s.indexOf('\n');
@@ -146,13 +150,8 @@
 							entries.push({ type: 'narrator', text: s });
 						}
 					}
-					transcript = entries;
-				} else {
-					const opening = String(data.empty_history_opening ?? '').trim();
-					const resp = String(data.response ?? '').trim();
-					const text = opening || resp;
-					transcript = text ? [{ type: 'narrator', text }] : [];
 				}
+				transcript = entries.length > 0 ? entries : [];
 				await fetchSaves(id);
 				booting = false;
 				await scrollLog();
