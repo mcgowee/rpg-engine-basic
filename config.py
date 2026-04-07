@@ -25,8 +25,8 @@ DEFAULT_MODEL = get_env("DEFAULT_MODEL", "nchapman/mn-12b-mag-mell-r1:latest")
 OLLAMA_HOST = get_env("OLLAMA_HOST", "http://localhost:11434")
 
 # Azure
-AZURE_ENDPOINT = get_env("AZURE_OPENAI_ENDPOINT", "")
-AZURE_API_KEY = get_env("AZURE_OPENAI_API_KEY", "")
+AZURE_ENDPOINT = get_env("AZURE_ENDPOINT", "") or get_env("AZURE_OPENAI_ENDPOINT", "")
+AZURE_API_KEY = get_env("AZURE_API_KEY", "") or get_env("AZURE_OPENAI_API_KEY", "")
 AZURE_API_VERSION = get_env("AZURE_API_VERSION", "2024-12-01-preview")
 AZURE_DEPLOYMENT = get_env("AZURE_DEPLOYMENT", "gpt-4o-mini")
 
