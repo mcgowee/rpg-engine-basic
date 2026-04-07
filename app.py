@@ -1392,12 +1392,30 @@ Respond with ONLY valid JSON."""
 
 
 _IMPROVE_FIELDS = {
-    "opening": "Opening prose the player reads first. Second person, present tense. Should set the scene and hook the player.",
-    "description": "One- or two-sentence catalog pitch. Enticing, spoiler-light.",
-    "narrator_prompt": "System instructions for the narrator LLM: tone, pacing, second person, how to end beats.",
-    "player_background": "Player character history and situation — concrete, playable, gives the narrator context.",
-    "character_prompt": "Personality instructions for an NPC: speech patterns, secrets, attitude, goals. The NPC speaks in first person as themselves.",
-    "character_first_line": "The NPC's first spoken line when the game begins — short, in-character, sets their tone immediately.",
+    "opening": {
+        "purpose": "Opening prose the player reads first. Second person, present tense. Should set the scene and hook the player.",
+        "default_task": "Improve the opening — tighten prose, strengthen sensory details, build atmosphere. Keep second person present tense. Make the player want to keep reading.",
+    },
+    "description": {
+        "purpose": "One- or two-sentence catalog pitch. Enticing, spoiler-light.",
+        "default_task": "Improve the description — make it punchier and more enticing. Keep it to 1-2 sentences. No spoilers.",
+    },
+    "narrator_prompt": {
+        "purpose": "System instructions for the narrator LLM: tone, pacing, second person, how to end beats.",
+        "default_task": "Improve the narrator instructions — make them clearer and more specific about tone, pacing, and style. Ensure they tell the narrator to use second person and how to end beats.",
+    },
+    "player_background": {
+        "purpose": "Player character history and situation — concrete, playable, gives the narrator context.",
+        "default_task": "Improve the player background — make it more concrete and vivid. Give the narrator specific details to reference. Keep it playable and interesting.",
+    },
+    "character_prompt": {
+        "purpose": "Personality instructions for an NPC: speech patterns, secrets, attitude, goals. The NPC speaks in first person as themselves.",
+        "default_task": "Improve the character personality — make the instructions more specific about speech patterns, attitude, and motivations. Add distinct verbal habits or quirks that make this character unique.",
+    },
+    "character_first_line": {
+        "purpose": "The NPC's first spoken line when the game begins — short, in-character, sets their tone immediately.",
+        "default_task": "Improve the first line — make it feel natural, in-character, and immediately reveal something about this person's personality. Keep it short (1-2 sentences).",
+    },
 }
 
 
@@ -1410,14 +1428,15 @@ def ai_improve_text():
     instruction = (data.get("instruction") or "").strip()
     context = data.get("context") or {}
 
-    if field not in _IMPROVE_FIELDS:
+    field_config = _IMPROVE_FIELDS.get(field)
+    if not field_config:
         return jsonify({"error": "invalid field"}), 400
     if not text:
         return jsonify({"error": "text is required"}), 400
 
-    purpose = _IMPROVE_FIELDS[field]
+    purpose = field_config["purpose"]
     task = f"Author request:\n{instruction}" if instruction else (
-        "Task: Improve the draft — fix awkward phrasing, tighten prose, keep facts and names consistent."
+        f"Task: {field_config['default_task']}"
     )
 
     # Build context block from related story data
