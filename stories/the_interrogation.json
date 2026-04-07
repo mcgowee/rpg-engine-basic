@@ -16,10 +16,26 @@
       "first_line": "I already told the other cops. I was walking home. That's it. Can I go now?",
       "model": "default",
       "moods": [
-        { "axis": "cooperativeness", "low": "stonewalling", "high": "cooperative", "value": 2 },
-        { "axis": "anxiety", "low": "calm", "high": "panicking", "value": 6 },
-        { "axis": "honesty", "low": "deceptive", "high": "truthful", "value": 2 }
-      ]
+        {
+          "axis": "cooperativeness",
+          "low": "stonewalling",
+          "high": "cooperative",
+          "value": 2
+        },
+        {
+          "axis": "anxiety",
+          "low": "calm",
+          "high": "panicking",
+          "value": 6
+        },
+        {
+          "axis": "honesty",
+          "low": "deceptive",
+          "high": "truthful",
+          "value": 2
+        }
+      ],
+      "portrait": "seed_marcus_webb.png"
     }
   }
 }
