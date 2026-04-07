@@ -245,21 +245,60 @@
 </script>
 
 {#snippet aiButtons(field: string, getText: () => string, setText: (v: string) => void, extra?: Record<string, string>)}
+	{@const tips: Record<string, { improve: string; instruct: string; placeholder: string }> = {
+		opening: {
+			improve: 'AI rewrites: tighten prose, strengthen atmosphere, keep second person',
+			instruct: 'Tell the AI what to change — e.g. "make it more suspenseful" or "add rain"',
+			placeholder: 'e.g. make it darker and more mysterious',
+		},
+		description: {
+			improve: 'AI rewrites: punchier, 1-2 sentences, no spoilers',
+			instruct: 'Tell the AI what to change — e.g. "emphasize the danger"',
+			placeholder: 'e.g. focus on the mystery angle',
+		},
+		narrator_prompt: {
+			improve: 'AI rewrites: clearer instructions about tone, pacing, and style',
+			instruct: 'Tell the AI what to change — e.g. "add a rule about short responses"',
+			placeholder: 'e.g. make the narrator more humorous',
+		},
+		player_background: {
+			improve: 'AI rewrites: more concrete and vivid, better context for the narrator',
+			instruct: 'Tell the AI what to change — e.g. "make them younger" or "add a fear"',
+			placeholder: 'e.g. add a reason they need this job',
+		},
+		character_prompt: {
+			improve: 'AI rewrites: sharper personality, distinct speech patterns and quirks',
+			instruct: 'Tell the AI what to change — e.g. "add a secret" or "make them speak in slang"',
+			placeholder: 'e.g. give them a nervous habit',
+		},
+		character_first_line: {
+			improve: 'AI rewrites: more natural, in-character, reveals personality instantly',
+			instruct: 'Tell the AI what to change — e.g. "make it a question" or "more hostile"',
+			placeholder: 'e.g. make it sound more desperate',
+		},
+	}}
+	{@const tip = tips[field] ?? { improve: 'AI improves this text', instruct: 'Tell the AI what to change', placeholder: 'What should change?' }}
 	<div class="ai-row">
 		<button type="button" class="btn sm" disabled={improvingField === field || !getText().trim()}
+			title={tip.improve}
 			onclick={() => improve(field, getText, setText, extra)}>
 			{improvingField === field ? 'Improving…' : 'Improve'}
 		</button>
 		{#if instructingField === field}
 			<div class="instruct-row" transition:fade={{ duration: 100 }}>
-				<input type="text" class="instruct-input" placeholder="What should change?" bind:value={instructInput}
+				<input type="text" class="instruct-input" placeholder={tip.placeholder} bind:value={instructInput}
+					title={tip.instruct}
 					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); instruct(field, getText, setText, extra); } }} />
 				<button type="button" class="btn sm" disabled={!instructInput.trim()}
+					title="Send your instruction to the AI"
 					onclick={() => instruct(field, getText, setText, extra)}>Apply</button>
-				<button type="button" class="btn sm" onclick={() => { instructingField = ''; instructInput = ''; }}>Cancel</button>
+				<button type="button" class="btn sm"
+					title="Cancel without changes"
+					onclick={() => { instructingField = ''; instructInput = ''; }}>Cancel</button>
 			</div>
 		{:else}
 			<button type="button" class="btn sm" disabled={!getText().trim()}
+				title={tip.instruct}
 				onclick={() => { instructingField = field; instructInput = ''; }}>
 				Instruct
 			</button>
