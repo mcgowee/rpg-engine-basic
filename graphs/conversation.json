@@ -1,0 +1,15 @@
+{
+  "name": "conversation",
+  "description": "Simple narrator-only dialogue",
+  "nodes": ["narrator"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "narrator"
+    }
+  },
+  "edges": [
+    { "from": "narrator", "to": "__end__" }
+  ],
+  "conditional_edges": []
+}

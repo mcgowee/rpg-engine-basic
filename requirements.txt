@@ -1,0 +1,14 @@
+# Core server
+flask
+bcrypt
+requests
+python-dotenv
+
+# LangChain + LangGraph
+langchain
+langchain_community
+langchain_openai
+langgraph
+
+# Production WSGI
+gunicorn

@@ -1,0 +1,292 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { authState } from '$lib/auth.svelte';
+
+	type MyStory = {
+		id: number;
+		title: string;
+		genre: string;
+		phase_count: number;
+		updated_at: string;
+	};
+
+	type PublicStory = {
+		id: number;
+		title: string;
+		description: string;
+		genre: string;
+		author_uid: string;
+		play_count: number;
+	};
+
+	const MY_PREVIEW = 6;
+	const PUBLIC_PREVIEW = 6;
+
+	let loading = $state(true);
+	let myStories = $state<MyStory[]>([]);
+	let publicStories = $state<PublicStory[]>([]);
+	let myStoriesError = $state<string | null>(null);
+	let publicStoriesError = $state<string | null>(null);
+	let networkError = $state<string | null>(null);
+
+	function formatWhen(s: string) {
+		try {
+			return new Date(s).toLocaleString();
+		} catch {
+			return s;
+		}
+	}
+
+	onMount(() => {
+		void load();
+	});
+
+	async function load() {
+		loading = true;
+		networkError = null;
+		myStoriesError = null;
+		publicStoriesError = null;
+		try {
+			const [rMine, rPublic] = await Promise.all([
+				fetch('/api/stories', { credentials: 'include' }),
+				fetch('/api/stories/public', { credentials: 'include' })
+			]);
+
+			if (rMine.ok) {
+				const data = await rMine.json();
+				myStories = Array.isArray(data) ? data : [];
+			} else {
+				myStories = [];
+				myStoriesError =
+					rMine.status === 401
+						? 'Sign in again to load your stories.'
+						: `Could not load your stories (${rMine.status}).`;
+			}
+
+			if (rPublic.ok) {
+				const data = await rPublic.json();
+				publicStories = Array.isArray(data) ? data : [];
+			} else {
+				publicStories = [];
+				publicStoriesError = `Could not load community stories (${rPublic.status}).`;
+			}
+		} catch {
+			networkError = 'Network error — check your connection and try again.';
+			myStories = [];
+			publicStories = [];
+		} finally {
+			loading = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>Lobby — RPG Engine v2</title>
+</svelte:head>
+
+<section class="lobby">
+	{#if loading}
+		<p class="muted center">Loading dashboard…</p>
+	{:else}
+		{#if networkError}
+			<p class="err banner">{networkError}</p>
+			<p><button type="button" class="btn" onclick={() => load()}>Retry</button></p>
+		{/if}
+
+		<div class="section welcome">
+			<h1>RPG Engine v2</h1>
+			<p class="lede">
+				Welcome back, <strong>{authState.uid ?? 'player'}</strong>. Jump in below or open the nav for more.
+			</p>
+			<div class="quick-actions">
+				<button type="button" class="btn primary" onclick={() => goto('/stories/create')}>New Story</button>
+				<button type="button" class="btn" onclick={() => goto('/stories')}>My Stories</button>
+				<button type="button" class="btn" onclick={() => goto('/stories/browse')}>Browse Community</button>
+				<button type="button" class="btn" onclick={() => goto('/graphs')}>Graph Editor</button>
+			</div>
+		</div>
+
+		<div class="section">
+			<div class="section-head">
+				<h2>My stories</h2>
+			</div>
+			{#if myStoriesError}
+				<p class="err">{myStoriesError}</p>
+			{:else if myStories.length === 0}
+				<p class="muted">No stories yet.</p>
+				<button type="button" class="btn primary" onclick={() => goto('/stories/create')}>
+					Create your first story
+				</button>
+			{:else}
+				<ul class="card-grid">
+					{#each myStories.slice(0, MY_PREVIEW) as s (s.id)}
+						<li class="card">
+							<h3 class="card-title">{s.title}</h3>
+							<p class="card-meta">
+								{s.genre || '—'} · {s.phase_count} phase{s.phase_count === 1 ? '' : 's'} ·
+								{formatWhen(s.updated_at)}
+							</p>
+							<div class="card-actions">
+								<button type="button" class="btn sm" onclick={() => goto(`/play?story_id=${s.id}`)}>
+									Play
+								</button>
+								<button type="button" class="btn sm" onclick={() => goto(`/stories/${s.id}/edit`)}>
+									Edit
+								</button>
+							</div>
+						</li>
+					{/each}
+				</ul>
+				{#if myStories.length > MY_PREVIEW}
+					<p class="more"><a href="/stories">View all →</a></p>
+				{/if}
+			{/if}
+		</div>
+
+		<div class="section">
+			<div class="section-head">
+				<h2>Community stories</h2>
+			</div>
+			{#if publicStoriesError}
+				<p class="err">{publicStoriesError}</p>
+			{:else if publicStories.length === 0}
+				<p class="muted">No community stories yet.</p>
+			{:else}
+				<ul class="card-grid public">
+					{#each publicStories.slice(0, PUBLIC_PREVIEW) as s (s.id)}
+						<li class="card">
+							<h3 class="card-title">{s.title}</h3>
+							<p class="card-desc">{s.description || 'No description.'}</p>
+							<p class="card-meta">
+								{s.genre || '—'} · by {s.author_uid} · {s.play_count} plays
+							</p>
+							<div class="card-actions">
+								<button type="button" class="btn sm primary" onclick={() => goto(`/play?story_id=${s.id}`)}>
+									Play
+								</button>
+							</div>
+						</li>
+					{/each}
+				</ul>
+				{#if publicStories.length > PUBLIC_PREVIEW}
+					<p class="more"><a href="/stories/browse">Browse all →</a></p>
+				{/if}
+			{/if}
+		</div>
+	{/if}
+</section>
+
+<style>
+	.lobby {
+		padding: 0 1rem 2rem;
+		max-width: 960px;
+		margin: 0 auto;
+	}
+	.center {
+		text-align: center;
+		padding: 2rem;
+	}
+	h1 {
+		margin: 0 0 0.35rem;
+		font-size: 1.65rem;
+	}
+	h2 {
+		margin: 0;
+		font-size: 1.15rem;
+	}
+	.section {
+		margin-bottom: 2rem;
+	}
+	.section-head {
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.35rem;
+		border-bottom: 1px solid #ddd;
+	}
+	.welcome .lede {
+		margin: 0 0 1rem;
+		color: #444;
+		line-height: 1.5;
+	}
+	.quick-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	.btn {
+		padding: 0.4rem 0.85rem;
+		cursor: pointer;
+		border: 1px solid #999;
+		background: #fff;
+		border-radius: 4px;
+		font: inherit;
+	}
+	.btn.primary {
+		background: #1a1a8c;
+		color: #fff;
+		border-color: #1a1a8c;
+	}
+	.btn.sm {
+		font-size: 0.85rem;
+		padding: 0.25rem 0.55rem;
+	}
+	.card-grid {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+		gap: 0.75rem;
+	}
+	.card {
+		border: 1px solid #ccc;
+		border-radius: 8px;
+		padding: 0.75rem 0.85rem;
+		background: #fafafa;
+	}
+	.card-title {
+		margin: 0 0 0.35rem;
+		font-size: 1rem;
+		line-height: 1.3;
+	}
+	.card-desc {
+		margin: 0 0 0.5rem;
+		font-size: 0.88rem;
+		line-height: 1.4;
+		color: #333;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.card-meta {
+		margin: 0 0 0.5rem;
+		font-size: 0.8rem;
+		color: #555;
+	}
+	.card-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+	.more {
+		margin: 0.75rem 0 0;
+		font-size: 0.95rem;
+	}
+	.more a {
+		color: #0066cc;
+	}
+	.muted {
+		color: #666;
+	}
+	.err {
+		color: #b00020;
+	}
+	.err.banner {
+		padding: 0.5rem 0.75rem;
+		background: #fff0f0;
+		border-radius: 4px;
+		border: 1px solid #e8a0a0;
+	}
+</style>

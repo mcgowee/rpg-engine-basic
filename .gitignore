@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Environment
+.env
+
+# Database
+rpg.db
+
+# Runtime
+sessions/
+logs/
+
+# Ruff cache
+.ruff_cache/
+
+# Node
+web/node_modules/
+web/.svelte-kit/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cursor
+.cursor/
