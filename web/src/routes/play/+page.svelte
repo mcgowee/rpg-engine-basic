@@ -15,8 +15,9 @@
 	let gameTitle = $state('');
 	let playerName = $state('');
 	let subgraphName = $state('');
-	let characterNames = $state<string[]>([]);
-	let characterMoods = $state<Record<string, number>>({});
+	type MoodAxis = { axis: string; low: string; high: string; value: number };
+	type CharDisplay = { label: string; moods: MoodAxis[]; legacyMood?: number };
+	let characters = $state<CharDisplay[]>([]);
 	let memorySummary = $state('');
 	let turnCount = $state(0);
 	let paused = $state(false);
@@ -79,14 +80,26 @@
 		const chars = data.characters;
 		if (chars && typeof chars === 'object' && !Array.isArray(chars)) {
 			const charsObj = chars as Record<string, Record<string, unknown>>;
-			characterNames = Object.keys(charsObj).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
-			const moods: Record<string, number> = {};
+			const parsed: CharDisplay[] = [];
 			for (const [k, v] of Object.entries(charsObj)) {
-				if (v && typeof v === 'object' && 'mood' in v) {
-					moods[k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())] = Number(v.mood ?? 5);
+				if (!v || typeof v !== 'object') continue;
+				const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+				const rawMoods = v.moods;
+				if (Array.isArray(rawMoods) && rawMoods.length > 0) {
+					parsed.push({
+						label,
+						moods: rawMoods.map((m: Record<string, unknown>) => ({
+							axis: String(m.axis ?? 'mood'),
+							low: String(m.low ?? 'low'),
+							high: String(m.high ?? 'high'),
+							value: Number(m.value ?? 5),
+						})),
+					});
+				} else {
+					parsed.push({ label, moods: [], legacyMood: Number(v.mood ?? 5) });
 				}
 			}
-			characterMoods = moods;
+			characters = parsed;
 		}
 	}
 
@@ -329,14 +342,23 @@
 				</dl>
 			</section>
 
-			{#if Object.keys(characterMoods).length > 0}
+			{#if characters.length > 0}
 				<section class="side-block">
 					<h2>Characters</h2>
-					<ul class="char-list">
-						{#each Object.entries(characterMoods) as [name, mood] (name)}
-							<li>{name} <span class="mood-badge">mood: {mood}/10</span></li>
-						{/each}
-					</ul>
+					{#each characters as char (char.label)}
+						<div class="char-block">
+							<strong>{char.label}</strong>
+							{#if char.moods.length > 0}
+								<ul class="mood-list">
+									{#each char.moods as axis (axis.axis)}
+										<li>{axis.axis}: {axis.value}/10 <span class="mood-range">({axis.low} → {axis.high})</span></li>
+									{/each}
+								</ul>
+							{:else if char.legacyMood !== undefined}
+								<span class="mood-badge">mood: {char.legacyMood}/10</span>
+							{/if}
+						</div>
+					{/each}
 				</section>
 			{/if}
 
@@ -414,8 +436,11 @@
 	.kv { margin: 0; display: grid; grid-template-columns: 5rem 1fr; gap: 0.25rem 0.5rem; font-size: 0.88rem; }
 	.kv dt { margin: 0; color: #555; font-weight: 600; }
 	.kv dd { margin: 0; }
-	.char-list { list-style: none; margin: 0; padding: 0; font-size: 0.88rem; }
-	.char-list li { margin-bottom: 0.3rem; }
+	.char-block { margin-bottom: 0.65rem; }
+	.char-block strong { font-size: 0.9rem; }
+	.mood-list { list-style: none; margin: 0.2rem 0 0; padding: 0; font-size: 0.82rem; }
+	.mood-list li { margin-bottom: 0.15rem; }
+	.mood-range { color: #888; font-size: 0.78rem; }
 	.mood-badge { color: #666; font-size: 0.8rem; }
 	.memory-text { font-size: 0.85rem; line-height: 1.4; margin: 0.5rem 0 0; white-space: pre-wrap; color: #444; }
 	details summary { cursor: pointer; font-weight: 600; font-size: 0.95rem; }

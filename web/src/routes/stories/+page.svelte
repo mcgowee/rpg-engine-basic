@@ -209,6 +209,7 @@
 			</button>
 		</div>
 	</div>
+	<p class="page-desc">Create, edit, and share your own text adventures. Everything here is yours to play, tweak, or publish. Public stories show up on Browse; private ones stay on your account only.</p>
 
 	{#if importError}<p class="err">{importError}</p>{/if}
 	{#if importOk}<p class="ok">{importOk}</p>{/if}
@@ -282,6 +283,7 @@
 		padding: 0 0.5rem;
 		max-width: 1200px;
 	}
+	.page-desc { font-size: 0.88rem; color: #555; line-height: 1.5; margin: 0 0 1rem; max-width: 700px; }
 	.head-row {
 		display: flex;
 		align-items: center;

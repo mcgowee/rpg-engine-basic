@@ -44,12 +44,28 @@ def npc_node(state: dict) -> dict:
             logger.error(f"Failed to get LLM for {npc_key}: {e}")
             continue
 
-        mood = npc.get("mood", 5)
+        # Build mood context — axes or legacy single mood
+        moods = npc.get("moods")
+        if isinstance(moods, list) and moods:
+            mood_lines = []
+            for axis in moods:
+                if not isinstance(axis, dict):
+                    continue
+                name = axis.get("axis", "mood")
+                val = axis.get("value", 5)
+                low = axis.get("low", "low")
+                high = axis.get("high", "high")
+                leaning = low if val <= 5 else high
+                mood_lines.append(f"- {name}: {val}/10 (leaning {leaning})")
+            mood_block = "Current emotional state:\n" + "\n".join(mood_lines) if mood_lines else "Current mood: neutral"
+        else:
+            mood = npc.get("mood", 5)
+            mood_block = f"Current mood: {mood}/10"
 
         prompt = f"""{npc_prompt}
 
 You are speaking to {player_name}. {player.get("background", "")}
-Current mood: {mood}/10
+{mood_block}
 
 What the narrator just established in this scene (stay consistent; react naturally):
 {narrator_beat}

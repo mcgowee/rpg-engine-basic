@@ -29,11 +29,12 @@
 	let playerBackground = $state('');
 
 	// Characters
-	type CharEntry = { key: string; prompt: string; first_line: string; model: string; mood: number };
+	type MoodAxis = { axis: string; low: string; high: string; value: number };
+	type CharEntry = { key: string; prompt: string; first_line: string; model: string; moods: MoodAxis[] };
 	let characterEntries = $state<CharEntry[]>([]);
 
 	function addCharacter() {
-		characterEntries = [...characterEntries, { key: '', prompt: '', first_line: '', model: 'default', mood: 5 }];
+		characterEntries = [...characterEntries, { key: '', prompt: '', first_line: '', model: 'default', moods: [{ axis: 'mood', low: 'hostile', high: 'friendly', value: 5 }] }];
 	}
 
 	function removeCharacter(idx: number) {
@@ -45,7 +46,7 @@
 		for (const c of characterEntries) {
 			const k = c.key.trim();
 			if (!k) continue;
-			out[k] = { prompt: c.prompt, first_line: c.first_line, model: c.model, mood: c.mood };
+			out[k] = { prompt: c.prompt, first_line: c.first_line, model: c.model, moods: c.moods };
 		}
 		return out;
 	}
@@ -53,12 +54,23 @@
 	function dictToCharEntries(d: Record<string, unknown>): CharEntry[] {
 		return Object.entries(d).map(([key, val]) => {
 			const v = val as Record<string, unknown>;
+			let moods: MoodAxis[] = [];
+			if (Array.isArray(v.moods)) {
+				moods = (v.moods as Record<string, unknown>[]).map(m => ({
+					axis: String(m.axis ?? 'mood'),
+					low: String(m.low ?? 'low'),
+					high: String(m.high ?? 'high'),
+					value: Number(m.value ?? 5),
+				}));
+			} else if (v.mood !== undefined) {
+				moods = [{ axis: 'mood', low: 'hostile', high: 'friendly', value: Number(v.mood ?? 5) }];
+			}
 			return {
 				key,
 				prompt: String(v.prompt ?? ''),
 				first_line: String(v.first_line ?? ''),
 				model: String(v.model ?? 'default'),
-				mood: Number(v.mood ?? 5),
+				moods,
 			};
 		});
 	}
@@ -219,10 +231,11 @@
 				<input type="text" bind:value={title} />
 			</label>
 
-			<label class="field">
+			<div class="field">
 				<strong>Description</strong>
+				<span class="hint">Short catalog pitch — 1-2 sentences that make players want to try it.</span>
 				<textarea rows="3" bind:value={description}></textarea>
-			</label>
+			</div>
 
 			<div class="field">
 				<strong>Notes</strong>
@@ -250,6 +263,7 @@
 
 			<fieldset class="ai-section">
 				<legend>AI Generate</legend>
+				<span class="hint">Describe your story concept and the AI will generate title, opening, narrator style, and player character. You can edit everything afterward.</span>
 				<textarea rows="3" placeholder="Describe your story idea…" bind:value={concept}></textarea>
 				<button type="button" class="btn" disabled={generating || !concept.trim()} onclick={() => generate()}>
 					{generating ? 'Generating…' : 'Generate'}
@@ -279,6 +293,7 @@
 		<div class="tab-content">
 			<div class="field">
 				<strong>Narrator Prompt</strong>
+				<span class="hint">System instructions for the narrator LLM: tone, pacing, second person, how to end beats. This shapes the voice of your story.</span>
 				<textarea rows="4" bind:value={narratorPrompt}></textarea>
 				<button type="button" class="btn sm" disabled={improvingField === 'narrator_prompt' || !narratorPrompt.trim()}
 					onclick={() => improve('narrator_prompt', () => narratorPrompt, (v) => narratorPrompt = v)}>
@@ -288,16 +303,19 @@
 
 			<label class="field">
 				<strong>Narrator Model</strong>
+				<span class="hint">Leave as "default" to use the server's configured model.</span>
 				<input type="text" bind:value={narratorModel} placeholder="default" />
 			</label>
 
 			<label class="field">
 				<strong>Player Name</strong>
+				<span class="hint">Who the player is in the story world.</span>
 				<input type="text" bind:value={playerName} />
 			</label>
 
 			<div class="field">
 				<strong>Player Background</strong>
+				<span class="hint">Player character history and situation — concrete, playable, gives the narrator context for the story.</span>
 				<textarea rows="3" bind:value={playerBackground}></textarea>
 				<button type="button" class="btn sm" disabled={improvingField === 'player_background' || !playerBackground.trim()}
 					onclick={() => improve('player_background', () => playerBackground, (v) => playerBackground = v)}>
@@ -335,13 +353,23 @@
 						<input type="text" bind:value={char.first_line} placeholder="What'll it be?" />
 					</label>
 
-					<label class="field">
-						<strong>Mood</strong>
-						<span class="hint">Starting mood 1-10 (5 = neutral). Used by mood node later.</span>
-						<input type="number" min="1" max="10" bind:value={char.mood} />
-					</label>
+					<div class="field">
+						<strong>Mood Axes</strong>
+						<span class="hint">Each axis is a scale between two emotions. The mood node adjusts these each turn.</span>
+						{#each char.moods as axis, ai (ai)}
+							<div class="axis-row">
+								<input type="text" bind:value={axis.axis} placeholder="axis name" class="axis-input" />
+								<input type="text" bind:value={axis.low} placeholder="low label" class="axis-input" />
+								<span class="axis-arrow">←→</span>
+								<input type="text" bind:value={axis.high} placeholder="high label" class="axis-input" />
+								<input type="number" min="1" max="10" bind:value={axis.value} class="axis-value" />
+								<button type="button" class="btn sm danger" onclick={() => { char.moods = char.moods.filter((_, i) => i !== ai); }}>×</button>
+							</div>
+						{/each}
+						<button type="button" class="btn sm" onclick={() => { char.moods = [...char.moods, { axis: '', low: '', high: '', value: 5 }]; }}>Add axis</button>
+					</div>
 
-					<button type="button" class="btn sm danger" onclick={() => removeCharacter(idx)}>Remove</button>
+					<button type="button" class="btn sm danger" onclick={() => removeCharacter(idx)}>Remove character</button>
 				</fieldset>
 			{/each}
 
@@ -385,6 +413,10 @@
 	.muted { color: #666; }
 	.char-card { border: 1px solid #ddd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
 	.char-card legend { font-weight: 600; }
+	.axis-row { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
+	.axis-input { width: 6rem; font: inherit; padding: 0.3rem 0.4rem; border: 1px solid #aaa; border-radius: 4px; }
+	.axis-value { width: 3.5rem; font: inherit; padding: 0.3rem 0.4rem; border: 1px solid #aaa; border-radius: 4px; }
+	.axis-arrow { color: #888; font-size: 0.85rem; }
 	.danger { color: #b00020; border-color: #b00020; }
 	a { color: #0066cc; }
 </style>

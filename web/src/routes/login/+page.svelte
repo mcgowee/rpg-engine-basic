@@ -57,6 +57,8 @@
 
 <h1>{mode === 'login' ? 'Login' : 'Register'}</h1>
 
+<p class="auth-notice">Accounts here are just to keep track of your stories and saves — pick any username and a simple password. No email required, no personal info collected.</p>
+
 {#if error}
 	<p class="err" role="alert">{error}</p>
 {/if}
@@ -98,6 +100,7 @@
 		flex-direction: column;
 		gap: 0.25rem;
 	}
+	.auth-notice { color: #555; font-size: 0.9rem; max-width: 28rem; line-height: 1.5; margin-bottom: 1rem; }
 	.err {
 		color: #b00020;
 	}

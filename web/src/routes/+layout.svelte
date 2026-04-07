@@ -33,6 +33,7 @@
 			<a href="/stories">Stories</a>
 			<a href="/stories/browse">Browse</a>
 			<a href="/graphs">Graphs</a>
+			<a href="/docs">Docs</a>
 			<button type="button" class="linkish" onclick={() => logout()}>Logout</button>
 		{:else}
 			<a href="/login">Login</a>

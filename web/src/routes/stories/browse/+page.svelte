@@ -57,7 +57,7 @@
 
 <section class="page">
 	<h1>Browse public stories</h1>
-	<p class="lede">Stories shared by the community. Use Play to start in your session.</p>
+	<p class="lede">Stories shared by the community. Play them directly or copy to your account to customize. Each story's notes explain what engine features it demonstrates.</p>
 
 	{#if loading}
 		<p class="muted">Loading…</p>

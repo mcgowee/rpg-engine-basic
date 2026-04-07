@@ -110,11 +110,65 @@ def me():
 # Graph registry
 # ---------------------------------------------------------------------------
 
+NODE_DESCRIPTIONS = {
+    "narrator": {
+        "summary": "Main scene narration via LLM",
+        "description": "Takes the player's message and generates a narrative response. Builds a prompt from the narrator system instructions, game title, player info, characters present, memory summary, and recent history. This is the core node — every graph needs it.",
+        "llm": True,
+        "reads": ["message", "narrator", "player", "characters", "history", "memory_summary", "game_title"],
+        "writes": ["response"],
+    },
+    "memory": {
+        "summary": "Records turn in history",
+        "description": "Appends the current turn (player message + narrator response) to the history list and updates the turn count. No LLM call — pure bookkeeping. Without this node, the narrator has no memory of previous turns.",
+        "llm": False,
+        "reads": ["message", "response", "history"],
+        "writes": ["history", "turn_count"],
+    },
+    "condense": {
+        "summary": "Rolling memory summary via LLM",
+        "description": "Calls the LLM to compress the story so far into a short summary (under 100 words). Focuses on key facts, relationship changes, and important events. Drops scenery and small talk. The narrator reads this summary for long-term context beyond the raw history window.",
+        "llm": True,
+        "reads": ["history", "memory_summary", "message", "response", "narrator"],
+        "writes": ["memory_summary"],
+    },
+    "npc": {
+        "summary": "NPC dialogue in character via LLM",
+        "description": "For each character in the story, generates a response in their voice using their personality prompt. Includes the narrator's scene description, the player's message, and the character's current mood. Each character gets their own LLM call. Dialogue is appended to the narrator's response.",
+        "llm": True,
+        "reads": ["characters", "message", "response", "player", "history", "memory_summary"],
+        "writes": ["response"],
+    },
+    "mood": {
+        "summary": "Tracks NPC mood shifts via LLM",
+        "description": "For each character's mood axis, asks the LLM whether it should go UP, DOWN, or SAME based on the player's action. Supports multiple named axes per character (e.g. trust, fear, cooperativeness) with custom low/high labels. Each axis is a separate LLM call. Falls back to a single mood number for legacy characters.",
+        "llm": True,
+        "reads": ["characters", "message", "history", "memory_summary"],
+        "writes": ["characters"],
+    },
+}
+
+ROUTER_DESCRIPTIONS = {
+    "route_graph_entry": {
+        "summary": "Entry point — always routes to narrator",
+        "description": "The default entry router. Currently always returns 'narrator' since there's only one entry path. In the future, this could check for multiple locations and route to a movement node first.",
+        "returns": ROUTER_RETURNS.get("route_graph_entry", []),
+    },
+    "route_after_narrator": {
+        "summary": "After narrator — routes to NPC/mood or skips to condense",
+        "description": "Checks if characters exist in the story. If yes, routes to the NPC path (which may go through mood first depending on the graph's mapping). If no characters, skips directly to condense. This is a conditional edge — same graph handles stories with or without NPCs.",
+        "returns": ROUTER_RETURNS.get("route_after_narrator", []),
+    },
+}
+
+
 @app.route("/graph-registry", methods=["GET"])
 def graph_registry_keys():
     return jsonify({
         "nodes": sorted(NODE_REGISTRY.keys()),
+        "node_descriptions": NODE_DESCRIPTIONS,
         "routers": {name: ROUTER_RETURNS.get(name, []) for name in sorted(ROUTER_REGISTRY.keys())},
+        "router_descriptions": ROUTER_DESCRIPTIONS,
     })
 
 

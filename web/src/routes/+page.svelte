@@ -7,7 +7,6 @@
 		id: number;
 		title: string;
 		genre: string;
-		phase_count: number;
 		updated_at: string;
 	};
 
@@ -82,7 +81,7 @@
 </script>
 
 <svelte:head>
-	<title>Lobby — RPG Engine v2</title>
+	<title>Lobby — RPG Engine</title>
 </svelte:head>
 
 <section class="lobby">
@@ -95,9 +94,9 @@
 		{/if}
 
 		<div class="section welcome">
-			<h1>RPG Engine v2</h1>
+			<h1>RPG Engine</h1>
 			<p class="lede">
-				Welcome back, <strong>{authState.uid ?? 'player'}</strong>. Jump in below or open the nav for more.
+				Welcome back, <strong>{authState.uid ?? 'player'}</strong>. Play a story, create your own, or explore how the engine works.
 			</p>
 			<div class="quick-actions">
 				<button type="button" class="btn primary" onclick={() => goto('/stories/create')}>New Story</button>
@@ -111,6 +110,7 @@
 			<div class="section-head">
 				<h2>My stories</h2>
 			</div>
+			<p class="section-desc">Stories you've created or copied. Click Play to jump in, or Edit to change them.</p>
 			{#if myStoriesError}
 				<p class="err">{myStoriesError}</p>
 			{:else if myStories.length === 0}
@@ -124,8 +124,7 @@
 						<li class="card">
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-meta">
-								{s.genre || '—'} · {s.phase_count} phase{s.phase_count === 1 ? '' : 's'} ·
-								{formatWhen(s.updated_at)}
+								{s.genre || '—'} · {formatWhen(s.updated_at)}
 							</p>
 							<div class="card-actions">
 								<button type="button" class="btn sm" onclick={() => goto(`/play?story_id=${s.id}`)}>
@@ -148,6 +147,7 @@
 			<div class="section-head">
 				<h2>Community stories</h2>
 			</div>
+			<p class="section-desc">Public stories shared by the community. Play them or copy to your account to customize.</p>
 			{#if publicStoriesError}
 				<p class="err">{publicStoriesError}</p>
 			{:else if publicStories.length === 0}
@@ -277,6 +277,7 @@
 	.more a {
 		color: #0066cc;
 	}
+	.section-desc { font-size: 0.88rem; color: #555; margin: 0 0 0.75rem; line-height: 1.45; }
 	.muted {
 		color: #666;
 	}
