@@ -10,6 +10,8 @@ from routers import ROUTER_REGISTRY
 class State(TypedDict):
     message: str
     response: str
+    history: list
+    memory_summary: str
     narrator: dict
     player: dict
     game_title: str

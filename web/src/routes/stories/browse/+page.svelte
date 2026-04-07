@@ -27,7 +27,8 @@
 				return;
 			}
 			const data = await r.json();
-			items = Array.isArray(data) ? data : [];
+			const list = data.stories ?? data;
+			items = Array.isArray(list) ? list : [];
 		} catch {
 			error = 'Network error';
 			items = [];
@@ -82,6 +83,15 @@
 					<p class="card-actions">
 						<button type="button" class="btn primary" onclick={() => goto(`/play?story_id=${story.id}`)}>
 							Play
+						</button>
+						<button type="button" class="btn" onclick={async () => {
+							const r = await fetch(`/api/stories/${story.id}/copy`, {
+								method: 'POST', credentials: 'include',
+								headers: { 'Content-Type': 'application/json' },
+							});
+							if (r.ok) goto('/stories');
+						}}>
+							Copy to My Stories
 						</button>
 					</p>
 				</li>

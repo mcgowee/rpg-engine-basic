@@ -17,7 +17,7 @@ from config import (
     SAVE_SLOTS,
     SECRET_KEY,
 )
-from db import get_db, init_db, seed_builtin_subgraphs
+from db import get_db, init_db, seed_builtin_subgraphs, seed_builtin_stories
 from graphs.builder import validate_graph_definition
 from graphs.registry import registry
 from llm import get_llm
@@ -714,6 +714,41 @@ def publish_story(story_id: int):
     return jsonify({"ok": True, "is_public": bool(new_val)})
 
 
+@app.route("/stories/<int:story_id>/copy", methods=["POST"])
+@login_required
+def copy_story(story_id: int):
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND (is_public = 1 OR user_id = ?)",
+            (story_id, g.user_id),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        cur = conn.execute(
+            """INSERT INTO stories (user_id, title, description, genre, opening,
+                  narrator_prompt, narrator_model, player_name, player_background, subgraph_name)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                g.user_id,
+                row["title"],
+                row["description"],
+                row["genre"],
+                row["opening"],
+                row["narrator_prompt"],
+                row["narrator_model"],
+                row["player_name"],
+                row["player_background"],
+                row["subgraph_name"],
+            ),
+        )
+        conn.commit()
+        new_id = cur.lastrowid
+    finally:
+        conn.close()
+    return jsonify({"id": new_id, "title": row["title"]}), 201
+
+
 # ---------------------------------------------------------------------------
 # Story export/import
 # ---------------------------------------------------------------------------
@@ -814,6 +849,8 @@ def _build_state_from_story(row) -> dict:
     return {
         "message": "",
         "response": "",
+        "history": [],
+        "memory_summary": "",
         "narrator": {"prompt": narrator_prompt, "model": model},
         "player": {
             "name": row["player_name"] or "Adventurer",
@@ -1320,6 +1357,7 @@ Output rules:
 
 init_db()
 seed_builtin_subgraphs()
+seed_builtin_stories()
 
 _conn = get_db()
 registry.load_from_db(_conn)

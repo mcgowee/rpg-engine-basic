@@ -120,3 +120,58 @@ def seed_builtin_subgraphs():
         conn.commit()
     finally:
         conn.close()
+
+
+def seed_builtin_stories():
+    """Seed public stories from stories/*.json files."""
+    from config import BASE_DIR
+
+    stories_dir = BASE_DIR / "stories"
+    if not stories_dir.exists():
+        return
+
+    conn = get_db()
+    try:
+        existing = {
+            row["title"]
+            for row in conn.execute(
+                "SELECT title FROM stories WHERE user_id = (SELECT id FROM users WHERE uid = 'system')"
+            ).fetchall()
+        }
+
+        system_user = conn.execute("SELECT id FROM users WHERE uid = 'system'").fetchone()
+        if not system_user:
+            conn.execute(
+                "INSERT INTO users (uid, password_hash) VALUES ('system', 'nologin')"
+            )
+            conn.commit()
+            system_user = conn.execute("SELECT id FROM users WHERE uid = 'system'").fetchone()
+        system_uid = system_user["id"]
+
+        for path in sorted(stories_dir.glob("*.json")):
+            with open(path) as f:
+                data = json.load(f)
+            title = data.get("title", path.stem)
+            if title in existing:
+                continue
+            conn.execute(
+                """INSERT INTO stories (user_id, title, description, genre, opening,
+                      narrator_prompt, narrator_model, player_name, player_background,
+                      subgraph_name, is_public)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                (
+                    system_uid,
+                    title,
+                    data.get("description", ""),
+                    data.get("genre", ""),
+                    data.get("opening", ""),
+                    data.get("narrator_prompt", ""),
+                    data.get("narrator_model", "default"),
+                    data.get("player_name", "Adventurer"),
+                    data.get("player_background", ""),
+                    data.get("subgraph_name", "conversation"),
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()

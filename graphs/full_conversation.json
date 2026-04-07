@@ -1,0 +1,17 @@
+{
+  "name": "full_conversation",
+  "description": "Narrator responds, condenses the story summary, and records the turn in memory",
+  "nodes": ["narrator", "condense", "memory"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "narrator"
+    }
+  },
+  "edges": [
+    { "from": "narrator", "to": "condense" },
+    { "from": "condense", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ],
+  "conditional_edges": []
+}

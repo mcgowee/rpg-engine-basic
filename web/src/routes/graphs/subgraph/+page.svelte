@@ -220,9 +220,15 @@
 					registryError = `Failed to load graph registry (${r.status})`;
 					return;
 				}
-				const j = (await r.json()) as { nodes?: string[]; routers?: string[] };
+				const j = (await r.json()) as { nodes?: string[]; routers?: Record<string, string[]> | string[] };
 				registryNodes = Array.isArray(j.nodes) ? j.nodes : [];
-				registryRouters = Array.isArray(j.routers) ? j.routers : [];
+				if (Array.isArray(j.routers)) {
+					registryRouters = j.routers;
+				} else if (j.routers && typeof j.routers === 'object') {
+					registryRouters = Object.keys(j.routers);
+				} else {
+					registryRouters = [];
+				}
 				if (!entryRouter && registryRouters.length) entryRouter = registryRouters[0];
 			} catch {
 				registryError = 'Network error loading graph registry';

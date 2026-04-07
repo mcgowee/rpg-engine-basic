@@ -1,0 +1,16 @@
+{
+  "name": "narrator_with_memory",
+  "description": "Narrator responds to the player and remembers previous turns for continuity",
+  "nodes": ["narrator", "memory"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "narrator"
+    }
+  },
+  "edges": [
+    { "from": "narrator", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ],
+  "conditional_edges": []
+}

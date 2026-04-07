@@ -1,0 +1,12 @@
+{
+  "export_version": 1,
+  "title": "The Midnight Lighthouse",
+  "description": "You're a keeper arriving at a remote lighthouse on a stormy night. Something feels wrong.",
+  "genre": "mystery",
+  "opening": "You step out of the old truck and into the howling wind. Rain lashes your face as you look up at the lighthouse tower. The beam is dark — it should have been lit hours ago. The caretaker who called you sounded panicked on the phone, but now there's no sign of anyone. The front door creaks open in the wind.",
+  "narrator_prompt": "You are the narrator for a gothic mystery text adventure set in a remote lighthouse during a storm. Describe scenes in second person with atmospheric tension. Use sensory details — sound, smell, touch. Keep responses to 2-3 paragraphs. End each beat with: What do you do?",
+  "narrator_model": "default",
+  "player_name": "Morgan",
+  "player_background": "A veteran lighthouse keeper called out of retirement to investigate why the Blackrock Light went dark during the worst storm of the season.",
+  "subgraph_name": "narrator_with_memory"
+}
