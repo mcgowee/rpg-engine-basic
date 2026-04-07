@@ -169,29 +169,24 @@
 
 <style>
 	.docs { padding: 0 1rem 2rem; max-width: 800px; margin: 0 auto; }
-	.lede { color: #444; margin: 0 0 1.5rem; }
+	.lede { color: #9aa0a6; margin: 0 0 1.5rem; }
 	.section { margin-bottom: 2.5rem; }
-	.section h2 { margin: 0 0 0.5rem; font-size: 1.25rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
-	.section p { line-height: 1.55; }
-	.flow { line-height: 1.6; }
-	.card { border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 0.75rem; background: #fafafa; }
+	.section h2 { margin: 0 0 0.5rem; font-size: 1.25rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
+	.section p { line-height: 1.55; color: #bdc1c6; }
+	.flow { line-height: 1.6; color: #bdc1c6; }
+	.card { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 0.75rem; background: #1a1d23; }
 	.card h3 { margin: 0 0 0.3rem; font-size: 1rem; }
-	.badge { font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 3px; vertical-align: middle; margin-left: 0.4rem; }
-	.badge.llm { background: #e8d5f5; color: #6b21a8; }
-	.badge.engine { background: #d5eef5; color: #0e6a8a; }
-	.summary { margin: 0 0 0.4rem; font-weight: 600; font-size: 0.92rem; color: #333; }
-	.detail { margin: 0 0 0.5rem; font-size: 0.88rem; color: #555; line-height: 1.5; }
-	.state-info { font-size: 0.82rem; color: #666; }
+	.badge { font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 12px; vertical-align: middle; margin-left: 0.4rem; font-weight: 600; letter-spacing: 0.03em; }
+	.badge.llm { background: #2a1a3a; color: #c58af9; }
+	.badge.engine { background: #1a3a3a; color: #4dd0e1; }
+	.summary { margin: 0 0 0.4rem; font-weight: 600; font-size: 0.92rem; color: #e8eaed; }
+	.detail { margin: 0 0 0.5rem; font-size: 0.88rem; color: #9aa0a6; line-height: 1.5; }
+	.state-info { font-size: 0.82rem; color: #9aa0a6; }
 	.state-info p { margin: 0.15rem 0; }
-	.returns { font-size: 0.85rem; color: #555; margin: 0.3rem 0 0; }
-	.example { border-left: 3px solid #ccc; padding: 0.4rem 0 0.4rem 0.75rem; margin-bottom: 0.75rem; }
+	.returns { font-size: 0.85rem; color: #9aa0a6; margin: 0.3rem 0 0; }
+	.example { border-left: 3px solid #2a2f38; padding: 0.4rem 0 0.4rem 0.75rem; margin-bottom: 0.75rem; }
 	.example h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
-	.example p { margin: 0; font-size: 0.88rem; color: #444; line-height: 1.45; }
-	code { background: #eee; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
-	.state-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-	.state-table th { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 2px solid #ccc; }
-	.state-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #eee; }
-	.muted { color: #666; }
-	.err { color: #b00020; }
-	a { color: #0066cc; }
+	.example p { margin: 0; font-size: 0.88rem; color: #bdc1c6; line-height: 1.45; }
+	.muted { color: #9aa0a6; }
+	.err { color: #f28b82; }
 </style>

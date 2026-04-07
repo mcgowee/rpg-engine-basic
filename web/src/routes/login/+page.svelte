@@ -99,16 +99,26 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		color: #9aa0a6;
 	}
-	.auth-notice { color: #555; font-size: 0.9rem; max-width: 28rem; line-height: 1.5; margin-bottom: 1rem; }
+	button[type="submit"] {
+		background: #1a73e8;
+		color: #fff;
+		border: 1px solid #1a73e8;
+		padding: 0.45rem 0.85rem;
+		border-radius: 8px;
+		font-size: 0.9rem;
+	}
+	button[type="submit"]:hover { opacity: 0.9; }
+	.auth-notice { color: #9aa0a6; font-size: 0.88rem; max-width: 28rem; line-height: 1.5; margin-bottom: 1rem; }
 	.err {
-		color: #b00020;
+		color: #f28b82;
 	}
 	.toggle {
 		background: none;
 		border: none;
 		padding: 0;
-		color: #0066cc;
+		color: #8ab4f8;
 		cursor: pointer;
 		text-decoration: underline;
 		font: inherit;

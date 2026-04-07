@@ -390,33 +390,30 @@
 {/if}
 
 <style>
-	.tabs { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 2px solid #ccc; }
-	.tabs button { padding: 0.5rem 1rem; border: 1px solid #ccc; border-bottom: none; background: #f5f5f5; cursor: pointer; font: inherit; border-radius: 4px 4px 0 0; margin-bottom: -2px; }
-	.tabs button.active { background: #fff; border-bottom: 2px solid #fff; font-weight: 600; }
+	.tabs { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 2px solid #2a2f38; }
+	.tabs button { padding: 0.5rem 1rem; border: 1px solid #2a2f38; border-bottom: none; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; border-radius: 8px 8px 0 0; margin-bottom: -2px; }
+	.tabs button.active { background: #0f1114; color: #e8eaed; border-bottom: 2px solid #0f1114; font-weight: 600; }
 	.tab-content { max-width: 700px; }
 	.field { display: block; margin-bottom: 1rem; }
 	.field strong { display: block; margin-bottom: 0.25rem; }
-	.field input, .field textarea, .field select { width: 100%; font: inherit; padding: 0.4rem 0.5rem; border: 1px solid #aaa; border-radius: 4px; box-sizing: border-box; }
-	.field textarea { resize: vertical; }
-	.hint { display: block; font-size: 0.85rem; color: #666; margin-bottom: 0.3rem; }
-	.btn { padding: 0.4rem 0.75rem; cursor: pointer; border: 1px solid #999; background: #fff; border-radius: 4px; font: inherit; }
-	.btn.primary { background: #1a1a8c; color: #fff; border-color: #1a1a8c; }
-	.btn:disabled { opacity: 0.65; cursor: not-allowed; }
-	.btn.sm { font-size: 0.85rem; padding: 0.2rem 0.5rem; margin-top: 0.3rem; }
-	.ai-section { border: 1px solid #ddd; padding: 1rem; border-radius: 4px; margin-top: 1.5rem; }
-	.ai-section legend { font-weight: 600; }
-	.ai-section textarea { width: 100%; font: inherit; padding: 0.4rem 0.5rem; border: 1px solid #aaa; border-radius: 4px; box-sizing: border-box; margin-bottom: 0.5rem; }
-	.actions { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #ddd; }
-	.err { color: #b00020; margin: 0.25rem 0; }
+	.field input, .field textarea, .field select { width: 100%; box-sizing: border-box; }
+	.hint { display: block; font-size: 0.82rem; color: #9aa0a6; margin-bottom: 0.3rem; }
+	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; }
+	.btn:hover { border-color: #5f6368; }
+	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
+	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+	.btn.sm { font-size: 0.8rem; padding: 0.35rem 0.65rem; margin-top: 0.3rem; }
+	.ai-section { border: 1px solid #2a2f38; padding: 1rem; border-radius: 8px; margin-top: 1.5rem; background: #1a1d23; }
+	.ai-section textarea { width: 100%; box-sizing: border-box; margin-bottom: 0.5rem; }
+	.actions { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #2a2f38; }
+	.err { color: #f28b82; margin: 0.25rem 0; }
 	.err-box { margin-top: 1rem; }
-	.ok { color: #1b5e20; margin: 0.25rem 0; }
-	.muted { color: #666; }
-	.char-card { border: 1px solid #ddd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
-	.char-card legend { font-weight: 600; }
+	.ok { color: #81c995; margin: 0.25rem 0; }
+	.muted { color: #9aa0a6; }
+	.char-card { border: 1px solid #2a2f38; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; background: #1a1d23; }
 	.axis-row { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
-	.axis-input { width: 6rem; font: inherit; padding: 0.3rem 0.4rem; border: 1px solid #aaa; border-radius: 4px; }
-	.axis-value { width: 3.5rem; font: inherit; padding: 0.3rem 0.4rem; border: 1px solid #aaa; border-radius: 4px; }
-	.axis-arrow { color: #888; font-size: 0.85rem; }
-	.danger { color: #b00020; border-color: #b00020; }
-	a { color: #0066cc; }
+	.axis-input { width: 6rem; }
+	.axis-value { width: 3.5rem; }
+	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
+	.danger { color: #f28b82; border-color: #c5221f; }
 </style>

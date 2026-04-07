@@ -49,20 +49,28 @@
 		display: flex;
 		align-items: center;
 		gap: 1rem;
-		padding: 0.75rem 1rem;
-		border-bottom: 1px solid #ccc;
+		padding: 0.65rem 1rem;
+		background: #13151a;
+		border-bottom: 1px solid #2a2f38;
 		margin-bottom: 1rem;
 	}
 	.nav a {
-		color: inherit;
+		color: #8ab4f8;
+		font-size: 0.9rem;
+		font-weight: 500;
+		text-decoration: none;
 	}
+	.nav a:hover { text-decoration: underline; }
 	.linkish {
 		background: none;
-		border: none;
-		padding: 0;
+		border: 1px solid #3c4043;
+		padding: 0.35rem 0.65rem;
 		font: inherit;
-		color: #0066cc;
+		font-size: 0.8rem;
+		color: #e8eaed;
 		cursor: pointer;
-		text-decoration: underline;
+		border-radius: 6px;
+		text-decoration: none;
 	}
+	.linkish:hover { border-color: #5f6368; }
 </style>

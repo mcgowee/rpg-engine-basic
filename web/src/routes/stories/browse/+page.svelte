@@ -105,89 +105,21 @@
 </section>
 
 <style>
-	.page {
-		padding: 0 0.5rem 2rem;
-		max-width: 900px;
-	}
-	h1 {
-		margin-top: 0;
-	}
-	.lede {
-		color: #555;
-		margin-bottom: 1.25rem;
-	}
-	.muted {
-		color: #666;
-	}
-	.err {
-		color: #b00020;
-	}
-	.btn {
-		padding: 0.35rem 0.75rem;
-		cursor: pointer;
-		border: 1px solid #999;
-		background: #fff;
-		border-radius: 4px;
-	}
-	.cards {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-	.card {
-		border: 1px solid #ccc;
-		border-radius: 8px;
-		padding: 1rem 1.1rem;
-		background: #fafafa;
-	}
-	.card-title {
-		margin: 0 0 0.35rem;
-		font-size: 1.15rem;
-	}
-	.card-meta {
-		margin: 0 0 0.75rem;
-		font-size: 0.85rem;
-		color: #555;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.15rem;
-	}
-	.author {
-		font-weight: 600;
-	}
-	.dot {
-		color: #999;
-	}
-	.card-desc {
-		margin: 0;
-		font-size: 0.95rem;
-		line-height: 1.45;
-		color: #333;
-	}
-	.card-notes {
-		margin: 0.35rem 0 0;
-		font-size: 0.85rem;
-		font-style: italic;
-		color: #555;
-	}
-	.card-actions {
-		margin: 0.75rem 0 0;
-	}
-	.btn {
-		padding: 0.35rem 0.75rem;
-		cursor: pointer;
-		border: 1px solid #999;
-		background: #fff;
-		border-radius: 4px;
-		font: inherit;
-	}
-	.btn.primary {
-		background: #1a1a8c;
-		color: #fff;
-		border-color: #1a1a8c;
-	}
+	.page { padding: 0 0.5rem 2rem; max-width: 54rem; }
+	h1 { margin-top: 0; }
+	.lede { color: #9aa0a6; margin-bottom: 1.25rem; line-height: 1.5; }
+	.muted { color: #9aa0a6; }
+	.err { color: #f28b82; }
+	.cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
+	.card { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; background: #1a1d23; }
+	.card-title { margin: 0 0 0.35rem; font-size: 1.15rem; }
+	.card-meta { margin: 0 0 0.75rem; font-size: 0.85rem; color: #9aa0a6; display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem; }
+	.author { font-weight: 600; color: #bdc1c6; }
+	.dot { color: #5f6368; }
+	.card-desc { margin: 0; font-size: 0.95rem; line-height: 1.45; color: #bdc1c6; }
+	.card-notes { margin: 0.35rem 0 0; font-size: 0.85rem; font-style: italic; color: #9aa0a6; }
+	.card-actions { margin: 0.75rem 0 0; display: flex; gap: 0.5rem; }
+	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; }
+	.btn:hover { border-color: #5f6368; }
+	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
 </style>
