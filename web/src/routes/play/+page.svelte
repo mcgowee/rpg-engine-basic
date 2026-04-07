@@ -132,10 +132,27 @@
 						turns: Number(o.turns ?? 0) || 0,
 					}));
 				}
-				const resp = String(data.response ?? '').trim();
-				const opening = String(data.empty_history_opening ?? '').trim();
-				const text = resp || opening;
-				transcript = text ? [{ type: 'narrator', text }] : [];
+				// Rebuild transcript from history
+				const hist = data.history;
+				if (Array.isArray(hist) && hist.length > 0) {
+					const entries: TranscriptEntry[] = [];
+					for (const h of hist) {
+						const s = String(h);
+						const nl = s.indexOf('\n');
+						if (nl > 0 && s.startsWith('Player: ')) {
+							entries.push({ type: 'player', text: s.slice(8, nl).trim() });
+							entries.push({ type: 'narrator', text: s.slice(nl + 1).trim() });
+						} else {
+							entries.push({ type: 'narrator', text: s });
+						}
+					}
+					transcript = entries;
+				} else {
+					const opening = String(data.empty_history_opening ?? '').trim();
+					const resp = String(data.response ?? '').trim();
+					const text = opening || resp;
+					transcript = text ? [{ type: 'narrator', text }] : [];
+				}
 				await fetchSaves(id);
 				booting = false;
 				await scrollLog();

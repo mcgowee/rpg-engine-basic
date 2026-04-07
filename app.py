@@ -1169,6 +1169,7 @@ def play_status():
 
     payload = {
         "response": state.get("response", ""),
+        "history": state.get("history", []),
         "game_title": state.get("game_title", ""),
         "turn_count": state.get("turn_count", 0),
         "paused": state.get("paused", False),
