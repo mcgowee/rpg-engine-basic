@@ -385,6 +385,24 @@
 {#if !loadDone}
 	<p class="muted">Loading…</p>
 {:else}
+	<div class="ai-generate-block">
+		<div class="ai-generate-header">
+			<span class="ai-icon">✨</span>
+			<div>
+				<strong>Start with AI</strong>
+				<p class="ai-desc">Describe your story idea and the AI will generate a complete skeleton — title, opening, narrator style, player character, and more. You can then review and edit every field in the tabs below.</p>
+			</div>
+		</div>
+		<div class="ai-generate-form">
+			<textarea rows="3" placeholder="e.g. A detective investigates a series of disappearances in a small coastal town. The local lighthouse keeper knows more than they're saying..." bind:value={concept}></textarea>
+			<button type="button" class="btn primary" disabled={generating || !concept.trim()} onclick={() => generate()}>
+				{#if generating}<span class="spinner"></span> Generating…{:else}Generate Story Skeleton{/if}
+			</button>
+		</div>
+		{#if genError}<p class="err" transition:fade={{ duration: 150 }}>{genError}</p>{/if}
+		{#if genOk}<p class="ok" transition:fade={{ duration: 150 }}>{genOk}</p>{/if}
+	</div>
+
 	<div class="tabs">
 		<button type="button" class:active={activeTab === 'basics'} onclick={() => activeTab = 'basics'}>Basics</button>
 		<button type="button" class:active={activeTab === 'subgraph'} onclick={() => activeTab = 'subgraph'}>Subgraph</button>
@@ -431,16 +449,6 @@
 				{@render aiButtons('opening', () => opening, (v) => opening = v)}
 			</div>
 
-			<fieldset class="ai-section">
-				<legend>AI Generate</legend>
-				<span class="hint">Describe your story concept and the AI will generate title, opening, narrator style, and player character. You can edit everything afterward.</span>
-				<textarea rows="3" placeholder="Describe your story idea…" bind:value={concept}></textarea>
-				<button type="button" class="btn" disabled={generating || !concept.trim()} onclick={() => generate()}>
-					{generating ? 'Generating…' : 'Generate'}
-				</button>
-				{#if genError}<p class="err" transition:fade={{ duration: 150 }}>{genError}</p>{/if}
-				{#if genOk}<p class="ok" transition:fade={{ duration: 150 }}>{genOk}</p>{/if}
-			</fieldset>
 		</div>
 	{/if}
 
@@ -587,8 +595,13 @@
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.btn.sm { font-size: 0.8rem; padding: 0.35rem 0.65rem; margin-top: 0.3rem; }
-	.ai-section { border: 1px solid #2a2f38; padding: 1rem; border-radius: 8px; margin-top: 1.5rem; background: #1a1d23; }
-	.ai-section textarea { width: 100%; box-sizing: border-box; margin-bottom: 0.5rem; }
+	.ai-generate-block { border: 1px solid #1a73e8; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; background: #111827; }
+	.ai-generate-header { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; }
+	.ai-generate-header .ai-icon { font-size: 1.5rem; flex-shrink: 0; margin-top: 0.1rem; }
+	.ai-generate-header strong { font-size: 1.05rem; display: block; margin-bottom: 0.2rem; }
+	.ai-desc { margin: 0; font-size: 0.85rem; color: #9aa0a6; line-height: 1.5; }
+	.ai-generate-form { display: flex; flex-direction: column; gap: 0.5rem; }
+	.ai-generate-form textarea { width: 100%; box-sizing: border-box; min-height: 3.5rem; }
 	.actions { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #2a2f38; }
 	.err { color: #f28b82; margin: 0.25rem 0; }
 	.err-box { margin-top: 1rem; }
