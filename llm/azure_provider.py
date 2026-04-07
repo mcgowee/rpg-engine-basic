@@ -1,23 +1,20 @@
-"""Azure OpenAI LLM provider."""
+"""Azure OpenAI LLM provider — uses LangChain's AzureChatOpenAI."""
 
-from config import AZURE_ENDPOINT, AZURE_API_KEY, AZURE_API_VERSION, AZURE_DEPLOYMENT
+from config import AZURE_ENDPOINT, AZURE_API_KEY, AZURE_DEPLOYMENT, AZURE_API_VERSION
 
 
 class AzureProvider:
-    def __init__(self, model_name: str):
-        # TODO: Port from v1
-        from openai import AzureOpenAI
-        self._client = AzureOpenAI(
+    """Azure OpenAI provider. Ignores model_name — uses the configured deployment."""
+
+    def __init__(self, model_name: str) -> None:
+        from langchain_openai import AzureChatOpenAI
+        self._llm = AzureChatOpenAI(
             azure_endpoint=AZURE_ENDPOINT,
             api_key=AZURE_API_KEY,
+            azure_deployment=AZURE_DEPLOYMENT,
             api_version=AZURE_API_VERSION,
         )
-        self._deployment = AZURE_DEPLOYMENT
 
     def invoke(self, prompt: str) -> str:
-        response = self._client.chat.completions.create(
-            model=self._deployment,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000,
-        )
-        return response.choices[0].message.content or ""
+        result = self._llm.invoke(prompt)
+        return result.content
