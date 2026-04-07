@@ -101,7 +101,7 @@
 		{/if}
 
 		<div class="section welcome hero">
-			<h1>RPG Engine</h1>
+			<h1>⚔ RPG Engine</h1>
 			<p class="lede">
 				Welcome back, <strong>{authState.uid ?? 'player'}</strong>. Play a story, create your own, or explore how the engine works.
 			</p>
