@@ -1491,6 +1491,127 @@ Output rules:
         return jsonify({"error": "The AI request failed. Try again later."}), 500
 
 
+@app.route("/ai/suggest", methods=["POST"])
+@login_required
+def ai_suggest():
+    data = request.get_json(silent=True) or {}
+    field = (data.get("field") or "").strip()
+    context = data.get("context") or {}
+    current = (data.get("current") or "").strip()
+    count = min(int(data.get("count", 5)), 8)
+
+    # Build context block
+    ctx_lines = []
+    if context.get("title"):
+        ctx_lines.append(f"Story title: {context['title']}")
+    if context.get("genre"):
+        ctx_lines.append(f"Genre: {context['genre']}")
+    if context.get("opening"):
+        ctx_lines.append(f"Opening: {context['opening'][:300]}")
+    if context.get("narrator_prompt"):
+        ctx_lines.append(f"Narrator style: {context['narrator_prompt'][:200]}")
+    if context.get("player_name"):
+        ctx_lines.append(f"Player character: {context['player_name']}")
+    if context.get("player_background"):
+        ctx_lines.append(f"Player background: {context['player_background'][:200]}")
+    if context.get("character_key"):
+        ctx_lines.append(f"Character name: {context['character_key'].replace('_', ' ').title()}")
+    if context.get("character_prompt"):
+        ctx_lines.append(f"Character personality: {context['character_prompt'][:300]}")
+    if context.get("existing_axes"):
+        ctx_lines.append(f"Existing mood axes: {context['existing_axes']}")
+    ctx_block = "\n".join(ctx_lines)
+
+    if field == "title":
+        prompt = f"""You are naming a text-based RPG story. Based on the context below, suggest {count} short, evocative titles.
+
+{ctx_block}
+
+Rules:
+- Each title should be 2-5 words
+- Fit the genre and tone
+- Be intriguing without spoilers
+- One per line, no numbering, no quotes, no explanation"""
+
+    elif field == "player_name":
+        prompt = f"""You are naming a player character for a text-based RPG. Based on the context below, suggest {count} character names.
+
+{ctx_block}
+
+Rules:
+- Names should fit the genre, setting, and era
+- Mix of styles: first name only, full name, nickname
+- One per line, no numbering, no quotes, no explanation"""
+
+    elif field == "mood_axis_new":
+        prompt = f"""You are designing emotional dimensions for an NPC in a text-based RPG. Based on the context below, suggest {count} mood axes.
+
+{ctx_block}
+
+Each axis has a name, a low label (1/10), and a high label (10/10).
+The axis should create interesting gameplay — something the player's actions can influence.
+
+Rules:
+- Format each as: axis_name|low_label|high_label
+- Use lowercase for axis name
+- Labels should be single descriptive words or short phrases
+- Don't repeat axes that already exist
+- One per line, no numbering, no explanation
+
+Example format:
+trust|suspicious|trusting
+courage|terrified|brave"""
+
+    elif field == "mood_axis_refine":
+        prompt = f"""You are refining mood axis labels for an NPC in a text-based RPG. The current axis needs better labels that more precisely capture the emotional range.
+
+{ctx_block}
+Current axis: {current}
+
+Suggest {count} alternative versions of this axis with improved labels. Keep the same concept but find more evocative, specific, or gameplay-useful wordings.
+
+Rules:
+- Format each as: axis_name|low_label|high_label
+- Use lowercase for axis name
+- One per line, no numbering, no explanation"""
+
+    else:
+        return jsonify({"error": f"Unknown suggest field: {field}"}), 400
+
+    try:
+        llm = get_llm(DEFAULT_MODEL)
+        raw = llm.invoke(prompt)
+        text = _llm_result_to_text(raw).strip()
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+
+        suggestions = []
+        for line in lines[:count]:
+            # Clean up common LLM formatting artifacts
+            cleaned = line.lstrip("0123456789.-) ").strip()
+            if cleaned.startswith('"') and cleaned.endswith('"'):
+                cleaned = cleaned[1:-1]
+            if cleaned.startswith("'") and cleaned.endswith("'"):
+                cleaned = cleaned[1:-1]
+            if not cleaned:
+                continue
+
+            if field in ("mood_axis_new", "mood_axis_refine") and "|" in cleaned:
+                parts = cleaned.split("|", 2)
+                if len(parts) == 3:
+                    suggestions.append({
+                        "axis": parts[0].strip(),
+                        "low": parts[1].strip(),
+                        "high": parts[2].strip(),
+                    })
+            else:
+                suggestions.append({"text": cleaned})
+
+        return jsonify({"suggestions": suggestions})
+    except Exception as e:
+        logger.exception("ai/suggest failed")
+        return jsonify({"error": "The AI request failed. Try again later."}), 500
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------

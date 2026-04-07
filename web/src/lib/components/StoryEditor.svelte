@@ -87,6 +87,41 @@
 	let instructingField = $state('');
 	let instructInput = $state('');
 
+	// Suggest
+	type TextSuggestion = { text: string };
+	type AxisSuggestion = { axis: string; low: string; high: string };
+	let suggestingField = $state('');
+	let suggestions = $state<(TextSuggestion | AxisSuggestion)[]>([]);
+	let suggestExtra = $state<Record<string, string>>({});
+
+	async function fetchSuggestions(field: string, extra?: Record<string, string>, current?: string) {
+		suggestingField = field;
+		suggestions = [];
+		suggestExtra = extra ?? {};
+		try {
+			const r = await fetch('/api/ai/suggest', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					field,
+					context: { ...buildContext(), ...extra },
+					current: current ?? '',
+					count: 5,
+				}),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && Array.isArray(j.suggestions)) {
+				suggestions = j.suggestions;
+			}
+		} catch { /* ignore */ }
+		if (suggestions.length === 0) suggestingField = '';
+	}
+
+	function closeSuggest() {
+		suggestingField = '';
+		suggestions = [];
+	}
+
 	// Subgraphs list
 	let subgraphs = $state<{ name: string; description: string }[]>([]);
 
@@ -311,6 +346,39 @@
 	</div>
 {/snippet}
 
+{#snippet suggestBtn(field: string, onPick: (s: TextSuggestion | AxisSuggestion) => void, tooltip: string, extra?: Record<string, string>, current?: string)}
+	<div class="suggest-wrap">
+		<button type="button" class="btn sm suggest-btn"
+			title={tooltip}
+			disabled={suggestingField === field}
+			onclick={() => fetchSuggestions(field, extra, current)}>
+			{suggestingField === field ? '...' : '💡'}
+		</button>
+		{#if suggestingField === field && suggestions.length > 0}
+			<div class="suggest-popup" transition:fade={{ duration: 100 }}>
+				<div class="suggest-header">
+					<strong>Suggestions</strong>
+					<button type="button" class="btn sm" onclick={closeSuggest}>✕</button>
+				</div>
+				<ul class="suggest-list">
+					{#each suggestions as s, i (i)}
+						<li>
+							<button type="button" class="suggest-item" onclick={() => { onPick(s); closeSuggest(); }}>
+								{#if 'text' in s}
+									{s.text}
+								{:else if 'axis' in s}
+									<span class="axis-preview">{s.axis}</span>
+									<span class="axis-range">{s.low} → {s.high}</span>
+								{/if}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
 <h1>{mode === 'edit' ? 'Edit story' : 'Create story'}</h1>
 <p><a href="/stories">← Back to stories</a></p>
 
@@ -326,10 +394,13 @@
 
 	{#if activeTab === 'basics'}
 		<div class="tab-content">
-			<label class="field">
-				<strong>Title *</strong>
+			<div class="field">
+				<div class="field-head">
+					<strong>Title *</strong>
+					{@render suggestBtn('title', (s) => { if ('text' in s) title = s.text; }, 'Suggest titles based on your story')}
+				</div>
 				<input type="text" bind:value={title} />
-			</label>
+			</div>
 
 			<div class="field">
 				<strong>Description</strong>
@@ -403,11 +474,14 @@
 				<input type="text" bind:value={narratorModel} placeholder="default" />
 			</label>
 
-			<label class="field">
-				<strong>Player Name</strong>
+			<div class="field">
+				<div class="field-head">
+					<strong>Player Name</strong>
+					{@render suggestBtn('player_name', (s) => { if ('text' in s) playerName = s.text; }, 'Suggest names that fit the genre and setting')}
+				</div>
 				<span class="hint">Who the player is in the story world.</span>
 				<input type="text" bind:value={playerName} />
-			</label>
+			</div>
 
 			<div class="field">
 				<strong>Player Background</strong>
@@ -449,7 +523,15 @@
 					</div>
 
 					<div class="field">
-						<strong>Mood Axes</strong>
+						<div class="field-head">
+							<strong>Mood Axes</strong>
+							{@render suggestBtn(
+								'mood_axis_new',
+								(s) => { if ('axis' in s) char.moods = [...char.moods, { axis: s.axis, low: s.low, high: s.high, value: 5 }]; },
+								'Suggest new mood axes based on this character',
+								{ character_key: char.key, character_prompt: char.prompt, existing_axes: char.moods.map(a => a.axis).join(', ') }
+							)}
+						</div>
 						<span class="hint">Each axis is a scale between two emotions. The mood node adjusts these each turn.</span>
 						{#each char.moods as axis, ai (ai)}
 							<div class="axis-row">
@@ -458,6 +540,13 @@
 								<span class="axis-arrow">←→</span>
 								<input type="text" bind:value={axis.high} placeholder="high label" class="axis-input" />
 								<input type="number" min="1" max="10" bind:value={axis.value} class="axis-value" />
+								{@render suggestBtn(
+									'mood_axis_refine',
+									(s) => { if ('axis' in s) { axis.axis = s.axis; axis.low = s.low; axis.high = s.high; } },
+									'Suggest better labels for this axis',
+									{ character_key: char.key, character_prompt: char.prompt },
+									`${axis.axis}|${axis.low}|${axis.high}`
+								)}
 								<button type="button" class="btn sm danger" onclick={() => { char.moods = char.moods.filter((_, i) => i !== ai); }}>×</button>
 							</div>
 						{/each}
@@ -511,7 +600,19 @@
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
 	.danger { color: #f28b82; border-color: #c5221f; }
+	.field-head { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
+	.field-head strong { margin-bottom: 0; }
 	.ai-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.35rem; }
 	.instruct-row { display: flex; align-items: center; gap: 0.35rem; flex: 1; min-width: 14rem; }
 	.instruct-input { flex: 1; font-size: 0.85rem; padding: 0.3rem 0.5rem; }
+	.suggest-wrap { position: relative; display: inline-block; }
+	.suggest-btn { font-size: 0.9rem; padding: 0.15rem 0.4rem; line-height: 1; min-width: unset; }
+	.suggest-popup { position: absolute; top: 100%; left: 0; z-index: 100; min-width: 16rem; max-width: 22rem; background: #1a1d23; border: 1px solid #3c4043; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); margin-top: 0.25rem; }
+	.suggest-header { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.65rem; border-bottom: 1px solid #2a2f38; }
+	.suggest-header strong { font-size: 0.82rem; color: #9aa0a6; }
+	.suggest-list { list-style: none; margin: 0; padding: 0.25rem 0; }
+	.suggest-item { display: block; width: 100%; text-align: left; background: none; border: none; color: #e8eaed; padding: 0.45rem 0.65rem; font: inherit; font-size: 0.88rem; cursor: pointer; line-height: 1.4; }
+	.suggest-item:hover { background: #2a2f38; }
+	.axis-preview { font-weight: 600; margin-right: 0.35rem; }
+	.axis-range { color: #9aa0a6; font-size: 0.82rem; }
 </style>
