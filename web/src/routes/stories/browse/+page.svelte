@@ -9,6 +9,7 @@
 		description: string;
 		genre: string;
 		notes: string;
+		cover_image: string;
 		author_uid: string;
 		play_count: number;
 		created_at: string;
@@ -71,7 +72,9 @@
 		<ul class="cards">
 			{#each items as story (story.id)}
 				<li class="card">
-					{#if story.genre}
+					{#if story.cover_image}
+						<div class="card-banner" style="background-image: url('/images/covers/{story.cover_image}')"></div>
+					{:else if story.genre}
 						<div class="card-banner" style="background-image: url('/images/genre-{story.genre}.png')"></div>
 					{/if}
 					<h2 class="card-title">{story.title}</h2>

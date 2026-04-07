@@ -23,6 +23,9 @@
 	let opening = $state('');
 	let subgraphName = $state('conversation');
 	let notes = $state('');
+	let coverImage = $state('');
+	let generatingCover = $state(false);
+	let coverError = $state('');
 
 	// Shared content
 	let narratorPrompt = $state('You are the narrator for a text adventure. Describe scenes in second person. End each beat with: What do you do?');
@@ -173,6 +176,7 @@
 					opening = s.opening ?? '';
 					subgraphName = s.subgraph_name ?? 'conversation';
 					notes = s.notes ?? '';
+					coverImage = s.cover_image ?? '';
 					narratorPrompt = s.narrator_prompt ?? '';
 					narratorModel = s.narrator_model ?? 'default';
 					playerName = s.player_name ?? 'Adventurer';
@@ -252,6 +256,29 @@
 			genError = 'Network error';
 		} finally {
 			generating = false;
+		}
+	}
+
+	async function generateCover() {
+		if (!storyId || generatingCover) return;
+		generatingCover = true;
+		coverError = '';
+		try {
+			const r = await fetch('/api/ai/generate-cover', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ story_id: storyId }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.cover_image) {
+				coverImage = j.cover_image;
+			} else {
+				coverError = j.error ?? 'Cover generation failed';
+			}
+		} catch {
+			coverError = 'Network error';
+		} finally {
+			generatingCover = false;
 		}
 	}
 
@@ -438,6 +465,26 @@
 				</div>
 				<input type="text" bind:value={title} />
 			</div>
+
+			{#if mode === 'edit'}
+				<div class="field">
+					<strong>Cover Image</strong>
+					<span class="hint">Generated from your story's title, genre, and description.</span>
+					{#if coverImage}
+						<div class="cover-preview">
+							<img src="/images/covers/{coverImage}" alt="Story cover" />
+						</div>
+					{:else}
+						<p class="muted" style="font-size:0.85rem">No cover image yet.</p>
+					{/if}
+					<button type="button" class="btn sm" disabled={generatingCover}
+						title="Generate a cover image using AI (requires ComfyUI running locally)"
+						onclick={() => generateCover()}>
+						{#if generatingCover}<span class="spinner"></span> Generating...{:else}🎨 Generate Cover{/if}
+					</button>
+					{#if coverError}<p class="err" style="font-size:0.85rem">{coverError}</p>{/if}
+				</div>
+			{/if}
 
 			<div class="field">
 				<strong>Description</strong>
@@ -649,6 +696,8 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
+	.cover-preview { margin: 0.5rem 0; }
+	.cover-preview img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
 	.danger { color: #f28b82; border-color: #c5221f; }
 	.sg-rec-box { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1.25rem; background: #1a1d23; }
 	.sg-rec-title { font-size: 0.95rem; display: block; margin-bottom: 0.2rem; }

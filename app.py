@@ -601,6 +601,7 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         "genre": r["genre"],
         "subgraph_name": r["subgraph_name"],
         "notes": r["notes"] or "",
+        "cover_image": r["cover_image"] or "",
         "is_public": bool(r["is_public"]),
         "play_count": r["play_count"],
         "created_at": r["created_at"],
@@ -1621,6 +1622,71 @@ Rules:
     except Exception as e:
         logger.exception("ai/suggest failed")
         return jsonify({"error": "The AI request failed. Try again later."}), 500
+
+
+# ---------------------------------------------------------------------------
+# Cover image generation
+# ---------------------------------------------------------------------------
+
+@app.route("/ai/generate-cover", methods=["POST"])
+@login_required
+def ai_generate_cover():
+    import comfyui_client
+
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+
+    if not comfyui_client.is_available():
+        return jsonify({"error": "Image generation is not available (ComfyUI not running)"}), 503
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+
+        # Build a prompt from story data
+        title = row["title"] or "Untitled"
+        genre = row["genre"] or "fantasy"
+        description = row["description"] or ""
+        opening = (row["opening"] or "")[:200]
+
+        prompt = f"{genre} scene, {title}, {description}. {opening}. RPG concept art, atmospheric, cinematic lighting, detailed, moody"
+
+        # Generate via ComfyUI
+        prefix = f"cover_{story_id}"
+        comfyui_filename = comfyui_client.generate_image(prompt, width=800, height=500, prefix=prefix)
+        if not comfyui_filename:
+            return jsonify({"error": "Image generation failed"}), 500
+
+        # Download to static/images/covers/
+        covers_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "covers")
+        os.makedirs(covers_dir, exist_ok=True)
+        local_filename = f"story_{story_id}.png"
+        local_path = os.path.join(covers_dir, local_filename)
+
+        if not comfyui_client.download_image(comfyui_filename, local_path):
+            return jsonify({"error": "Failed to save image"}), 500
+
+        # Update DB
+        conn.execute(
+            "UPDATE stories SET cover_image = ?, updated_at = datetime('now') WHERE id = ?",
+            (local_filename, story_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "cover_image": local_filename,
+        "url": f"/images/covers/{local_filename}",
+    })
 
 
 # ---------------------------------------------------------------------------

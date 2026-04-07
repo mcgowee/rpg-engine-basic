@@ -65,6 +65,7 @@ def init_db():
             subgraph_name TEXT DEFAULT 'conversation',
             characters TEXT DEFAULT '{}',
             notes TEXT DEFAULT '',
+            cover_image TEXT DEFAULT '',
             is_public BOOLEAN DEFAULT 0,
             play_count INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
