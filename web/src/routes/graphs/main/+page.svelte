@@ -296,7 +296,7 @@
 </script>
 
 <svelte:head>
-	<title>Main graph template</title>
+	<title>Main Graph Editor — RPG Engine</title>
 </svelte:head>
 
 <section class="editor-page">

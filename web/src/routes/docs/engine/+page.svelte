@@ -40,7 +40,7 @@
 </script>
 
 <svelte:head>
-	<title>Engine Reference — Docs</title>
+	<title>Engine Reference — RPG Engine Docs</title>
 </svelte:head>
 
 <section class="docs">

@@ -118,7 +118,7 @@
 </script>
 
 <svelte:head>
-	<title>Graphs</title>
+	<title>Graphs — RPG Engine</title>
 </svelte:head>
 
 {#if loading}

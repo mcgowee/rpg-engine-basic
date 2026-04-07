@@ -55,6 +55,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{mode === 'login' ? 'Login' : 'Register'} — RPG Engine</title>
+</svelte:head>
+
 <h1>{mode === 'login' ? 'Login' : 'Register'}</h1>
 
 <p class="auth-notice">Accounts here are just to keep track of your stories and saves — pick any username and a simple password. No email required, no personal info collected.</p>

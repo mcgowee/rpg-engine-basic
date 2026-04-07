@@ -52,7 +52,7 @@
 </script>
 
 <svelte:head>
-	<title>Browse stories</title>
+	<title>Browse Stories — RPG Engine</title>
 </svelte:head>
 
 <section class="page">

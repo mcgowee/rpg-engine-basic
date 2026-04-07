@@ -317,7 +317,7 @@
 					<p class="paused-note">Game is paused. Unpause in the sidebar to continue.</p>
 				{/if}
 				<div class="input-row">
-					<textarea class="inp" rows="3" placeholder="What do you do?"
+					<textarea class="inp" rows="3" placeholder="What do you do? (Enter to send, Shift+Enter for new line)" aria-label="Player input"
 						bind:value={message} disabled={loading || paused} onkeydown={onKeydown}
 					></textarea>
 					<button type="button" class="btn primary send"

@@ -402,7 +402,7 @@
 </script>
 
 <svelte:head>
-	<title>Edit subgraph</title>
+	<title>Subgraph Editor — RPG Engine</title>
 </svelte:head>
 
 <section class="editor-page">

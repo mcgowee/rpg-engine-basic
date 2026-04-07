@@ -9,6 +9,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>Edit Story — RPG Engine</title>
+</svelte:head>
+
 {#if Number.isNaN(storyId)}
 	<section class="pad">
 		<p class="err">Invalid story id.</p>
@@ -22,10 +26,5 @@
 	.pad {
 		padding: 1rem;
 	}
-	.err {
-		color: #b00020;
-	}
-	a {
-		color: #0066cc;
-	}
+	.err { color: #f28b82; }
 </style>

@@ -1,5 +1,5 @@
 <svelte:head>
-	<title>Playing Stories — Docs</title>
+	<title>Playing Stories — RPG Engine Docs</title>
 </svelte:head>
 
 <section class="docs">

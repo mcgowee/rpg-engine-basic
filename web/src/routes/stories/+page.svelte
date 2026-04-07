@@ -188,7 +188,7 @@
 </script>
 
 <svelte:head>
-	<title>My stories</title>
+	<title>My Stories — RPG Engine</title>
 </svelte:head>
 
 <section class="page">
