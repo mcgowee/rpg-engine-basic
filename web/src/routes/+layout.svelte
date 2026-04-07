@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { checkAuth, logout, authState } from '$lib/auth.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
@@ -27,11 +28,11 @@
 <a href="#main-content" class="skip-link">Skip to content</a>
 
 {#if !authState.checked}
-	<div class="loading-screen">
+	<div class="loading-screen" transition:fade={{ duration: 150 }}>
 		<span class="spinner"></span> Loading…
 	</div>
 {:else}
-	<nav class="nav" aria-label="Main navigation">
+	<nav class="nav" aria-label="Main navigation" transition:fade={{ duration: 150 }}>
 		{#if authState.uid}
 			<a href="/">Lobby</a>
 			<a href="/stories">Stories</a>

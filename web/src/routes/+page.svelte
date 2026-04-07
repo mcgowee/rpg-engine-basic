@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { authState } from '$lib/auth.svelte';
 
@@ -27,6 +28,11 @@
 	let publicStories = $state<PublicStory[]>([]);
 	let myStoriesError = $state<string | null>(null);
 	let publicStoriesError = $state<string | null>(null);
+
+	let myPreview = $derived(myStories.slice(0, MY_PREVIEW));
+	let publicPreview = $derived(publicStories.slice(0, PUBLIC_PREVIEW));
+	let hasMoreMine = $derived(myStories.length > MY_PREVIEW);
+	let hasMorePublic = $derived(publicStories.length > PUBLIC_PREVIEW);
 	let networkError = $state<string | null>(null);
 
 	function formatWhen(s: string) {
@@ -120,7 +126,7 @@
 				</button>
 			{:else}
 				<ul class="card-grid">
-					{#each myStories.slice(0, MY_PREVIEW) as s (s.id)}
+					{#each myPreview as s (s.id)}
 						<li class="card">
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-meta">
@@ -137,7 +143,7 @@
 						</li>
 					{/each}
 				</ul>
-				{#if myStories.length > MY_PREVIEW}
+				{#if hasMoreMine}
 					<p class="more"><a href="/stories">View all →</a></p>
 				{/if}
 			{/if}
@@ -154,7 +160,7 @@
 				<p class="muted">No community stories yet.</p>
 			{:else}
 				<ul class="card-grid public">
-					{#each publicStories.slice(0, PUBLIC_PREVIEW) as s (s.id)}
+					{#each publicPreview as s (s.id)}
 						<li class="card">
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-desc">{s.description || 'No description.'}</p>
@@ -169,7 +175,7 @@
 						</li>
 					{/each}
 				</ul>
-				{#if publicStories.length > PUBLIC_PREVIEW}
+				{#if hasMorePublic}
 					<p class="more"><a href="/stories/browse">Browse all →</a></p>
 				{/if}
 			{/if}

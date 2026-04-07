@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { fade, slide } from 'svelte/transition';
 	import { page } from '$app/state';
 
 	const SAVE_SLOT_COUNT = 5;
@@ -27,6 +28,10 @@
 	let error = $state<string | null>(null);
 	let actionOk = $state<string | null>(null);
 	let logEl = $state<HTMLDivElement | undefined>(undefined);
+
+	// Derived values
+	let canSend = $derived(!loading && !paused && message.trim().length > 0);
+	let hasCharacters = $derived(characters.length > 0);
 
 	const slotIndices = Array.from({ length: SAVE_SLOT_COUNT }, (_, i) => i);
 
@@ -321,16 +326,16 @@
 						bind:value={message} disabled={loading || paused} onkeydown={onKeydown}
 					></textarea>
 					<button type="button" class="btn primary send"
-						disabled={loading || paused || !message.trim()} onclick={() => send()}>
+						disabled={!canSend} onclick={() => send()}>
 						{loading ? 'Thinking…' : 'Send'}
 					</button>
 				</div>
-				{#if error}<p class="err inline-err">{error}</p>{/if}
+				{#if error}<p class="err inline-err" transition:fade={{ duration: 150 }}>{error}</p>{/if}
 			</div>
 		</main>
 
 		<aside class="sidebar">
-			{#if actionOk}<p class="ok toast">{actionOk}</p>{/if}
+			{#if actionOk}<p class="ok toast" transition:fade={{ duration: 200 }}>{actionOk}</p>{/if}
 
 			<section class="side-block">
 				<h2>Status</h2>
@@ -342,7 +347,7 @@
 				</dl>
 			</section>
 
-			{#if characters.length > 0}
+			{#if hasCharacters}
 				<section class="side-block">
 					<h2>Characters</h2>
 					{#each characters as char (char.label)}

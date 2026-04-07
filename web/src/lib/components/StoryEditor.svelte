@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 
 	type Props = {
@@ -86,6 +87,10 @@
 
 	// Subgraphs list
 	let subgraphs = $state<{ name: string; description: string }[]>([]);
+
+	// Derived
+	let charCount = $derived(characterEntries.length);
+	let isAiBusy = $derived(generating || improvingField !== '');
 
 	const GENRES = ['mystery', 'thriller', 'drama', 'comedy', 'sci-fi', 'horror', 'fantasy'];
 
@@ -268,8 +273,8 @@
 				<button type="button" class="btn" disabled={generating || !concept.trim()} onclick={() => generate()}>
 					{generating ? 'Generating…' : 'Generate'}
 				</button>
-				{#if genError}<p class="err">{genError}</p>{/if}
-				{#if genOk}<p class="ok">{genOk}</p>{/if}
+				{#if genError}<p class="err" transition:fade={{ duration: 150 }}>{genError}</p>{/if}
+				{#if genOk}<p class="ok" transition:fade={{ duration: 150 }}>{genOk}</p>{/if}
 			</fieldset>
 		</div>
 	{/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { checkAuth, authState } from '$lib/auth.svelte';
 
 	let uid = $state('');
@@ -64,7 +65,7 @@
 <p class="auth-notice">Accounts here are just to keep track of your stories and saves — pick any username and a simple password. No email required, no personal info collected.</p>
 
 {#if error}
-	<p class="err" role="alert">{error}</p>
+	<p class="err" role="alert" transition:fade={{ duration: 150 }}>{error}</p>
 {/if}
 
 <form onsubmit={onsubmit}>
