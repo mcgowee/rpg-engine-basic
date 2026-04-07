@@ -1416,6 +1416,10 @@ _IMPROVE_FIELDS = {
         "purpose": "The NPC's first spoken line when the game begins — short, in-character, sets their tone immediately.",
         "default_task": "Improve the first line — make it feel natural, in-character, and immediately reveal something about this person's personality. Keep it short (1-2 sentences).",
     },
+    "notes": {
+        "purpose": "Author notes explaining what this story demonstrates, tips for players, or design rationale.",
+        "default_task": "Improve the notes — make them clearer and more helpful. Explain what engine features the story demonstrates and what players should try. Keep it concise.",
+    },
 }
 
 

@@ -256,6 +256,11 @@
 			instruct: 'Tell the AI what to change — e.g. "emphasize the danger"',
 			placeholder: 'e.g. focus on the mystery angle',
 		},
+		notes: {
+			improve: 'AI rewrites: clearer, more helpful, explains what the story demonstrates',
+			instruct: 'Tell the AI what to add — e.g. "mention the mood system" or "add tips for new players"',
+			placeholder: 'e.g. explain how the conditional edge works in this story',
+		},
 		narrator_prompt: {
 			improve: 'AI rewrites: clearer instructions about tone, pacing, and style',
 			instruct: 'Tell the AI what to change — e.g. "add a rule about short responses"',
@@ -330,12 +335,14 @@
 				<strong>Description</strong>
 				<span class="hint">Short catalog pitch — 1-2 sentences that make players want to try it.</span>
 				<textarea rows="3" bind:value={description}></textarea>
+				{@render aiButtons('description', () => description, (v) => description = v)}
 			</div>
 
 			<div class="field">
 				<strong>Notes</strong>
 				<span class="hint">Optional. Explain what this story demonstrates, tips for players, or design notes.</span>
 				<textarea rows="2" bind:value={notes}></textarea>
+				{@render aiButtons('notes', () => notes, (v) => notes = v)}
 			</div>
 
 			<label class="field">
