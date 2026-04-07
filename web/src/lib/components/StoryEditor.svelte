@@ -82,8 +82,10 @@
 	let genError = $state('');
 	let genOk = $state('');
 
-	// Improve
+	// Improve / Instruct
 	let improvingField = $state('');
+	let instructingField = $state('');
+	let instructInput = $state('');
 
 	// Subgraphs list
 	let subgraphs = $state<{ name: string; description: string }[]>([]);
@@ -199,7 +201,16 @@
 		}
 	}
 
-	async function improve(field: string, getText: () => string, setText: (v: string) => void) {
+	function buildContext(extra?: Record<string, string>): Record<string, string> {
+		const ctx: Record<string, string> = {
+			title, genre, narrator_prompt: narratorPrompt,
+			player_name: playerName, player_background: playerBackground,
+		};
+		if (extra) Object.assign(ctx, extra);
+		return ctx;
+	}
+
+	async function improve(field: string, getText: () => string, setText: (v: string) => void, extra?: Record<string, string>) {
 		const text = getText();
 		if (!text.trim()) return;
 		improvingField = field;
@@ -207,14 +218,54 @@
 			const r = await fetch('/api/ai/improve-text', {
 				method: 'POST', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ field, text: text.trim() }),
+				body: JSON.stringify({ field, text: text.trim(), context: buildContext(extra) }),
 			});
 			const j = await r.json().catch(() => ({}));
 			if (r.ok && j.text) { setText(j.text); }
 		} catch { /* ignore */ }
 		improvingField = '';
 	}
+
+	async function instruct(field: string, getText: () => string, setText: (v: string) => void, extra?: Record<string, string>) {
+		const text = getText();
+		if (!text.trim() || !instructInput.trim()) return;
+		instructingField = field;
+		try {
+			const r = await fetch('/api/ai/improve-text', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ field, text: text.trim(), instruction: instructInput.trim(), context: buildContext(extra) }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.text) { setText(j.text); }
+		} catch { /* ignore */ }
+		instructingField = '';
+		instructInput = '';
+	}
 </script>
+
+{#snippet aiButtons(field: string, getText: () => string, setText: (v: string) => void, extra?: Record<string, string>)}
+	<div class="ai-row">
+		<button type="button" class="btn sm" disabled={improvingField === field || !getText().trim()}
+			onclick={() => improve(field, getText, setText, extra)}>
+			{improvingField === field ? 'Improving…' : 'Improve'}
+		</button>
+		{#if instructingField === field}
+			<div class="instruct-row" transition:fade={{ duration: 100 }}>
+				<input type="text" class="instruct-input" placeholder="What should change?" bind:value={instructInput}
+					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); instruct(field, getText, setText, extra); } }} />
+				<button type="button" class="btn sm" disabled={!instructInput.trim()}
+					onclick={() => instruct(field, getText, setText, extra)}>Apply</button>
+				<button type="button" class="btn sm" onclick={() => { instructingField = ''; instructInput = ''; }}>Cancel</button>
+			</div>
+		{:else}
+			<button type="button" class="btn sm" disabled={!getText().trim()}
+				onclick={() => { instructingField = field; instructInput = ''; }}>
+				Instruct
+			</button>
+		{/if}
+	</div>
+{/snippet}
 
 <h1>{mode === 'edit' ? 'Edit story' : 'Create story'}</h1>
 <p><a href="/stories">← Back to stories</a></p>
@@ -260,10 +311,7 @@
 				<strong>Opening</strong>
 				<span class="hint">Second person, present tense. What the player reads first.</span>
 				<textarea rows="4" bind:value={opening}></textarea>
-				<button type="button" class="btn sm" disabled={improvingField === 'opening' || !opening.trim()}
-					onclick={() => improve('opening', () => opening, (v) => opening = v)}>
-					{improvingField === 'opening' ? 'Improving…' : 'Improve'}
-				</button>
+				{@render aiButtons('opening', () => opening, (v) => opening = v)}
 			</div>
 
 			<fieldset class="ai-section">
@@ -300,10 +348,7 @@
 				<strong>Narrator Prompt</strong>
 				<span class="hint">System instructions for the narrator LLM: tone, pacing, second person, how to end beats. This shapes the voice of your story.</span>
 				<textarea rows="4" bind:value={narratorPrompt}></textarea>
-				<button type="button" class="btn sm" disabled={improvingField === 'narrator_prompt' || !narratorPrompt.trim()}
-					onclick={() => improve('narrator_prompt', () => narratorPrompt, (v) => narratorPrompt = v)}>
-					{improvingField === 'narrator_prompt' ? 'Improving…' : 'Improve'}
-				</button>
+				{@render aiButtons('narrator_prompt', () => narratorPrompt, (v) => narratorPrompt = v)}
 			</div>
 
 			<label class="field">
@@ -322,10 +367,7 @@
 				<strong>Player Background</strong>
 				<span class="hint">Player character history and situation — concrete, playable, gives the narrator context for the story.</span>
 				<textarea rows="3" bind:value={playerBackground}></textarea>
-				<button type="button" class="btn sm" disabled={improvingField === 'player_background' || !playerBackground.trim()}
-					onclick={() => improve('player_background', () => playerBackground, (v) => playerBackground = v)}>
-					{improvingField === 'player_background' ? 'Improving…' : 'Improve'}
-				</button>
+				{@render aiButtons('player_background', () => playerBackground, (v) => playerBackground = v)}
 			</div>
 		</div>
 	{/if}
@@ -350,13 +392,15 @@
 						<strong>Personality Prompt *</strong>
 						<span class="hint">Instructions for how this NPC speaks and behaves.</span>
 						<textarea rows="3" bind:value={char.prompt} placeholder="You are a grumpy bartender who's seen too much..."></textarea>
+						{@render aiButtons('character_prompt', () => char.prompt, (v) => char.prompt = v, { character_key: char.key })}
 					</div>
 
-					<label class="field">
+					<div class="field">
 						<strong>First Line</strong>
-						<span class="hint">What they say at the start of the game.</span>
+						<span class="hint">What they say at the start of the game. Should match their personality.</span>
 						<input type="text" bind:value={char.first_line} placeholder="What'll it be?" />
-					</label>
+						{@render aiButtons('character_first_line', () => char.first_line, (v) => char.first_line = v, { character_key: char.key, character_prompt: char.prompt })}
+					</div>
 
 					<div class="field">
 						<strong>Mood Axes</strong>
@@ -421,4 +465,7 @@
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
 	.danger { color: #f28b82; border-color: #c5221f; }
+	.ai-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.35rem; }
+	.instruct-row { display: flex; align-items: center; gap: 0.35rem; flex: 1; min-width: 14rem; }
+	.instruct-input { flex: 1; font-size: 0.85rem; padding: 0.3rem 0.5rem; }
 </style>

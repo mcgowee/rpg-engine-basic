@@ -1392,10 +1392,12 @@ Respond with ONLY valid JSON."""
 
 
 _IMPROVE_FIELDS = {
-    "opening": "Opening prose the player reads first. Second person, present tense.",
-    "description": "One- or two-sentence catalog pitch.",
-    "narrator_prompt": "System instructions for the narrator LLM.",
-    "player_background": "Player character history and situation.",
+    "opening": "Opening prose the player reads first. Second person, present tense. Should set the scene and hook the player.",
+    "description": "One- or two-sentence catalog pitch. Enticing, spoiler-light.",
+    "narrator_prompt": "System instructions for the narrator LLM: tone, pacing, second person, how to end beats.",
+    "player_background": "Player character history and situation — concrete, playable, gives the narrator context.",
+    "character_prompt": "Personality instructions for an NPC: speech patterns, secrets, attitude, goals. The NPC speaks in first person as themselves.",
+    "character_first_line": "The NPC's first spoken line when the game begins — short, in-character, sets their tone immediately.",
 }
 
 
@@ -1406,6 +1408,7 @@ def ai_improve_text():
     field = (data.get("field") or "").strip()
     text = (data.get("text") or "").strip()
     instruction = (data.get("instruction") or "").strip()
+    context = data.get("context") or {}
 
     if field not in _IMPROVE_FIELDS:
         return jsonify({"error": "invalid field"}), 400
@@ -1414,14 +1417,33 @@ def ai_improve_text():
 
     purpose = _IMPROVE_FIELDS[field]
     task = f"Author request:\n{instruction}" if instruction else (
-        "Task: Improve the draft — fix awkward phrasing, tighten prose."
+        "Task: Improve the draft — fix awkward phrasing, tighten prose, keep facts and names consistent."
     )
+
+    # Build context block from related story data
+    context_lines = []
+    if context.get("title"):
+        context_lines.append(f"Story title: {context['title']}")
+    if context.get("genre"):
+        context_lines.append(f"Genre: {context['genre']}")
+    if context.get("narrator_prompt") and field != "narrator_prompt":
+        context_lines.append(f"Narrator style: {context['narrator_prompt'][:200]}")
+    if context.get("player_name"):
+        context_lines.append(f"Player character: {context['player_name']}")
+    if context.get("player_background") and field != "player_background":
+        context_lines.append(f"Player background: {context['player_background'][:200]}")
+    if context.get("character_prompt") and field == "character_first_line":
+        context_lines.append(f"Character personality: {context['character_prompt'][:300]}")
+    if context.get("character_key"):
+        context_lines.append(f"Character name: {context['character_key'].replace('_', ' ').title()}")
+    context_block = "\n".join(context_lines)
+    context_section = f"\nStory context (use this to stay consistent):\n{context_block}\n" if context_block else ""
 
     prompt = f"""You help authors write content for a text-based RPG engine.
 
 Field: {field}
 Purpose: {purpose}
-
+{context_section}
 Current draft:
 ---
 {text}
@@ -1430,8 +1452,9 @@ Current draft:
 {task}
 
 Output rules:
-- Reply with ONLY the replacement text.
-- No title, no code fences, no quotation marks wrapping."""
+- Reply with ONLY the replacement text for this field.
+- No title, no code fences, no quotation marks wrapping.
+- Stay consistent with the story context above."""
 
     try:
         llm = get_llm(DEFAULT_MODEL)
