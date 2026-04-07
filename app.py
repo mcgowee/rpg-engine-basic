@@ -1689,6 +1689,49 @@ def ai_generate_cover():
     })
 
 
+@app.route("/ai/generate-scene", methods=["POST"])
+@login_required
+def ai_generate_scene():
+    import comfyui_client
+
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    scene_text = (data.get("scene_text") or "").strip()
+    if not scene_text:
+        return jsonify({"error": "scene_text is required"}), 400
+
+    if not comfyui_client.is_available():
+        return jsonify({"error": "Image generation not available (ComfyUI not running)"}), 503
+
+    # Build a visual prompt from the scene text
+    scene_excerpt = scene_text[:500]
+    prompt = f"{scene_excerpt}, RPG scene illustration, atmospheric, cinematic lighting, detailed environment, moody"
+
+    scenes_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "scenes")
+    os.makedirs(scenes_dir, exist_ok=True)
+
+    import time as _time
+    timestamp = int(_time.time())
+    prefix = f"scene_{story_id}_{timestamp}"
+    local_filename = f"{prefix}.png"
+
+    comfyui_filename = comfyui_client.generate_image(prompt, width=1024, height=576, prefix=prefix)
+    if not comfyui_filename:
+        return jsonify({"error": "Scene generation failed"}), 500
+
+    local_path = os.path.join(scenes_dir, local_filename)
+    if not comfyui_client.download_image(comfyui_filename, local_path):
+        return jsonify({"error": "Failed to save scene image"}), 500
+
+    return jsonify({
+        "ok": True,
+        "url": f"/images/scenes/{local_filename}",
+    })
+
+
 @app.route("/ai/generate-portrait", methods=["POST"])
 @login_required
 def ai_generate_portrait():

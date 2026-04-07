@@ -7,7 +7,7 @@
 
 	const SAVE_SLOT_COUNT = 5;
 
-	type TranscriptEntry = { type: 'player' | 'narrator'; text: string };
+	type TranscriptEntry = { type: 'player' | 'narrator' | 'scene-image'; text: string };
 	type SaveRow = { slot: number; timestamp: string; turns: number };
 
 	let storyId = $state<number | null>(null);
@@ -29,6 +29,8 @@
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let logEl = $state<HTMLDivElement | undefined>(undefined);
+	let sidebarOpen = $state(true);
+	let generatingScene = $state(false);
 
 	// Derived values
 	let canSend = $derived(!loading && !paused && message.trim().length > 0);
@@ -241,6 +243,39 @@
 		}
 	}
 
+	async function generateScene() {
+		if (generatingScene || !storyId) return;
+		// Find the last narrator text
+		let lastNarration = '';
+		for (let i = transcript.length - 1; i >= 0; i--) {
+			if (transcript[i].type === 'narrator') {
+				lastNarration = transcript[i].text;
+				break;
+			}
+		}
+		if (!lastNarration) return;
+
+		generatingScene = true;
+		try {
+			const r = await fetch('/api/ai/generate-scene', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ story_id: storyId, scene_text: lastNarration }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.url) {
+				transcript = [...transcript, { type: 'scene-image', text: `${j.url}?t=${Date.now()}` }];
+				await scrollLog();
+			} else {
+				globalToast(j.error ?? 'Scene generation failed', 'error');
+			}
+		} catch {
+			globalToast('Network error generating scene', 'error');
+		} finally {
+			generatingScene = false;
+		}
+	}
+
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key !== 'Enter' || e.shiftKey) return;
 		e.preventDefault();
@@ -342,6 +377,10 @@
 							<div class="row player-row">
 								<div class="bubble player"><span class="prefix"><Icon name="user" size={12} /> You:</span>{entry.text}</div>
 							</div>
+						{:else if entry.type === 'scene-image'}
+							<div class="row scene-row">
+								<img src={entry.text} alt="Generated scene" class="scene-img" />
+							</div>
 						{:else}
 							<div class="row narrator-row">
 								<div class="bubble narrator"><span class="prefix"><Icon name="book" size={12} /> Narrator:</span>{entry.text}</div>
@@ -364,11 +403,25 @@
 						{loading ? 'Thinking…' : 'Send'}
 					</button>
 				</div>
+				<div class="input-actions">
+					<button type="button" class="btn sm"
+						disabled={generatingScene || transcript.length === 0}
+						title="Generate an image of the current scene (requires ComfyUI)"
+						onclick={() => generateScene()}>
+						{#if generatingScene}<span class="spinner"></span> Generating...{:else}🎨 Scene{/if}
+					</button>
+					<button type="button" class="btn sm"
+						title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+						onclick={() => sidebarOpen = !sidebarOpen}>
+						{sidebarOpen ? '→ Hide panel' : '← Show panel'}
+					</button>
+				</div>
 				{#if error}<p class="err inline-err" transition:fade={{ duration: 150 }}>{error}</p>{/if}
 			</div>
 		</main>
 
-		<aside class="sidebar">
+		{#if sidebarOpen}
+		<aside class="sidebar" transition:fade={{ duration: 100 }}>
 
 			<section class="side-block">
 				<h2>Status</h2>
@@ -442,6 +495,7 @@
 				<p class="back"><a href="/stories">← Back to stories</a></p>
 			</section>
 		</aside>
+		{/if}
 	</div>
 {/if}
 
@@ -463,6 +517,9 @@
 	.prefix { display: block; font-weight: 700; font-size: 0.8rem; margin-bottom: 0.2rem; opacity: 0.7; }
 	.bubble.player { background: #1a1d23; border-left-color: #1a73e8; }
 	.bubble.narrator { background: #1a1d23; border-left-color: #81c995; }
+	.scene-row { display: flex; justify-content: center; }
+	.scene-img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
+	.input-actions { display: flex; gap: 0.35rem; margin-top: 0.4rem; }
 	.input-area { border-top: 1px solid #2a2f38; padding-top: 0.75rem; }
 	.paused-note { margin: 0 0 0.5rem; color: #f6b93b; font-weight: 600; }
 	.input-row { display: flex; gap: 0.5rem; align-items: flex-end; }
