@@ -26,8 +26,15 @@ class SubgraphRegistry:
                 logger.error("Failed to compile subgraph %s: %s", name, e)
 
     def get(self, name: str):
-        """Get a compiled subgraph by name. Falls back to 'standard'."""
-        return self._compiled.get(name, self._compiled.get("standard"))
+        """Get a compiled subgraph by name, or None if missing."""
+        return self._compiled.get(name)
+
+    def require(self, name: str):
+        """Return compiled graph or raise KeyError."""
+        g = self._compiled.get(name)
+        if g is None:
+            raise KeyError(f"unknown subgraph: {name}")
+        return g
 
     def reload_one(self, name: str, definition: dict):
         """Compile and cache a single subgraph definition."""

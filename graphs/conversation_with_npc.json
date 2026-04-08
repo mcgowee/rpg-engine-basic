@@ -1,7 +1,7 @@
 {
   "name": "conversation_with_npc",
-  "description": "Narrator responds, NPCs speak in character, then condense and memory record the turn",
-  "nodes": ["narrator", "npc", "condense", "memory"],
+  "description": "Narrator, NPC lines, narrator coda, then condense and memory",
+  "nodes": ["narrator", "npc", "narrator_coda", "condense", "memory"],
   "entry_point": {
     "router": "route_graph_entry",
     "mapping": {
@@ -10,7 +10,8 @@
   },
   "edges": [
     { "from": "narrator", "to": "npc" },
-    { "from": "npc", "to": "condense" },
+    { "from": "npc", "to": "narrator_coda" },
+    { "from": "narrator_coda", "to": "condense" },
     { "from": "condense", "to": "memory" },
     { "from": "memory", "to": "__end__" }
   ],

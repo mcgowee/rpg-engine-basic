@@ -135,6 +135,9 @@
 
 	// Subgraphs list
 	let subgraphs = $state<{ name: string; description: string }[]>([]);
+	let mainGraphTemplates = $state<{ id: number; name: string }[]>([]);
+	/** Empty string = use story subgraph only; otherwise template id as string */
+	let mainGraphTemplateId = $state('');
 
 	// Derived
 	let charCount = $derived(characterEntries.length);
@@ -145,20 +148,32 @@
 	let subgraphRecs = $derived.by((): SubgraphRec[] => {
 		const recs: SubgraphRec[] = [];
 		if (charCount === 0) {
-			recs.push({ name: 'conversation', match: true, reason: 'No characters — narrator only, no memory' });
-			recs.push({ name: 'narrator_with_memory', match: true, reason: 'No characters — narrator remembers previous turns' });
-			recs.push({ name: 'full_conversation', match: true, reason: 'No characters — narrator + memory summary for longer stories' });
+			recs.push({
+				name: 'conversation',
+				match: true,
+				reason: 'No characters — narrator + in-graph memory (no condense/NPC; use full_conversation for AI summary)',
+			});
+			recs.push({ name: 'full_conversation', match: true, reason: 'No characters — narrator + rolling memory summary for longer arcs' });
 		} else if (hasMoodAxes) {
 			recs.push({ name: 'conversation_with_mood', match: true, reason: 'Characters with mood axes — mood shifts tracked each turn' });
 			recs.push({ name: 'smart_conversation', match: false, reason: 'Has characters but skips mood tracking' });
 		} else {
-			recs.push({ name: 'smart_conversation', match: true, reason: 'Characters without mood axes — NPCs respond, mood skipped' });
+			recs.push({ name: 'smart_conversation', match: true, reason: 'Characters without mood axes — NPCs respond, mood skipped; can skip NPC path when no characters' });
+			recs.push({
+				name: 'conversation_with_npc',
+				match: true,
+				reason: 'Same NPC + coda + memory as smart when you always have characters — simpler graph (no branch after narrator)',
+			});
 			recs.push({ name: 'conversation_with_mood', match: false, reason: 'Would track moods, but no axes defined yet' });
 		}
 		return recs;
 	});
 
 	const GENRES = ['mystery', 'thriller', 'drama', 'comedy', 'sci-fi', 'horror', 'fantasy'];
+
+	function subgraphDeprecatedNote(name: string): string {
+		return name === 'narrator_with_memory' ? ' — deprecated, use conversation' : '';
+	}
 
 	onMount(async () => {
 		try {
@@ -168,6 +183,17 @@
 				subgraphs = (Array.isArray(data) ? data : []).map((s: Record<string, unknown>) => ({
 					name: String(s.name ?? ''),
 					description: String(s.description ?? ''),
+				}));
+			}
+		} catch { /* ignore */ }
+
+		try {
+			const rt = await fetch('/api/main-graph-templates', { credentials: 'include' });
+			if (rt.ok) {
+				const data = await rt.json();
+				mainGraphTemplates = (Array.isArray(data) ? data : []).map((t: Record<string, unknown>) => ({
+					id: Number(t.id),
+					name: String(t.name ?? ''),
 				}));
 			}
 		} catch { /* ignore */ }
@@ -182,6 +208,10 @@
 					genre = s.genre ?? '';
 					opening = s.opening ?? '';
 					subgraphName = s.subgraph_name ?? 'conversation';
+					mainGraphTemplateId =
+						s.main_graph_template_id != null && s.main_graph_template_id !== ''
+							? String(s.main_graph_template_id)
+							: '';
 					notes = s.notes ?? '';
 					coverImage = s.cover_image ?? '';
 					narratorPrompt = s.narrator_prompt ?? '';
@@ -203,12 +233,14 @@
 		if (!title.trim()) { errors = ['Title is required']; return; }
 		saving = true;
 		try {
-			const body = {
+			const body: Record<string, unknown> = {
 				title: title.trim(),
 				description: description.trim(),
 				genre,
 				opening: opening.trim(),
 				subgraph_name: subgraphName,
+				main_graph_template_id:
+					mainGraphTemplateId.trim() === '' ? null : parseInt(mainGraphTemplateId, 10),
 				narrator_prompt: narratorPrompt.trim(),
 				narrator_model: narratorModel.trim() || 'default',
 				player_name: playerName.trim() || 'Adventurer',
@@ -557,6 +589,19 @@
 
 	{#if activeTab === 'subgraph'}
 		<div class="tab-content">
+			<label class="field">
+				<strong>Main graph (optional)</strong>
+				<span class="hint">
+					Multi-phase flow: each phase uses its own subgraph; the game advances by turns, keywords, or other rules you set in the template. Leave empty to use a single subgraph for the whole story.
+				</span>
+				<select bind:value={mainGraphTemplateId}>
+					<option value="">None — single subgraph below</option>
+					{#each mainGraphTemplates as t}
+						<option value={String(t.id)}>{t.name}</option>
+					{/each}
+				</select>
+			</label>
+
 			<div class="sg-rec-box">
 				<strong class="sg-rec-title">Recommended for your story</strong>
 				<p class="sg-rec-desc">Based on {charCount === 0 ? 'no characters defined' : `${charCount} character${charCount === 1 ? '' : 's'}${hasMoodAxes ? ' with mood axes' : ''}`}:</p>
@@ -580,7 +625,9 @@
 				<span class="hint">Or choose any available subgraph manually:</span>
 				<select bind:value={subgraphName}>
 					{#each subgraphs as sg}
-						<option value={sg.name}>{sg.name} — {sg.description || 'no description'}</option>
+						<option value={sg.name}>
+							{sg.name}{subgraphDeprecatedNote(sg.name)} — {sg.description || 'no description'}
+						</option>
 					{/each}
 				</select>
 			</label>

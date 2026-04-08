@@ -35,6 +35,18 @@ GRAPHS_DIR = Path(get_env("GRAPHS_DIR", str(BASE_DIR / "graphs")))
 
 # --- Game settings ---
 SAVE_SLOTS = int(get_env("SAVE_SLOTS", "5"))
+# In-memory play session cache (0 = disabled, always load from DB — best for multiple gunicorn workers)
+GAME_SESSION_CACHE_TTL_S = float(get_env("GAME_SESSION_CACHE_TTL_S", "86400"))
+GAME_SESSION_CACHE_MAX = int(get_env("GAME_SESSION_CACHE_MAX", "512"))
+
+# Rate limits (Flask-Limiter; empty = no default global limit)
+RATE_LIMIT_PLAY_CHAT = get_env("RATE_LIMIT_PLAY_CHAT", "60 per minute")
+RATE_LIMIT_AI = get_env("RATE_LIMIT_AI", "30 per minute")
+
+# --- Prompt context caps (0 = no limit) — stops long prior turns from ballooning the next reply ---
+PROMPT_HISTORY_ENTRY_MAX_CHARS = int(get_env("PROMPT_HISTORY_ENTRY_MAX_CHARS", "1800"))
+PROMPT_NPC_NARRATOR_BEAT_MAX_CHARS = int(get_env("PROMPT_NPC_NARRATOR_BEAT_MAX_CHARS", "2800"))
+PROMPT_NPC_HISTORY_CONTEXT_MAX_CHARS = int(get_env("PROMPT_NPC_HISTORY_CONTEXT_MAX_CHARS", "1800"))
 
 
 def ensure_dirs():

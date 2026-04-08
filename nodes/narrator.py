@@ -2,15 +2,47 @@
 
 import logging
 
-from config import DEFAULT_MODEL
+from config import DEFAULT_MODEL, PROMPT_HISTORY_ENTRY_MAX_CHARS
 from llm import get_llm
+from llm.text import llm_result_to_text
+from nodes.prompt_trim import truncate_prompt_text
 
 logger = logging.getLogger(__name__)
+
+# Subgraphs that run a dedicated npc (or mood→npc) node after the narrator.
+_SUBGRAPHS_WITH_SEPARATE_NPC_LAYER = frozenset({
+    "smart_conversation",
+    "conversation_with_npc",
+    "conversation_with_mood",
+})
 
 DEFAULT_NARRATOR_PROMPT = (
     "You are the narrator for a text adventure. Describe scenes in second person. "
     "End each beat with: What do you do?"
 )
+
+# Used when the graph runs a dedicated npc (and optional coda) after this node — avoids
+# contradicting beat_instr ("do not prompt the player yet") with the default ending line.
+DEFAULT_NARRATOR_PROMPT_SEPARATE_NPC = (
+    "You are the narrator for a text adventure. Describe scenes in second person. "
+    "In this segment only, do not ask the player what they do or end with a direct prompt to the player — "
+    "that comes after any character dialogue in this turn."
+)
+
+_SEPARATE_NPC_OVERRIDE = (
+    "\n\n[Turn structure: This block is only the narrator scene-setting before character lines. "
+    "Ignore any instruction above to ask the player what they do or to end with a player-directed question in this segment.]"
+)
+
+
+def _effective_narrator_prompt(narrator_prompt: str, separate_npc_layer: bool) -> str:
+    """Align stored narrator instructions with separate-NPC graphs (no conflicting \"What do you do?\")."""
+    if not separate_npc_layer:
+        return narrator_prompt
+    stripped = narrator_prompt.strip()
+    if stripped == DEFAULT_NARRATOR_PROMPT.strip():
+        return DEFAULT_NARRATOR_PROMPT_SEPARATE_NPC
+    return narrator_prompt + _SEPARATE_NPC_OVERRIDE
 
 
 def narrator_node(state: dict) -> dict:
@@ -33,8 +65,11 @@ def narrator_node(state: dict) -> dict:
     memory_summary = (state.get("memory_summary") or "").strip()
     history = state.get("history") or []
     recent = history[-2:] if len(history) > 2 else history
+    trimmed_recent = [
+        truncate_prompt_text(entry, PROMPT_HISTORY_ENTRY_MAX_CHARS) for entry in recent
+    ]
     summary_block = f"Story so far: {memory_summary}\n\n" if memory_summary else ""
-    recent_block = "\n\n".join(recent) if recent else ""
+    recent_block = "\n\n".join(trimmed_recent) if trimmed_recent else ""
     context_text = summary_block + recent_block
     context_section = f"\nContext:\n{context_text}\n" if context_text.strip() else ""
 
@@ -42,6 +77,28 @@ def narrator_node(state: dict) -> dict:
     characters = state.get("characters") or {}
     char_names = [k.replace("_", " ").title() for k in characters.keys()] if characters else []
     chars_line = f"Characters present: {', '.join(char_names)}" if char_names else "Characters present: none"
+
+    subgraph = (state.get("_subgraph_name") or "").strip()
+    separate_npc_layer = bool(characters) and subgraph in _SUBGRAPHS_WITH_SEPARATE_NPC_LAYER
+    narrator_prompt = _effective_narrator_prompt(narrator_prompt, separate_npc_layer)
+
+    if separate_npc_layer:
+        beat_instr = (
+            "Narrate what happens next up to the moment where present characters may react — "
+            "describe the scene and their bearing, but do NOT put spoken lines in their mouths "
+            "(they speak on their own lines next). "
+            "Do not ask 'What do you do?' or otherwise prompt the player yet; the beat closes after they speak."
+        )
+    else:
+        beat_instr = (
+            "Narrate what happens next. Include spoken lines as needed using quotes; "
+            "keep second person on the player character:"
+        )
+        if not characters:
+            beat_instr += (
+                " No named characters are defined for this story — do not invent recurring named NPCs or "
+                "give them dialogue here; anonymous or environmental voices are fine if clearly not a cast member."
+            )
 
     prompt = f"""{narrator_prompt}
 
@@ -51,10 +108,10 @@ Player: {player.get("name", "Adventurer")} — {player.get("background", "")}
 {context_section}
 Player just said: {state.get("message", "")}
 
-Narrate what happens next (do not speak as an NPC — they will respond separately):"""
+{beat_instr}"""
 
     try:
-        narration = llm.invoke(prompt)
+        narration = llm_result_to_text(llm.invoke(prompt))
         return {"response": narration}
     except Exception as e:
         logger.error(f"Narrator node error: {e}")

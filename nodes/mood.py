@@ -4,6 +4,7 @@ import logging
 
 from config import DEFAULT_MODEL
 from llm import get_llm
+from llm.text import llm_result_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ Based on the player's action, should {label}'s {axis_name} go UP (toward {high_l
 Reply with ONLY one word: UP, DOWN, or SAME."""
 
             try:
-                result = llm.invoke(prompt).strip().upper()
+                result = llm_result_to_text(llm.invoke(prompt)).strip().upper()
                 if "UP" in result:
                     new_value = min(10, value + 1)
                 elif "DOWN" in result:
@@ -121,7 +122,7 @@ Based on the player's action, should {label}'s mood go up, down, or stay the sam
 Reply with ONLY one word: UP, DOWN, or SAME."""
 
     try:
-        result = llm.invoke(prompt).strip().upper()
+        result = llm_result_to_text(llm.invoke(prompt)).strip().upper()
         if "UP" in result:
             new_mood = min(10, current_mood + 1)
         elif "DOWN" in result:

@@ -1,6 +1,7 @@
 """Azure OpenAI LLM provider — uses LangChain's AzureChatOpenAI."""
 
 from config import AZURE_ENDPOINT, AZURE_API_KEY, AZURE_DEPLOYMENT, AZURE_API_VERSION
+from llm.text import llm_result_to_text
 
 
 class AzureProvider:
@@ -16,5 +17,4 @@ class AzureProvider:
         )
 
     def invoke(self, prompt: str) -> str:
-        result = self._llm.invoke(prompt)
-        return result.content
+        return llm_result_to_text(self._llm.invoke(prompt))

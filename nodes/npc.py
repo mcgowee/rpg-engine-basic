@@ -2,8 +2,15 @@
 
 import logging
 
-from config import DEFAULT_MODEL
+from config import (
+    DEFAULT_MODEL,
+    PROMPT_HISTORY_ENTRY_MAX_CHARS,
+    PROMPT_NPC_HISTORY_CONTEXT_MAX_CHARS,
+    PROMPT_NPC_NARRATOR_BEAT_MAX_CHARS,
+)
 from llm import get_llm
+from llm.text import llm_result_to_text
+from nodes.prompt_trim import truncate_prompt_text
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +23,19 @@ def npc_node(state: dict) -> dict:
 
     player = state.get("player") or {}
     player_name = player.get("name", "Adventurer")
-    narrator_beat = (state.get("response") or "").strip()
+    narrator_beat = truncate_prompt_text(
+        (state.get("response") or "").strip(),
+        PROMPT_NPC_NARRATOR_BEAT_MAX_CHARS,
+    )
     history = state.get("history") or []
     recent = history[-2:] if len(history) > 2 else history
-    context_text = "\n\n".join(recent) if recent else ""
+    lim = (
+        PROMPT_NPC_HISTORY_CONTEXT_MAX_CHARS
+        if PROMPT_NPC_HISTORY_CONTEXT_MAX_CHARS > 0
+        else PROMPT_HISTORY_ENTRY_MAX_CHARS
+    )
+    trimmed = [truncate_prompt_text(entry, lim) for entry in recent]
+    context_text = "\n\n".join(trimmed) if trimmed else ""
 
     memory_summary = (state.get("memory_summary") or "").strip()
     summary_block = f"Story so far: {memory_summary}\n\n" if memory_summary else ""
@@ -78,7 +94,7 @@ What the narrator just established in this scene (stay consistent; react natural
 Respond as {npc_key.replace("_", " ").title()} in one or two short sentences:"""
 
         try:
-            npc_response = llm.invoke(prompt)
+            npc_response = llm_result_to_text(llm.invoke(prompt))
             label = npc_key.replace("_", " ").title()
             responses.append(f"{label}: {npc_response.strip()}")
         except Exception as e:

@@ -5,8 +5,13 @@ import logging
 import os
 import sqlite3
 import threading
+import urllib.error
+import urllib.request
+import uuid
 
-from flask import Flask, g, jsonify, request, session, Response
+from flask import Flask, g, has_request_context, jsonify, request, session, Response
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from auth import check_password, hash_password, login_required
 from config import (
@@ -14,21 +19,91 @@ from config import (
     FLASK_DEBUG,
     FLASK_HOST,
     FLASK_PORT,
+    GAME_SESSION_CACHE_MAX,
+    GAME_SESSION_CACHE_TTL_S,
+    LLM_PROVIDER,
+    OLLAMA_HOST,
+    RATE_LIMIT_AI,
+    RATE_LIMIT_PLAY_CHAT,
     SAVE_SLOTS,
     SECRET_KEY,
 )
-from db import get_db, init_db, seed_builtin_subgraphs, seed_builtin_stories
+from db import (
+    get_db,
+    init_db,
+    seed_builtin_stories,
+    seed_builtin_subgraphs,
+    sync_builtin_subgraphs_from_disk,
+)
+from game_cache import GameSessionCache
 from graphs.builder import validate_graph_definition
 from graphs.registry import registry
 from llm import get_llm
+from llm.text import llm_result_to_text
 from nodes import NODE_REGISTRY
 from nodes.narrator import DEFAULT_NARRATOR_PROMPT
+from play_phases import (
+    advance_phase_after_turn,
+    apply_main_graph_to_new_state,
+    hydrate_runtime_from_story_save,
+)
 from routers import ROUTER_REGISTRY, ROUTER_RETURNS
 
 logger = logging.getLogger(__name__)
 
+
+class _RequestExtraFilter(logging.Filter):
+    def filter(self, record):
+        if has_request_context():
+            record.request_id = getattr(g, "request_id", "-")
+            record.user_id_log = getattr(g, "user_id", "-")
+            record.story_id_log = getattr(g, "log_story_id", "-")
+        else:
+            record.request_id = "-"
+            record.user_id_log = "-"
+            record.story_id_log = "-"
+        return True
+
+
+logger.addFilter(_RequestExtraFilter())
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+
+def _rate_limit_key():
+    uid = session.get("user_id")
+    if uid is not None:
+        return f"uid:{uid}"
+    return f"ip:{get_remote_address()}"
+
+
+limiter = Limiter(
+    key_func=_rate_limit_key,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+    headers_enabled=True,
+)
+
+
+def optional_rate_limit(limit_string: str):
+    spec = (limit_string or "").strip()
+
+    def deco(f):
+        if spec:
+            return limiter.limit(spec)(f)
+        return f
+
+    return deco
+
+
+@app.before_request
+def _assign_request_id():
+    g.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+
+
+game_session_cache = GameSessionCache(GAME_SESSION_CACHE_TTL_S, GAME_SESSION_CACHE_MAX)
 if not FLASK_DEBUG:
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -113,14 +188,17 @@ def me():
 NODE_DESCRIPTIONS = {
     "narrator": {
         "summary": "Main scene narration via LLM",
-        "description": "Takes the player's message and generates a narrative response. Builds a prompt from the narrator system instructions, game title, player info, characters present, memory summary, and recent history. This is the core node — every graph needs it.",
+        "description": "Takes the player's message and generates a narrative response. Builds a prompt from the narrator system instructions, game title, player info, characters present, memory summary, and recent history. Uses _subgraph_name (during play) to decide whether a separate NPC node will speak after this beat. This is the core node — every graph needs it.",
         "llm": True,
-        "reads": ["message", "narrator", "player", "characters", "history", "memory_summary", "game_title"],
+        "reads": [
+            "message", "narrator", "player", "characters", "history", "memory_summary",
+            "game_title", "_subgraph_name",
+        ],
         "writes": ["response"],
     },
     "memory": {
         "summary": "Records turn in history",
-        "description": "Appends the current turn (player message + narrator response) to the history list and updates the turn count. No LLM call — pure bookkeeping. Without this node, the narrator has no memory of previous turns.",
+        "description": "Appends the current turn (player message + narrator response) to the history list and updates the turn count. No LLM call — pure bookkeeping. Graphs without this node still get history appended by the play server after each turn.",
         "llm": False,
         "reads": ["message", "response", "history"],
         "writes": ["history", "turn_count"],
@@ -137,6 +215,13 @@ NODE_DESCRIPTIONS = {
         "description": "For each character in the story, generates a response in their voice using their personality prompt. Includes the narrator's scene description, the player's message, and the character's current mood. Each character gets their own LLM call. Dialogue is appended to the narrator's response.",
         "llm": True,
         "reads": ["characters", "message", "response", "player", "history", "memory_summary"],
+        "writes": ["response"],
+    },
+    "narrator_coda": {
+        "summary": "Closing narrator beat after NPCs speak",
+        "description": "Runs only on graphs that go through npc. Adds a short reactive paragraph and a player prompt (e.g. What do you do?) after character lines, without duplicating NPC dialogue.",
+        "llm": True,
+        "reads": ["response", "narrator", "player", "characters", "game_title"],
         "writes": ["response"],
     },
     "mood": {
@@ -160,6 +245,75 @@ ROUTER_DESCRIPTIONS = {
         "returns": ROUTER_RETURNS.get("route_after_narrator", []),
     },
 }
+
+
+@app.route("/models", methods=["GET"])
+def list_models():
+    """Return available LLM models from all configured providers."""
+    from config import LLM_PROVIDER, DEFAULT_MODEL, OLLAMA_HOST
+    from config import AZURE_ENDPOINT, AZURE_DEPLOYMENT
+
+    # Embedding model families to exclude
+    EMBEDDING_FAMILIES = {"nomic-bert", "nomic-bert-moe"}
+
+    providers = {}
+
+    # Query Ollama
+    try:
+        import urllib.request
+        resp = urllib.request.urlopen(f"{OLLAMA_HOST}/api/tags", timeout=3)
+        data = json.loads(resp.read())
+        ollama_models = []
+        for m in data.get("models", []):
+            details = m.get("details", {})
+            family = details.get("family", "")
+            # Skip embedding models
+            if family in EMBEDDING_FAMILIES:
+                continue
+            ollama_models.append({
+                "id": m["name"],
+                "name": m["name"].split(":")[0].split("/")[-1],
+                "size": details.get("parameter_size", ""),
+                "family": family,
+                "quantization": details.get("quantization_level", ""),
+            })
+        providers["ollama"] = {
+            "available": True,
+            "models": ollama_models,
+        }
+    except Exception:
+        providers["ollama"] = {"available": False, "models": []}
+
+    # Azure
+    if AZURE_ENDPOINT:
+        providers["azure"] = {
+            "available": True,
+            "models": [{
+                "id": AZURE_DEPLOYMENT,
+                "name": AZURE_DEPLOYMENT,
+                "size": "",
+                "family": "openai",
+                "quantization": "",
+            }],
+        }
+    else:
+        providers["azure"] = {"available": False, "models": []}
+
+    # Role defaults — currently everything uses DEFAULT_MODEL
+    roles = {
+        "creative": DEFAULT_MODEL,
+        "dialogue": DEFAULT_MODEL,
+        "classification": DEFAULT_MODEL,
+        "summarization": DEFAULT_MODEL,
+        "tools": DEFAULT_MODEL,
+    }
+
+    return jsonify({
+        "providers": providers,
+        "roles": roles,
+        "default": DEFAULT_MODEL,
+        "active_provider": LLM_PROVIDER,
+    })
 
 
 @app.route("/graph-registry", methods=["GET"])
@@ -593,6 +747,32 @@ def delete_main_graph_template(tmpl_id: int):
 # Stories CRUD (flat columns)
 # ---------------------------------------------------------------------------
 
+def _row_main_graph_template_id(row) -> int | None:
+    if "main_graph_template_id" not in row.keys():
+        return None
+    v = row["main_graph_template_id"]
+    return int(v) if v is not None else None
+
+
+def _resolve_main_template_for_write(conn, user_id, raw) -> tuple[int | None, str | None]:
+    """Return (template_id or None, error message or None). None id clears the link."""
+    if raw is None:
+        return None, None
+    if raw in ("", 0, "0", False):
+        return None, None
+    try:
+        tid = int(raw)
+    except (TypeError, ValueError):
+        return None, "invalid main_graph_template_id"
+    ok = conn.execute(
+        "SELECT id FROM main_graph_templates WHERE id = ? AND (user_id = ? OR is_public = 1)",
+        (tid, user_id),
+    ).fetchone()
+    if not ok:
+        return None, "main graph template not found"
+    return tid, None
+
+
 def _story_row_to_dict(r, include_content=False) -> dict:
     d = {
         "id": r["id"],
@@ -600,6 +780,7 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         "description": r["description"],
         "genre": r["genre"],
         "subgraph_name": r["subgraph_name"],
+        "main_graph_template_id": _row_main_graph_template_id(r),
         "notes": r["notes"] or "",
         "cover_image": r["cover_image"] or "",
         "is_public": bool(r["is_public"]),
@@ -666,11 +847,14 @@ def create_story():
         characters = {}
     conn = get_db()
     try:
+        tid, terr = _resolve_main_template_for_write(conn, g.user_id, data.get("main_graph_template_id"))
+        if terr:
+            return jsonify({"error": terr}), 400
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -682,6 +866,7 @@ def create_story():
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
                 data.get("subgraph_name", "conversation"),
+                tid,
                 json.dumps(characters),
                 data.get("notes", ""),
             ),
@@ -721,11 +906,17 @@ def update_story(story_id: int):
         data = request.get_json(silent=True) or {}
         characters = data.get("characters")
         characters_json = json.dumps(characters) if characters is not None else row["characters"]
+        if "main_graph_template_id" in data:
+            tid, terr = _resolve_main_template_for_write(conn, g.user_id, data.get("main_graph_template_id"))
+            if terr:
+                return jsonify({"error": terr}), 400
+        else:
+            tid = _row_main_graph_template_id(row)
         conn.execute(
             """UPDATE stories SET title = ?, description = ?, genre = ?, opening = ?,
                   narrator_prompt = ?, narrator_model = ?, player_name = ?,
-                  player_background = ?, subgraph_name = ?, characters = ?,
-                  notes = ?, updated_at = datetime('now')
+                  player_background = ?, subgraph_name = ?, main_graph_template_id = ?,
+                  characters = ?, notes = ?, updated_at = datetime('now')
                WHERE id = ?""",
             (
                 data.get("title", row["title"]),
@@ -737,6 +928,7 @@ def update_story(story_id: int):
                 data.get("player_name", row["player_name"]),
                 data.get("player_background", row["player_background"]),
                 data.get("subgraph_name", row["subgraph_name"]),
+                tid,
                 characters_json,
                 data.get("notes", row["notes"]),
                 story_id,
@@ -796,11 +988,12 @@ def copy_story(story_id: int):
         ).fetchone()
         if not row:
             return jsonify({"error": "Not found"}), 404
+        mtid = _row_main_graph_template_id(row)
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 row["title"],
@@ -812,6 +1005,7 @@ def copy_story(story_id: int):
                 row["player_name"],
                 row["player_background"],
                 row["subgraph_name"],
+                mtid,
                 row["characters"] or "{}",
                 row["notes"] or "",
             ),
@@ -833,6 +1027,14 @@ def export_story(story_id: int):
     conn = get_db()
     try:
         row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        tmpl_name = None
+        mtid = _row_main_graph_template_id(row) if row else None
+        if mtid is not None:
+            trow = conn.execute(
+                "SELECT name FROM main_graph_templates WHERE id = ?", (mtid,)
+            ).fetchone()
+            if trow:
+                tmpl_name = trow["name"]
     finally:
         conn.close()
     if not row or (row["user_id"] != g.user_id and not row["is_public"]):
@@ -848,6 +1050,7 @@ def export_story(story_id: int):
         "player_name": row["player_name"],
         "player_background": row["player_background"],
         "subgraph_name": row["subgraph_name"],
+        "main_graph_template_name": tmpl_name,
         "characters": json.loads(row["characters"] or "{}"),
         "notes": row["notes"] or "",
     }
@@ -873,11 +1076,21 @@ def import_story():
         characters = {}
     conn = get_db()
     try:
+        tid = None
+        tname = data.get("main_graph_template_name")
+        if isinstance(tname, str) and tname.strip():
+            trow = conn.execute(
+                """SELECT id FROM main_graph_templates WHERE name = ?
+                   AND (user_id = ? OR is_public = 1)""",
+                (tname.strip(), g.user_id),
+            ).fetchone()
+            if trow:
+                tid = trow["id"]
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -889,6 +1102,7 @@ def import_story():
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
                 data.get("subgraph_name", "conversation"),
+                tid,
                 json.dumps(characters),
                 data.get("notes", ""),
             ),
@@ -903,8 +1117,6 @@ def import_story():
 # ---------------------------------------------------------------------------
 # Play
 # ---------------------------------------------------------------------------
-
-active_games: dict[str, dict] = {}
 _adventure_locks: dict[str, threading.Lock] = {}
 _adventure_locks_guard = threading.Lock()
 CHAT_LOCK_TIMEOUT_S = 60
@@ -960,6 +1172,37 @@ def _upsert_save(conn, story_id: int, user_id: int, slot: int, state: dict):
     )
 
 
+def _ensure_play_session(session_key: str, story_id: int, user_id: int) -> dict | None:
+    """Load latest save into the session cache, or return cached state."""
+    st = game_session_cache.get(session_key)
+    if st is not None:
+        return st
+    conn = get_db()
+    try:
+        save_row = conn.execute(
+            """SELECT state FROM saves WHERE story_id = ? AND user_id = ?
+               ORDER BY saved_at DESC LIMIT 1""",
+            (story_id, user_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not save_row:
+        return None
+    try:
+        st = json.loads(save_row["state"])
+    except (json.JSONDecodeError, TypeError):
+        return None
+    conn2 = get_db()
+    try:
+        story_row = conn2.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+    finally:
+        conn2.close()
+    if story_row:
+        hydrate_runtime_from_story_save(st, story_id, story_row)
+    game_session_cache.set(session_key, st)
+    return st
+
+
 @app.route("/play/start", methods=["POST"])
 @login_required
 def play_start():
@@ -985,8 +1228,14 @@ def play_start():
 
         session_key = _play_session_key(story_id, g.user_id)
         state["_story_id"] = story_id
-        state["_subgraph_name"] = row["subgraph_name"] or "conversation"
-        active_games[session_key] = state
+        perr = apply_main_graph_to_new_state(state, row, conn, g.user_id)
+        if perr:
+            return jsonify({"error": perr}), 400
+        sg = state.get("_subgraph_name", "conversation")
+        if sg not in registry:
+            return jsonify({"error": f"Subgraph not available: {sg}"}), 503
+
+        game_session_cache.set(session_key, state)
 
         _upsert_save(conn, story_id, g.user_id, 0, state)
         conn.execute(
@@ -1012,6 +1261,7 @@ def play_start():
 
 
 @app.route("/play/chat", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_PLAY_CHAT)
 @login_required
 def play_chat():
     data = request.get_json(silent=True) or {}
@@ -1024,41 +1274,16 @@ def play_chat():
         return jsonify({"error": "message is required"}), 400
 
     session_key = _play_session_key(story_id, g.user_id)
-
-    # Load from save if not in memory
-    if session_key not in active_games:
-        conn = get_db()
-        try:
-            save_row = conn.execute(
-                """SELECT state FROM saves WHERE story_id = ? AND user_id = ?
-                   ORDER BY saved_at DESC LIMIT 1""",
-                (story_id, g.user_id),
-            ).fetchone()
-        finally:
-            conn.close()
-        if not save_row:
-            return jsonify({"error": "No active game. Start a new game first."}), 400
-        try:
-            st = json.loads(save_row["state"])
-        except (json.JSONDecodeError, TypeError):
-            return jsonify({"error": "Save data is corrupt"}), 400
-        # Restore runtime metadata
-        conn2 = get_db()
-        try:
-            story_row = conn2.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        finally:
-            conn2.close()
-        if story_row:
-            st["_story_id"] = story_id
-            st["_subgraph_name"] = story_row["subgraph_name"] or "conversation"
-        active_games[session_key] = st
+    g.log_story_id = story_id
 
     adv_lock = _get_adventure_lock(session_key)
     if not adv_lock.acquire(timeout=CHAT_LOCK_TIMEOUT_S):
         return jsonify({"error": "Another turn is still in progress."}), 429
 
     try:
-        state = active_games[session_key]
+        state = _ensure_play_session(session_key, story_id, g.user_id)
+        if state is None:
+            return jsonify({"error": "No active game. Start a new game first."}), 400
 
         if state.get("paused"):
             return jsonify({
@@ -1074,11 +1299,16 @@ def play_chat():
         if subgraph_name not in registry:
             return jsonify({"error": f"Subgraph not available: {subgraph_name}"}), 503
 
-        compiled = registry.get(subgraph_name)
+        compiled = registry.require(subgraph_name)
         try:
             result = compiled.invoke(state)
         except Exception as e:
-            logger.exception("play/chat graph invoke failed")
+            logger.exception(
+                "play/chat graph invoke failed request_id=%s story_id=%s user_id=%s",
+                getattr(g, "request_id", "-"),
+                story_id,
+                getattr(g, "user_id", "-"),
+            )
             return jsonify({"error": f"Internal error: {e}"}), 500
 
         if not isinstance(result, dict):
@@ -1095,15 +1325,17 @@ def play_chat():
             result["turn_count"] = len(history)
 
         result["_story_id"] = story_id
-        result["_subgraph_name"] = subgraph_name
-        active_games[session_key] = result
 
         conn = get_db()
         try:
+            advance_phase_after_turn(result, message, conn, g.user_id)
+            result["_subgraph_name"] = result.get("_subgraph_name", subgraph_name)
             _upsert_save(conn, story_id, g.user_id, 0, result)
             conn.commit()
         finally:
             conn.close()
+
+        game_session_cache.set(session_key, result)
 
         return jsonify({
             "response": result.get("response", ""),
@@ -1128,33 +1360,9 @@ def play_status():
         return jsonify({"error": "story_id is required"}), 400
 
     session_key = _play_session_key(story_id, g.user_id)
-    if session_key not in active_games:
-        conn = get_db()
-        try:
-            save_row = conn.execute(
-                """SELECT state FROM saves WHERE story_id = ? AND user_id = ?
-                   ORDER BY saved_at DESC LIMIT 1""",
-                (story_id, g.user_id),
-            ).fetchone()
-        finally:
-            conn.close()
-        if not save_row:
-            return jsonify({"error": "No active game"}), 404
-        try:
-            st = json.loads(save_row["state"])
-        except (json.JSONDecodeError, TypeError):
-            return jsonify({"error": "Save data is corrupt"}), 400
-        conn2 = get_db()
-        try:
-            story_row = conn2.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-        finally:
-            conn2.close()
-        if story_row:
-            st["_story_id"] = story_id
-            st["_subgraph_name"] = story_row["subgraph_name"] or "conversation"
-        active_games[session_key] = st
-
-    state = active_games[session_key]
+    state = _ensure_play_session(session_key, story_id, g.user_id)
+    if state is None:
+        return jsonify({"error": "No active game"}), 404
 
     conn = get_db()
     try:
@@ -1208,11 +1416,12 @@ def play_save():
     if slot < 0 or slot >= SAVE_SLOTS:
         return jsonify({"error": "invalid slot"}), 400
     session_key = _play_session_key(story_id, g.user_id)
-    if session_key not in active_games:
+    cached = _ensure_play_session(session_key, story_id, g.user_id)
+    if cached is None:
         return jsonify({"error": "No active game"}), 400
     conn = get_db()
     try:
-        _upsert_save(conn, story_id, g.user_id, slot, active_games[session_key])
+        _upsert_save(conn, story_id, g.user_id, slot, cached)
         conn.commit()
     finally:
         conn.close()
@@ -1248,10 +1457,9 @@ def play_load():
     finally:
         conn2.close()
     if story_row:
-        st["_story_id"] = story_id
-        st["_subgraph_name"] = story_row["subgraph_name"] or "conversation"
+        hydrate_runtime_from_story_save(st, story_id, story_row)
     session_key = _play_session_key(story_id, g.user_id)
-    active_games[session_key] = st
+    game_session_cache.set(session_key, st)
     return jsonify({
         "ok": True,
         "turn_count": st.get("turn_count", 0),
@@ -1294,9 +1502,11 @@ def play_pause():
     except (TypeError, ValueError):
         return jsonify({"error": "story_id is required"}), 400
     session_key = _play_session_key(story_id, g.user_id)
-    if session_key not in active_games:
+    st = _ensure_play_session(session_key, story_id, g.user_id)
+    if st is None:
         return jsonify({"error": "No active game"}), 400
-    active_games[session_key]["paused"] = True
+    st["paused"] = True
+    game_session_cache.set(session_key, st)
     return jsonify({"ok": True, "paused": True})
 
 
@@ -1309,34 +1519,17 @@ def play_unpause():
     except (TypeError, ValueError):
         return jsonify({"error": "story_id is required"}), 400
     session_key = _play_session_key(story_id, g.user_id)
-    if session_key not in active_games:
+    st = _ensure_play_session(session_key, story_id, g.user_id)
+    if st is None:
         return jsonify({"error": "No active game"}), 400
-    active_games[session_key]["paused"] = False
+    st["paused"] = False
+    game_session_cache.set(session_key, st)
     return jsonify({"ok": True, "paused": False})
 
 
 # ---------------------------------------------------------------------------
 # AI assist
 # ---------------------------------------------------------------------------
-
-def _llm_result_to_text(result) -> str:
-    if isinstance(result, str):
-        return result
-    content = getattr(result, "content", result)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict):
-                t = block.get("text")
-                if isinstance(t, str):
-                    parts.append(t)
-        return "".join(parts)
-    return str(content)
-
 
 def _strip_markdown_json_fences(text: str) -> str:
     s = text.strip()
@@ -1358,6 +1551,7 @@ def _strip_markdown_json_fences(text: str) -> str:
 
 
 @app.route("/ai/generate-story", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_generate_story():
     data = request.get_json(silent=True) or {}
@@ -1388,7 +1582,7 @@ Respond with ONLY valid JSON."""
     try:
         llm = get_llm(DEFAULT_MODEL)
         raw = llm.invoke(prompt)
-        text = _llm_result_to_text(raw)
+        text = llm_result_to_text(raw)
         cleaned = _strip_markdown_json_fences(text)
         story = json.loads(cleaned)
     except json.JSONDecodeError as e:
@@ -1436,6 +1630,7 @@ _IMPROVE_FIELDS = {
 
 
 @app.route("/ai/improve-text", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_improve_text():
     data = request.get_json(silent=True) or {}
@@ -1494,7 +1689,7 @@ Output rules:
     try:
         llm = get_llm(DEFAULT_MODEL)
         raw = llm.invoke(prompt)
-        out = _llm_result_to_text(raw).strip()
+        out = llm_result_to_text(raw).strip()
         if out.startswith("```"):
             out = _strip_markdown_json_fences(out)
         return jsonify({"text": out, "prompt_used": prompt})
@@ -1504,6 +1699,7 @@ Output rules:
 
 
 @app.route("/ai/suggest", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_suggest():
     data = request.get_json(silent=True) or {}
@@ -1593,7 +1789,7 @@ Rules:
     try:
         llm = get_llm(DEFAULT_MODEL)
         raw = llm.invoke(prompt)
-        text = _llm_result_to_text(raw).strip()
+        text = llm_result_to_text(raw).strip()
         lines = [line.strip() for line in text.split("\n") if line.strip()]
 
         suggestions = []
@@ -1678,6 +1874,7 @@ def story_book_data(story_id: int):
 
 
 @app.route("/ai/generate-book", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_generate_book():
     """Rewrite play history into polished prose."""
@@ -1735,7 +1932,7 @@ Rewritten story:"""
     try:
         llm = get_llm(DEFAULT_MODEL)
         raw = llm.invoke(prompt)
-        text = _llm_result_to_text(raw).strip()
+        text = llm_result_to_text(raw).strip()
         return jsonify({"prose": text})
     except Exception as e:
         logger.exception("ai/generate-book failed")
@@ -1866,6 +2063,7 @@ def delete_book(book_id: int):
 # ---------------------------------------------------------------------------
 
 @app.route("/ai/generate-cover", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_generate_cover():
     import comfyui_client
@@ -1927,6 +2125,7 @@ def ai_generate_cover():
 
 
 @app.route("/ai/generate-scene", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_generate_scene():
     import comfyui_client
@@ -1965,13 +2164,12 @@ def ai_generate_scene():
 
     # Record the scene image in the active game's history
     session_key = _play_session_key(story_id, g.user_id)
-    if session_key in active_games:
-        state = active_games[session_key]
+    state = game_session_cache.get(session_key)
+    if state is not None:
         history = list(state.get("history") or [])
         history.append(f"[SCENE_IMAGE:/images/scenes/{local_filename}]")
         state["history"] = history
-        active_games[session_key] = state
-        # Auto-save
+        game_session_cache.set(session_key, state)
         conn = get_db()
         try:
             _upsert_save(conn, story_id, g.user_id, 0, state)
@@ -1986,6 +2184,7 @@ def ai_generate_scene():
 
 
 @app.route("/ai/generate-portrait", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_generate_portrait():
     import comfyui_client
@@ -2030,7 +2229,7 @@ Physical appearance:"""
 
         try:
             llm = get_llm(DEFAULT_MODEL)
-            visual_desc = _llm_result_to_text(llm.invoke(visual_prompt)).strip()
+            visual_desc = llm_result_to_text(llm.invoke(visual_prompt)).strip()
         except Exception as e:
             logger.error("Portrait LLM failed: %s", e)
             visual_desc = f"{char_label}, {genre} character"
@@ -2071,12 +2270,42 @@ Physical appearance:"""
     })
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    """Liveness: SQLite ping. When using Ollama, best-effort check of the tags endpoint."""
+    db_ok = False
+    try:
+        c = get_db()
+        try:
+            c.execute("SELECT 1")
+            db_ok = True
+        finally:
+            c.close()
+    except Exception:
+        pass
+    ollama_ok: bool | None = None
+    if LLM_PROVIDER == "ollama":
+        ollama_ok = False
+        try:
+            base = OLLAMA_HOST.rstrip("/")
+            urllib.request.urlopen(f"{base}/api/tags", timeout=2)
+            ollama_ok = True
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
+    body = {"ok": db_ok, "database": db_ok, "llm_provider": LLM_PROVIDER}
+    if ollama_ok is not None:
+        body["ollama"] = ollama_ok
+    status = 200 if db_ok else 503
+    return jsonify(body), status
+
+
 # ---------------------------------------------------------------------------
 # Startup
 # ---------------------------------------------------------------------------
 
 init_db()
 seed_builtin_subgraphs()
+sync_builtin_subgraphs_from_disk()
 seed_builtin_stories()
 
 _conn = get_db()

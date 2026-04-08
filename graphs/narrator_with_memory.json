@@ -1,6 +1,6 @@
 {
   "name": "narrator_with_memory",
-  "description": "Narrator responds to the player and remembers previous turns for continuity",
+  "description": "Deprecated — identical to conversation. Kept so existing stories with subgraph_name narrator_with_memory keep working. Prefer conversation for new stories.",
   "nodes": ["narrator", "memory"],
   "entry_point": {
     "router": "route_graph_entry",

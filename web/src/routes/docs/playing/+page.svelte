@@ -60,7 +60,7 @@
 	<div class="section">
 		<h2>Memory</h2>
 		<p>Click <strong>Memory (AI summary)</strong> in the sidebar to see what the engine remembers about the story so far. This is a compressed summary that the narrator uses for context.</p>
-		<p>Not all stories have memory — it depends on which <a href="/docs/engine">subgraph</a> the story uses. Stories using <code>narrator_with_memory</code> or more advanced graphs will track history.</p>
+		<p>Whether you see a rolling AI summary depends on the <a href="/docs/engine">subgraph</a>. <code>conversation</code> and richer graphs track turn history; <code>full_conversation</code> and NPC graphs also maintain the compressed summary the narrator uses.</p>
 	</div>
 
 	<div class="section">

@@ -4,6 +4,7 @@ from nodes.condense import condense_node
 from nodes.memory import memory_node
 from nodes.mood import mood_node
 from nodes.narrator import narrator_node
+from nodes.narrator_coda import narrator_coda_node
 from nodes.npc import npc_node
 
 NODE_REGISTRY = {
@@ -11,5 +12,6 @@ NODE_REGISTRY = {
     "memory": memory_node,
     "mood": mood_node,
     "narrator": narrator_node,
+    "narrator_coda": narrator_coda_node,
     "npc": npc_node,
 }

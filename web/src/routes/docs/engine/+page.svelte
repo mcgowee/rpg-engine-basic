@@ -139,14 +139,22 @@
 
 			<div class="graph-card">
 				<h3>conversation</h3>
-				<p class="flow"><code>narrator → __end__</code></p>
-				<p>Narrator only. No memory, no NPCs. Every turn is independent. Good for testing.</p>
+				<p class="flow"><code>narrator → memory → __end__</code></p>
+				<p>
+					Default choice: narrator plus the <code>memory</code> node (turns recorded in the graph). No
+					<code>condense</code> or <code>npc</code>. The narrator sees the last two exchanges and any
+					<code>memory_summary</code> if another pipeline set it — for a rolling AI summary, use
+					<code>full_conversation</code>. One LLM call per turn.
+				</p>
 			</div>
 
 			<div class="graph-card">
-				<h3>narrator_with_memory</h3>
-				<p class="flow"><code>narrator → memory → __end__</code></p>
-				<p>Adds turn recording. The narrator reads history for context between turns.</p>
+				<h3>narrator_with_memory <span class="deprecated">deprecated</span></h3>
+				<p class="flow"><code>narrator → memory → __end__</code> (same as <code>conversation</code>)</p>
+				<p>
+					Kept only so older stories with <code>subgraph_name: narrator_with_memory</code> keep working. New stories
+					should use <code>conversation</code>.
+				</p>
 			</div>
 
 			<div class="graph-card">
@@ -157,20 +165,33 @@
 
 			<div class="graph-card">
 				<h3>conversation_with_npc</h3>
-				<p class="flow"><code>narrator → npc → condense → memory → __end__</code></p>
-				<p>Adds NPC dialogue. Every character speaks every turn. No conditional skip.</p>
+				<p class="flow">
+					<code>narrator → npc → narrator_coda → condense → memory → __end__</code>
+				</p>
+				<p>
+					NPC dialogue sits <strong>between</strong> the opening narration and a short <code>narrator_coda</code> that
+					invites the player’s next move. Every character speaks each turn.
+				</p>
 			</div>
 
 			<div class="graph-card">
 				<h3>smart_conversation</h3>
-				<p class="flow"><code>narrator → [route_after_narrator] → npc → condense → memory → __end__</code></p>
-				<p>Conditional NPC: if characters exist, route to NPC; otherwise skip to condense. One graph works for stories with or without NPCs.</p>
+				<p class="flow">
+					<code>narrator → [route_after_narrator] → npc → narrator_coda → condense → memory → __end__</code>
+				</p>
+				<p>
+					Conditional NPC: with characters, narrator sets the scene (without a player prompt yet), NPCs speak, then
+					<code>narrator_coda</code> closes; without characters, narrator goes straight to condense. One graph for
+					both cases.
+				</p>
 			</div>
 
 			<div class="graph-card">
 				<h3>conversation_with_mood</h3>
-				<p class="flow"><code>narrator → [route_after_narrator] → mood → npc → condense → memory → __end__</code></p>
-				<p>Adds mood tracking before NPC dialogue. Each character's mood axes shift each turn. Uses conditional edge to skip mood+NPC when no characters.</p>
+				<p class="flow">
+					<code>narrator → [route_after_narrator] → mood → npc → narrator_coda → condense → memory → __end__</code>
+				</p>
+				<p>Mood shifts, then NPC lines, then narrator coda. Skips mood/NPC/coda when no characters.</p>
 			</div>
 		</div>
 
@@ -181,7 +202,7 @@
 				<thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
 				<tbody>
 					<tr><td><code>message</code></td><td>str</td><td>Player's current input</td></tr>
-					<tr><td><code>response</code></td><td>str</td><td>Narrator response + NPC dialogue</td></tr>
+					<tr><td><code>response</code></td><td>str</td><td>Narration + NPC lines + optional narrator coda (combined)</td></tr>
 					<tr><td><code>history</code></td><td>list</td><td>Turn log (written by memory node)</td></tr>
 					<tr><td><code>memory_summary</code></td><td>str</td><td>Compressed story summary (written by condense node)</td></tr>
 					<tr><td><code>narrator</code></td><td>dict</td><td>Narrator config: <code>prompt</code> and <code>model</code></td></tr>
@@ -247,6 +268,13 @@
 	.graph-card h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
 	.graph-card p { margin: 0.2rem 0; font-size: 0.88rem; color: #bdc1c6; }
 	.graph-card .flow { color: #8ab4f8; font-size: 0.85rem; }
+	.graph-card .deprecated {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		color: #f9ab00;
+		vertical-align: middle;
+	}
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.nav-links { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #2a2f38; font-size: 0.9rem; }

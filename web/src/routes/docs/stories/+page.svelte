@@ -12,7 +12,7 @@
 		<ol>
 			<li>Go to <a href="/stories/create">Create Story</a></li>
 			<li>Fill in a title, description, and opening text</li>
-			<li>Pick a subgraph (start with <code>narrator_with_memory</code>)</li>
+			<li>Pick a subgraph (start with <code>conversation</code> — default)</li>
 			<li>Save and click Play</li>
 		</ol>
 		<p>That's the minimum — a title, opening, and subgraph. Everything else is optional and adds depth.</p>
@@ -36,9 +36,9 @@
 		<div class="tip">
 			<strong>Which subgraph should I pick?</strong>
 			<ul>
-				<li><code>conversation</code> — narrator only, no memory. Good for one-shot scenes.</li>
-				<li><code>narrator_with_memory</code> — narrator remembers previous turns. Good for solo exploration.</li>
-				<li><code>full_conversation</code> — adds AI memory summary. Good for longer stories.</li>
+				<li><code>conversation</code> — narrator + <code>memory</code> (no NPC/condense). Good default; use <code>full_conversation</code> for a rolling AI summary on long arcs.</li>
+				<li><code>narrator_with_memory</code> — deprecated alias of <code>conversation</code>; kept for old saves only.</li>
+				<li><code>full_conversation</code> — adds condense + memory summary. Good for longer stories.</li>
 				<li><code>smart_conversation</code> — adds NPCs that respond in character. Automatically skips NPC step if no characters defined.</li>
 				<li><code>conversation_with_mood</code> — adds mood tracking before NPC dialogue. Best for character-driven stories.</li>
 			</ul>
@@ -115,8 +115,8 @@
 
 		<div class="story-card">
 			<h3>The Midnight Lighthouse</h3>
-			<p class="meta">Mystery · <code>narrator_with_memory</code> · No characters</p>
-			<p>Solo exploration. Demonstrates narrator + memory nodes — the simplest playable graph. The narrator describes scenes and remembers previous turns.</p>
+			<p class="meta">Mystery · <code>conversation</code> · No characters</p>
+			<p>Solo exploration. Uses the default <code>conversation</code> graph (narrator + memory). The narrator describes scenes and remembers previous turns.</p>
 			<p class="try"><strong>Try:</strong> Play several turns, then reference something from earlier. Copy and change the narrator prompt to shift the tone.</p>
 		</div>
 

@@ -4,6 +4,7 @@ import logging
 
 from config import DEFAULT_MODEL
 from llm import get_llm
+from llm.text import llm_result_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ Updated summary:
 
     try:
         raw = llm.invoke(prompt)
-        text = (raw or "").strip() if isinstance(raw, str) else str(raw).strip()
+        text = llm_result_to_text(raw).strip()
         if not text:
             return {}
         return {"memory_summary": text}

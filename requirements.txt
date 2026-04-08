@@ -7,8 +7,15 @@ python-dotenv
 # LangChain + LangGraph
 langchain
 langchain_community
+langchain_ollama
 langchain_openai
 langgraph
+
+# API limits
+Flask-Limiter
+
+# Tests
+pytest
 
 # Production WSGI
 gunicorn

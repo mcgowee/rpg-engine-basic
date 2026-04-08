@@ -63,6 +63,7 @@ def init_db():
             player_name TEXT DEFAULT 'Adventurer',
             player_background TEXT DEFAULT '',
             subgraph_name TEXT DEFAULT 'conversation',
+            main_graph_template_id INTEGER REFERENCES main_graph_templates(id),
             characters TEXT DEFAULT '{}',
             notes TEXT DEFAULT '',
             cover_image TEXT DEFAULT '',
@@ -93,7 +94,19 @@ def init_db():
         );
     """)
     conn.commit()
+    migrate_schema(conn)
     conn.close()
+
+
+def migrate_schema(conn: sqlite3.Connection) -> None:
+    """Apply additive schema changes for existing databases."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(stories)").fetchall()}
+    if "main_graph_template_id" not in cols:
+        conn.execute(
+            """ALTER TABLE stories ADD COLUMN main_graph_template_id INTEGER
+               REFERENCES main_graph_templates(id)"""
+        )
+        conn.commit()
 
 
 def seed_builtin_subgraphs():
@@ -129,6 +142,34 @@ def seed_builtin_subgraphs():
                 """INSERT INTO subgraphs (user_id, name, description, definition, is_builtin)
                    VALUES (?, ?, ?, ?, 1)""",
                 (system_uid, name, description, json.dumps(definition)),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def sync_builtin_subgraphs_from_disk() -> None:
+    """Refresh builtin subgraph rows from graphs/*.json so code updates apply without reseeding."""
+    from config import GRAPHS_DIR
+
+    conn = get_db()
+    try:
+        for path in sorted(GRAPHS_DIR.glob("*.json")):
+            with open(path) as f:
+                definition = json.load(f)
+            name = definition.get("name", path.stem)
+            row = conn.execute(
+                "SELECT id FROM subgraphs WHERE name = ? AND is_builtin = 1",
+                (name,),
+            ).fetchone()
+            if not row:
+                continue
+            description = definition.get("description", "")
+            conn.execute(
+                """UPDATE subgraphs SET definition = ?, description = ?,
+                       updated_at = datetime('now')
+                   WHERE name = ? AND is_builtin = 1""",
+                (json.dumps(definition), description, name),
             )
         conn.commit()
     finally:

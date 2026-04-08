@@ -1,7 +1,7 @@
 {
   "name": "conversation_with_mood",
-  "description": "Narrator responds, mood shifts tracked, NPCs speak in character, then condense and memory. Skips mood+NPC if no characters.",
-  "nodes": ["narrator", "mood", "npc", "condense", "memory"],
+  "description": "Narrator, mood, NPC lines, narrator coda, then condense and memory. Skips mood+NPC+coda path if no characters.",
+  "nodes": ["narrator", "mood", "npc", "narrator_coda", "condense", "memory"],
   "entry_point": {
     "router": "route_graph_entry",
     "mapping": {
@@ -10,7 +10,8 @@
   },
   "edges": [
     { "from": "mood", "to": "npc" },
-    { "from": "npc", "to": "condense" },
+    { "from": "npc", "to": "narrator_coda" },
+    { "from": "narrator_coda", "to": "condense" },
     { "from": "condense", "to": "memory" },
     { "from": "memory", "to": "__end__" }
   ],
