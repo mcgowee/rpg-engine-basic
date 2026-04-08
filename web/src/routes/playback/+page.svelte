@@ -205,6 +205,28 @@
 		turnMessages = [...turnMessages, 'I do something.'];
 		maxTurns = Math.max(maxTurns, turnMessages.length);
 	}
+
+	function downloadResults() {
+		const results = {
+			story_id: selectedStoryId,
+			game_title: gameTitle,
+			subgraph: subgraphName,
+			opening: openingText,
+			total_time: totalTime,
+			avg_turn_time: Math.round(avgTime * 100) / 100,
+			avg_response_length: avgLength,
+			messages_sent: turnMessages.slice(0, turns.length),
+			turns,
+			timestamp: new Date().toISOString(),
+		};
+		const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `playback_story${selectedStoryId}_${Date.now()}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
 </script>
 
 <svelte:head>
@@ -358,11 +380,16 @@
 					<p class="memory-text">{turns[turns.length - 1].memory_summary}</p>
 				{/if}
 
-				{#if playState === 'done'}
+				{#if playState === 'done' || turns.length > 0}
 					<div class="done-actions">
-						<button type="button" class="btn primary" onclick={() => { playState = 'idle'; turns = []; }}>
-							New Test
+						<button type="button" class="btn sm" onclick={downloadResults}>
+							<Icon name="download" size={12} /> Download JSON
 						</button>
+						{#if playState === 'done'}
+							<button type="button" class="btn primary" onclick={() => { playState = 'idle'; turns = []; }}>
+								New Test
+							</button>
+						{/if}
 					</div>
 				{/if}
 			</aside>
