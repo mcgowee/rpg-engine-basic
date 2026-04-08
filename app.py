@@ -2094,34 +2094,58 @@ def ai_generate_player_action():
     data = request.get_json(silent=True) or {}
     scene = (data.get("scene") or "").strip()
     player_name = (data.get("player_name") or "the player").strip()
+    player_background = (data.get("player_background") or "").strip()
+    game_title = (data.get("game_title") or "").strip()
     previous_actions = data.get("previous_actions", [])
+    turn_number = data.get("turn_number", 1)
+    total_turns = data.get("total_turns", 5)
 
     if not scene:
         return jsonify({"error": "scene is required"}), 400
 
     prev_block = ""
     if previous_actions:
-        prev_lines = [f"- {a}" for a in previous_actions[-5:]]
-        prev_block = f"\nYour previous actions:\n" + "\n".join(prev_lines)
+        prev_lines = [f"Turn {i+1}: {a}" for i, a in enumerate(previous_actions[-5:])]
+        prev_block = f"\nYour previous actions (DO NOT repeat any of these):\n" + "\n".join(prev_lines)
 
-    prompt = f"""You are playing a text adventure as {player_name}. Based on the scene, write your next action. One sentence. First person. Be specific to what just happened. Don't repeat previous actions.
+    bg_block = f"\nYour character: {player_background}" if player_background else ""
+    title_block = f"\nStory: {game_title}" if game_title else ""
 
-Scene:
-{scene[:500]}
+    prompt = f"""You are role-playing as {player_name} in a text adventure.{title_block}{bg_block}
+
+This is turn {turn_number} of {total_turns}. Read what just happened and decide what {player_name} would do next.
+
+What just happened:
+{scene[:800]}
 {prev_block}
 
-Your action (one sentence, first person):"""
+Rules:
+- Write ONE action sentence in first person ("I ...")
+- Be SPECIFIC to what just happened — react to details in the scene
+- NEVER say "I look around" or any generic observation
+- Interact with characters if they're present
+- Advance the story — try something new each turn
+- Stay in character as {player_name}
+
+{player_name}'s next action:"""
 
     try:
         llm = get_llm(get_model_for_role("tools"))
         raw = llm.invoke(prompt)
         text = _llm_result_to_text(raw).strip()
-        # Clean up — take first sentence only
-        text = text.split("\n")[0].strip()
+        # Clean up — take first line, strip quotes
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
+        text = lines[0] if lines else "I consider my next move."
+        for prefix in [f"{player_name}:", f"{player_name}'s next action:", "Action:", "Next action:"]:
+            if text.lower().startswith(prefix.lower()):
+                text = text[len(prefix):].strip()
         if text.startswith('"') and text.endswith('"'):
             text = text[1:-1]
         if text.startswith("'") and text.endswith("'"):
             text = text[1:-1]
+        # Ensure it starts with "I"
+        if text and not text[0].isupper():
+            text = text[0].upper() + text[1:]
         return jsonify({"action": text})
     except Exception as e:
         logger.exception("generate-player-action failed")

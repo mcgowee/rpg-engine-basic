@@ -42,6 +42,7 @@
 	let gameTitle = $state('');
 	let subgraphName = $state('');
 	let playerName = $state('');
+	let playerBackground = $state('');
 	let totalTime = $state(0);
 	let error = $state('');
 
@@ -151,6 +152,7 @@
 			gameTitle = String(state.game_title ?? '');
 			subgraphName = String(state.subgraph_name ?? '');
 			playerName = String((state.player as Record<string, unknown>)?.name ?? 'the player');
+			playerBackground = String((state.player as Record<string, unknown>)?.background ?? '');
 		}
 
 		playState = 'playing';
@@ -178,7 +180,11 @@
 				const genData = await apiCall('POST', '/ai/generate-player-action', {
 					scene: lastResponse,
 					player_name: playerName,
+					player_background: playerBackground,
+					game_title: gameTitle,
 					previous_actions: prevActions,
+					turn_number: i + 1,
+					total_turns: numTurns,
 				});
 				msg = String(genData.action ?? 'I look around.');
 				generatedMessages = [...generatedMessages, msg];
