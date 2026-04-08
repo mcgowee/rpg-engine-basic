@@ -31,10 +31,10 @@ def narrator_coda_node(state: dict) -> dict:
         return {}
 
     player = state.get("player") or {}
+    from model_resolver import get_model_for_role
     narrator = state.get("narrator") or {}
-    model = narrator.get("model", DEFAULT_MODEL)
-    if model == "default":
-        model = DEFAULT_MODEL
+    story_model = narrator.get("model", "")
+    model = get_model_for_role("creative", story_override=story_model)
 
     try:
         llm = get_llm(model)

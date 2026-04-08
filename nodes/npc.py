@@ -50,9 +50,9 @@ def npc_node(state: dict) -> dict:
             label = npc_key.replace("_", " ").title()
             npc_prompt = f"You are {label}. Stay in character. Reply in one or two short sentences."
 
-        model = npc.get("model", DEFAULT_MODEL)
-        if model == "default":
-            model = DEFAULT_MODEL
+        from model_resolver import get_model_for_role
+        char_model = npc.get("model", "")
+        model = get_model_for_role("dialogue", character_override=char_model)
 
         try:
             llm = get_llm(model)

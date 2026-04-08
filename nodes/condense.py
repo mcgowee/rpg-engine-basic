@@ -28,9 +28,9 @@ def condense_node(state: dict) -> dict:
     recent_raw = history[-3:]
     recent_block = "\n\n".join(recent_raw) if recent_raw else ""
 
-    model = state.get("narrator", {}).get("model", DEFAULT_MODEL)
-    if model == "default":
-        model = DEFAULT_MODEL
+    from model_resolver import get_model_for_role
+    story_model = state.get("narrator", {}).get("model", "")
+    model = get_model_for_role("summarization", story_override=story_model)
 
     try:
         llm = get_llm(model)

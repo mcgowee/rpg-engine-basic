@@ -299,14 +299,13 @@ def list_models():
     else:
         providers["azure"] = {"available": False, "models": []}
 
-    # Role defaults — from saved settings or DEFAULT_MODEL
-    saved = _load_model_settings().get("roles", {})
+    # Role defaults — resolved through the cascade
     roles = {
-        "creative": saved.get("creative", DEFAULT_MODEL),
-        "dialogue": saved.get("dialogue", DEFAULT_MODEL),
-        "classification": saved.get("classification", DEFAULT_MODEL),
-        "summarization": saved.get("summarization", DEFAULT_MODEL),
-        "tools": saved.get("tools", DEFAULT_MODEL),
+        "creative": get_model_for_role("creative"),
+        "dialogue": get_model_for_role("dialogue"),
+        "classification": get_model_for_role("classification"),
+        "summarization": get_model_for_role("summarization"),
+        "tools": get_model_for_role("tools"),
     }
 
     return jsonify({
@@ -317,39 +316,13 @@ def list_models():
     })
 
 
-MODEL_SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "model_settings.json")
-VALID_ROLES = {"creative", "dialogue", "classification", "summarization", "tools"}
-
-
-def _load_model_settings() -> dict:
-    if os.path.exists(MODEL_SETTINGS_PATH):
-        try:
-            with open(MODEL_SETTINGS_PATH) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
-
-
-def _save_model_settings(settings: dict):
-    with open(MODEL_SETTINGS_PATH, "w") as f:
-        json.dump(settings, f, indent=2)
-
-
-def get_model_for_role(role: str) -> str:
-    """Resolve a model for a given role using saved settings with fallback."""
-    settings = _load_model_settings()
-    roles = settings.get("roles", {})
-    model = roles.get(role, "")
-    if model:
-        return model
-    return DEFAULT_MODEL
+from model_resolver import get_model_for_role, load_role_settings, save_role_settings, VALID_ROLES
 
 
 @app.route("/settings/models", methods=["GET"])
 @login_required
 def get_model_settings():
-    return jsonify(_load_model_settings())
+    return jsonify(load_role_settings())
 
 
 @app.route("/settings/models", methods=["PUT"])
@@ -359,14 +332,8 @@ def save_model_settings():
     roles = data.get("roles", {})
     if not isinstance(roles, dict):
         return jsonify({"error": "roles must be an object"}), 400
-    # Validate role keys
-    cleaned = {}
-    for k, v in roles.items():
-        if k in VALID_ROLES and isinstance(v, str):
-            cleaned[k] = v
-    settings = _load_model_settings()
-    settings["roles"] = cleaned
-    _save_model_settings(settings)
+    cleaned = {k: v for k, v in roles.items() if k in VALID_ROLES and isinstance(v, str)}
+    save_role_settings(cleaned)
     return jsonify({"ok": True})
 
 
@@ -1634,7 +1601,7 @@ Output a single JSON object (no markdown, no code fences, no commentary) with th
 Respond with ONLY valid JSON."""
 
     try:
-        llm = get_llm(DEFAULT_MODEL)
+        llm = get_llm(get_model_for_role("tools"))
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw)
         cleaned = _strip_markdown_json_fences(text)
@@ -1741,7 +1708,7 @@ Output rules:
 - Stay consistent with the story context above."""
 
     try:
-        llm = get_llm(DEFAULT_MODEL)
+        llm = get_llm(get_model_for_role("tools"))
         raw = llm.invoke(prompt)
         out = llm_result_to_text(raw).strip()
         if out.startswith("```"):
@@ -1841,7 +1808,7 @@ Rules:
         return jsonify({"error": f"Unknown suggest field: {field}"}), 400
 
     try:
-        llm = get_llm(DEFAULT_MODEL)
+        llm = get_llm(get_model_for_role("tools"))
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw).strip()
         lines = [line.strip() for line in text.split("\n") if line.strip()]
@@ -1984,7 +1951,7 @@ Play session transcript:
 Rewritten story:"""
 
     try:
-        llm = get_llm(DEFAULT_MODEL)
+        llm = get_llm(get_model_for_role("creative"))
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw).strip()
         return jsonify({"prose": text})
@@ -2282,7 +2249,7 @@ Personality description: {personality}
 Physical appearance:"""
 
         try:
-            llm = get_llm(DEFAULT_MODEL)
+            llm = get_llm(get_model_for_role("tools"))
             visual_desc = llm_result_to_text(llm.invoke(visual_prompt)).strip()
         except Exception as e:
             logger.error("Portrait LLM failed: %s", e)

@@ -34,9 +34,9 @@ def mood_node(state: dict) -> dict:
             _update_single_mood(npc_key, npc, state, updated_characters, summary_block, context_text)
             continue
 
-        model = npc.get("model", DEFAULT_MODEL)
-        if model == "default":
-            model = DEFAULT_MODEL
+        from model_resolver import get_model_for_role
+        char_model = npc.get("model", "")
+        model = get_model_for_role("classification", character_override=char_model)
 
         try:
             llm = get_llm(model)
@@ -97,10 +97,10 @@ Reply with ONLY one word: UP, DOWN, or SAME."""
 
 def _update_single_mood(npc_key, npc, state, updated_characters, summary_block, context_text):
     """Fallback for characters with a single mood number instead of axes."""
+    from model_resolver import get_model_for_role
     current_mood = npc.get("mood", 5)
-    model = npc.get("model", DEFAULT_MODEL)
-    if model == "default":
-        model = DEFAULT_MODEL
+    char_model = npc.get("model", "")
+    model = get_model_for_role("classification", character_override=char_model)
 
     try:
         llm = get_llm(model)
