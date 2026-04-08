@@ -143,8 +143,51 @@ def advance_phase_after_turn(
 
 
 def hydrate_runtime_from_story_save(st: dict, story_id: int, story_row) -> None:
-    """Attach _story_id; restore subgraph from story only when not using a main graph template."""
+    """Attach runtime fields and sync editable story data into the save state.
+
+    This ensures that edits to the story (adding characters, changing narrator
+    prompt, etc.) take effect on existing saves without requiring a restart.
+    """
+    import json as _json
+
     st["_story_id"] = story_id
-    if st.get("_main_graph_template_id"):
+    if not st.get("_main_graph_template_id") and story_row:
+        st["_subgraph_name"] = story_row["subgraph_name"] or "conversation"
+
+    if not story_row:
         return
-    st["_subgraph_name"] = (story_row["subgraph_name"] if story_row else None) or "conversation"
+
+    # Sync characters from story — new/updated characters appear in play
+    try:
+        story_characters = _json.loads(story_row["characters"] or "{}")
+    except (ValueError, TypeError):
+        story_characters = {}
+    if story_characters:
+        st["characters"] = story_characters
+
+    # Sync narrator settings
+    narrator_prompt = (story_row["narrator_prompt"] or "").strip()
+    narrator_model = (story_row["narrator_model"] or "default").strip()
+    if narrator_prompt:
+        narrator = st.get("narrator") or {}
+        narrator["prompt"] = narrator_prompt
+        if narrator_model:
+            narrator["model"] = narrator_model
+        st["narrator"] = narrator
+
+    # Sync player info
+    player_name = story_row["player_name"] or ""
+    player_bg = story_row["player_background"] or ""
+    if player_name or player_bg:
+        player = st.get("player") or {}
+        if player_name:
+            player["name"] = player_name
+        if player_bg:
+            player["background"] = player_bg
+        st["player"] = player
+
+    # Sync title and opening
+    if story_row["title"]:
+        st["game_title"] = story_row["title"]
+    if story_row["opening"]:
+        st["opening"] = story_row["opening"]
