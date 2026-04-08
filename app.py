@@ -2132,7 +2132,7 @@ Rules:
     try:
         llm = get_llm(get_model_for_role("tools"))
         raw = llm.invoke(prompt)
-        text = _llm_result_to_text(raw).strip()
+        text = llm_result_to_text(raw).strip()
         # Clean up — take first line, strip quotes
         lines = [l.strip() for l in text.split("\n") if l.strip()]
         text = lines[0] if lines else "I consider my next move."
