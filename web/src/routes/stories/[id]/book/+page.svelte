@@ -36,6 +36,19 @@
 
 	let sections = $derived(prose ? prose.split(/\n---\n|\n\n---\n\n/).map(s => s.trim()).filter(Boolean) : []);
 
+	type CharPortrait = { key: string; label: string; portrait: string };
+	let charPortraits = $derived.by((): CharPortrait[] => {
+		const out: CharPortrait[] = [];
+		for (const [key, val] of Object.entries(characters)) {
+			if (!val || typeof val !== 'object') continue;
+			const portrait = typeof val.portrait === 'string' ? val.portrait : '';
+			if (portrait) {
+				out.push({ key, label: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), portrait });
+			}
+		}
+		return out;
+	});
+
 	onMount(async () => {
 		if (!storyId) { error = 'Invalid story ID'; loading = false; return; }
 
@@ -255,6 +268,20 @@
 			{#if genre}<p class="book-genre">{genre}</p>{/if}
 		</div>
 
+		{#if charPortraits.length > 0}
+			<div class="book-characters">
+				<p class="book-characters-label">Characters</p>
+				<div class="book-characters-grid">
+					{#each charPortraits as cp (cp.key)}
+						<div class="book-char">
+							<img src="/images/portraits/{cp.portrait}" alt={cp.label} />
+							<span class="book-char-name">{cp.label}</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<div class="book-toolbar">
 			<button type="button" class="btn sm" onclick={startEdit}><Icon name="edit" size={12} /> Edit</button>
 			<button type="button" class="btn sm" disabled={saving} onclick={() => save()}>
@@ -307,6 +334,12 @@
 	.book-generate { text-align: center; padding: 2rem; border: 1px solid #2a2f38; border-radius: 12px; background: #1a1d23; }
 	.book-generate p { color: #bdc1c6; line-height: 1.6; margin: 0 0 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
 	.generate-btn { font-size: 1rem; padding: 0.65rem 1.5rem; }
+	.book-characters { text-align: center; margin-bottom: 2rem; }
+	.book-characters-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: #9aa0a6; margin: 0 0 0.75rem; }
+	.book-characters-grid { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; }
+	.book-char { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+	.book-char img { width: 80px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; }
+	.book-char-name { font-size: 0.78rem; color: #bdc1c6; }
 	.book-toolbar { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #2a2f38; }
 	.book-prose { font-size: 1.05rem; line-height: 1.75; color: #e8eaed; }
 	.book-section p { margin: 0 0 1rem; text-indent: 1.5rem; }
