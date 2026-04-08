@@ -32,13 +32,13 @@ DEFAULT_MESSAGES = [
     "I make my move.",
 ]
 
-FLASK_URL = "http://localhost:5051"
+_config = {"flask_url": "http://localhost:5051"}
 
 
 def api(method, path, data=None, cookies=None):
     """Simple HTTP client for Flask API."""
     import urllib.request
-    url = f"{FLASK_URL}{path}"
+    url = f"{_config['flask_url']}{path}"
     body = json.dumps(data).encode() if data else None
     headers = {"Content-Type": "application/json"}
     if cookies:
@@ -64,12 +64,11 @@ def main():
     parser.add_argument("--output", help="Save results to JSON file")
     parser.add_argument("--user", default="autoplay", help="Username (default: autoplay)")
     parser.add_argument("--password", default="autoplay123", help="Password")
-    parser.add_argument("--flask-url", default=FLASK_URL, help="Flask API URL")
+    parser.add_argument("--flask-url", default=_config["flask_url"], help="Flask API URL")
     parser.add_argument("--new-game", action="store_true", help="Force start a new game (ignore existing saves)")
     args = parser.parse_args()
 
-    global FLASK_URL
-    FLASK_URL = args.flask_url
+    _config["flask_url"] = args.flask_url
 
     messages = args.messages or DEFAULT_MESSAGES[:args.turns]
     if len(messages) < args.turns:
@@ -79,7 +78,7 @@ def main():
         messages = messages[:args.turns]
 
     print(f"=== Autoplay: story_id={args.story_id}, turns={args.turns} ===")
-    print(f"Flask: {FLASK_URL}")
+    print(f"Flask: {_config['flask_url']}")
     print()
 
     # Register/login

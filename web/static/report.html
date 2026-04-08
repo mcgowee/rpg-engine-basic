@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autoplay Report</title>
+<style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f1114; color: #e8eaed; padding: 2rem; max-width: 1000px; margin: 0 auto; line-height: 1.5; }
+    h1 { margin-bottom: 0.5rem; }
+    h2 { margin: 2rem 0 0.75rem; font-size: 1.3rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
+    h3 { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
+    .meta { color: #9aa0a6; font-size: 0.88rem; margin-bottom: 1.5rem; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+    .stat-card { background: #1a1d23; border: 1px solid #2a2f38; border-radius: 8px; padding: 0.75rem; text-align: center; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #8ab4f8; }
+    .stat-label { font-size: 0.78rem; color: #9aa0a6; margin-top: 0.2rem; }
+    .turn { background: #1a1d23; border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+    .turn-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .turn-num { font-weight: 700; color: #8ab4f8; }
+    .turn-time { font-size: 0.8rem; color: #9aa0a6; }
+    .turn-msg { background: #13151a; border-left: 3px solid #1a73e8; padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; border-radius: 4px; }
+    .turn-msg-label { font-size: 0.75rem; color: #9aa0a6; text-transform: uppercase; letter-spacing: 0.05em; }
+    .turn-resp { background: #13151a; border-left: 3px solid #81c995; padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; border-radius: 4px; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6; }
+    .turn-resp-label { font-size: 0.75rem; color: #9aa0a6; text-transform: uppercase; letter-spacing: 0.05em; }
+    .mood-bar { display: flex; align-items: center; gap: 0.5rem; margin: 0.2rem 0; font-size: 0.85rem; }
+    .mood-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .mood-track { display: flex; gap: 2px; }
+    .mood-pip { width: 20px; height: 12px; border-radius: 2px; font-size: 0.6rem; text-align: center; line-height: 12px; color: #000; font-weight: 600; }
+    .memory-box { background: #13151a; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 0.85rem; color: #bdc1c6; font-style: italic; margin-top: 0.5rem; }
+    .memory-label { font-size: 0.75rem; color: #9aa0a6; text-transform: uppercase; letter-spacing: 0.05em; }
+    .issues { margin: 1rem 0; }
+    .issue { background: #2a1515; border: 1px solid #5c2020; border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 0.35rem; font-size: 0.85rem; color: #f28b82; }
+    .no-issues { background: #1a2e1a; border: 1px solid #2a5a2a; border-radius: 6px; padding: 0.5rem 0.75rem; color: #81c995; font-size: 0.85rem; }
+    .timing-bar { display: flex; align-items: center; gap: 0.5rem; margin: 0.3rem 0; }
+    .timing-fill { height: 16px; background: #1a73e8; border-radius: 3px; min-width: 2px; }
+    .timing-label { font-size: 0.78rem; color: #9aa0a6; min-width: 4rem; }
+    .mood-timeline { margin: 1rem 0; }
+    .mood-timeline h4 { font-size: 0.9rem; margin-bottom: 0.35rem; }
+    .mood-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
+    .mood-axis-name { min-width: 7rem; font-size: 0.82rem; color: #9aa0a6; }
+    .separator { border: none; border-top: 1px solid #2a2f38; margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1>Autoplay Report</h1>
+
+<p class="meta">Generated from 1 result file(s)</p>
+<h2>autoplay_story10_1775687924.json</h2>
+<p class="meta">Story: 10 · Subgraph: full_story · 3 turns</p>
+<div class="summary-grid">
+<div class="stat-card"><div class="stat-value">17.4s</div><div class="stat-label">Total Time</div></div>
+<div class="stat-card"><div class="stat-value">5.8s</div><div class="stat-label">Avg Turn</div></div>
+<div class="stat-card"><div class="stat-value">5.7s</div><div class="stat-label">Fastest Turn</div></div>
+<div class="stat-card"><div class="stat-value">5.9s</div><div class="stat-label">Slowest Turn</div></div>
+<div class="stat-card"><div class="stat-value">1867</div><div class="stat-label">Avg Response Chars</div></div>
+</div>
+<h3>Turn Timing</h3>
+<div class="timing-bar"><span class="timing-label">Turn 1</span><div class="timing-fill" style="width:298px"></div><span class="timing-label">5.85s</span></div>
+<div class="timing-bar"><span class="timing-label">Turn 2</span><div class="timing-fill" style="width:300px"></div><span class="timing-label">5.87s</span></div>
+<div class="timing-bar"><span class="timing-label">Turn 3</span><div class="timing-fill" style="width:289px"></div><span class="timing-label">5.66s</span></div>
+<h3>Mood Timeline</h3>
+<div class="mood-timeline"><h4>Colonel Petrov</h4>
+<div class="mood-row"><span class="mood-axis-name">suspicion</span><div class="mood-track">
+<div class="mood-pip" style="background:#8ab4f8">6</div>
+<div class="mood-pip" style="background:#8ab4f8">6</div>
+<div class="mood-pip" style="background:#8ab4f8">6</div>
+</div></div>
+<div class="mood-row"><span class="mood-axis-name">interest</span><div class="mood-track">
+<div class="mood-pip" style="background:#f6b93b">5</div>
+<div class="mood-pip" style="background:#f6b93b">5</div>
+<div class="mood-pip" style="background:#f6b93b">5</div>
+</div></div>
+</div>
+<div class="mood-timeline"><h4>Viper</h4>
+<div class="mood-row"><span class="mood-axis-name">trust</span><div class="mood-track">
+<div class="mood-pip" style="background:#f6b93b">5</div>
+<div class="mood-pip" style="background:#f6b93b">5</div>
+<div class="mood-pip" style="background:#f6b93b">5</div>
+</div></div>
+<div class="mood-row"><span class="mood-axis-name">composure</span><div class="mood-track">
+<div class="mood-pip" style="background:#8ab4f8">7</div>
+<div class="mood-pip" style="background:#8ab4f8">7</div>
+<div class="mood-pip" style="background:#8ab4f8">7</div>
+</div></div>
+</div>
+<h3>Issues</h3>
+<div class="issues">
+<div class="issue">⚠ Colonel Petrov — suspicion never changed (6/10 for all 3 turns)</div>
+<div class="issue">⚠ Colonel Petrov — interest never changed (5/10 for all 3 turns)</div>
+<div class="issue">⚠ Viper — trust never changed (5/10 for all 3 turns)</div>
+<div class="issue">⚠ Viper — composure never changed (7/10 for all 3 turns)</div>
+</div>
+<h3>Turn-by-Turn</h3>
+<div class="turn">
+<div class="turn-header"><span class="turn-num">Turn 1</span><span class="turn-time">5.85s · 1445 chars</span></div>
+<div class="turn-msg"><div class="turn-msg-label">Player</div>I scan the room for exits and threats</div>
+<div class="turn-resp"><div class="turn-resp-label">Response</div>As you survey the dimly lit room, your keen eyes pick up on the slightest movements. A cold sweat beads on your forehead as you realize there are at least three men in here, all heavily armed and dressed in black. One of them, Viper, is pacing back and forth while the others are engaged in hushed conversation around a table. You silently crouch behind an overturned chair, picking up a faint sound - the soft click of a gun being cocked.
+
+You remain motionless as you continue to listen, your senses on high alert. Suddenly, the door swings open with an urgent knock. The tension in the air is palpable as Viper stops pacing and all eyes fall on the newcomer. Colonel Petrov enters, his expression grim, and he immediately begins speaking in Russian.
+
+&#x27;What do you do?&#x27;
+
+Viper: &#x27;Good call. Assess potential escape routes.&#x27;
+In clipped tones, Viper nods approvingly at Agent X&#x27;s situational awareness.
+
+Colonel Petrov: I follow your lead.
+In Russian: Вы меня не обманете. Я знаю, что вы делаете.
+
+The room feels as if it&#x27;s holding its breath, the air thick with tension and mistrust. You can practically hear the beating of your own heart, echoing in your ears like a drum. Colonel Petrov&#x27;s words are a snake hissing in your ear, threatening to unravel everything you&#x27;ve worked so hard to maintain. Your mind races as you consider your options - stay put and risk being discovered, or make a move and potentially expose yourself? What do you do?</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#8ab4f8"></span>Colonel Petrov — suspicion: 6/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#f6b93b"></span>Colonel Petrov — interest: 5/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#f6b93b"></span>Viper — trust: 5/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#8ab4f8"></span>Viper — composure: 7/10</div>
+<div class="memory-box"><div class="memory-label">Memory Summary</div>You find yourself in a dimly lit room with three armed men and Colonel Petrov. Viper paces while the others discuss something quietly. You notice one of them cocking a gun. Tension builds as Colonel Petrov enters, speaking in Russian. The room is filled with mistrust and anxiety, forcing you to consider whether to stay hidden or risk exposure by making a move.</div>
+</div>
+<div class="turn">
+<div class="turn-header"><span class="turn-num">Turn 2</span><span class="turn-time">5.87s · 2191 chars</span></div>
+<div class="turn-msg"><div class="turn-msg-label">Player</div>I approach Viper at the bar</div>
+<div class="turn-resp"><div class="turn-resp-label">Response</div>As you carefully inch forward, your eyes remain locked on Viper&#x27;s every move. He halts his pacing and turns to face you, a silent challenge lingering in the air between you. You swallow hard, mustering up every ounce of courage as you lean in closer.
+
+&#x27;What do you do?&#x27; you ask, your voice steady despite the chaos swirling within you.
+
+Viper narrows his eyes, studying you for a moment before responding. &#x27;Assess potential escape routes.&#x27;
+
+You nod, understanding the unspoken weight behind those words. With each step you take towards the bar, your heart thunders in your chest like a tribal drum. The room seems to shrink around you as Viper&#x27;s gaze intensifies. 
+
+Just as you reach the bar, Colonel Petrov enters, his voice cutting through the air like a knife. His Russian words are a venomous whisper that sends shivers down your spine.
+
+You know what he means; you can feel it in every fiber of your being. The room holds its breath, and you wonder if this is the moment everything falls apart. But you&#x27;re an expert at reading people, and you refuse to let him get the best of you.
+
+So you stand tall, despite the fear that threatens to overwhelm you. You hold Colonel Petrov&#x27;s gaze, unyielding in your resolve not to back down. His expression softens ever so slightly, and he gives a small nod before turning away.
+
+Viper watches all this unfold with a mixture of amusement and suspicion. He doesn&#x27;t know what you&#x27;re planning - but he&#x27;s sure it can&#x27;t be good for him.
+
+Viper: Assess potential escape routes.
+
+Colonel Petrov: &#x27;You grow bold.&#x27;
+Colonel Petrov&#x27;s eyes narrow as he watches Agent X inch closer to Viper. His voice is a low hiss, and you can feel his suspicion simmering just beneath the surface.
+
+As tension hangs heavy in the air like a storm brewing, you can&#x27;t help but wonder: how will this situation unfold? Will Agent X succeed in navigating the treacherous web of lies and deceit? Or will Viper&#x27;s suspicions prove too much to bear? The stakes are high, and every move could mean the difference between life and death. So, take a deep breath, steel yourself for what&#x27;s to come, and prepare to plunge headfirst into the heart-pounding world of espionage. What do you do?</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#8ab4f8"></span>Colonel Petrov — suspicion: 6/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#f6b93b"></span>Colonel Petrov — interest: 5/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#f6b93b"></span>Viper — trust: 5/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#8ab4f8"></span>Viper — composure: 7/10</div>
+<div class="memory-box"><div class="memory-label">Memory Summary</div>You carefully survey the dimly lit room, noticing three armed men and Colonel Petrov. Viper paces while the others discuss something quietly. One of them cocks a gun, making you tense with anticipation. Tension builds as Colonel Petrov enters, speaking in Russian. As the room fills with mistrust and anxiety, your decision to stay hidden or risk exposure by making a move becomes crucial.
+
+You approach Viper at the bar, mustering up courage while maintaining eye contact. He studies you before responding to your question about potential escape routes. Meanwhile, Colonel Petrov&#x27;s words hang in the air like a snake hissing in your ear, urging you to decide on your course of action. The room holds its breath as Viper watches you unfold the situation, and it becomes clear that every move could mean the difference between life and death.</div>
+</div>
+<div class="turn">
+<div class="turn-header"><span class="turn-num">Turn 3</span><span class="turn-time">5.66s · 1967 chars</span></div>
+<div class="turn-msg"><div class="turn-msg-label">Player</div>I whisper to her about Colonel Petrov</div>
+<div class="turn-resp"><div class="turn-resp-label">Response</div>&#x27;Be careful, he&#x27;s watching us,&#x27; you murmur, your voice barely above a whisper. Your gaze flickers between Viper and Colonel Petrov, who are both engrossed in their conversation.
+
+Viper: &#x27;Just make sure you don&#x27;t get caught.&#x27; 
+
+Colonel Petrov: &#x27;I&#x27;m always one step ahead, my dear spy.&#x27;
+
+You can&#x27;t help but shudder at the icy tone in his voice. Despite your best efforts to remain calm and composed, the reality of the situation begins to sink in - this could be your last chance to complete the mission and save your career.
+
+&#x27;What do you do?&#x27;
+
+Viper: &#x27;Keep your voice down, we don&#x27;t want to alert him.&#x27; 
+&#x27;She&#x27;s wise beyond her years. I&#x27;ll keep an eye on her.&#x27;
+
+Colonel Petrov: &#x27;Be careful, she&#x27;s watching us,&#x27; you murmur, your voice barely above a whisper. Your gaze flickers between Viper and Agent X, who are both engrossed in their conversation.
+&#x27;Just make sure you don&#x27;t get caught.&#x27;
+
+You can&#x27;t help but feel a wave of unease wash over you as the gravity of the situation becomes all too real. With every passing moment, it feels like the stakes are only getting higher and the risks more significant. Agent X seems to be playing a dangerous game, and you can&#x27;t shake the feeling that one wrong move could lead to catastrophic consequences.
+
+As Viper and Colonel Petrov continue their conversation, you find yourself drawn into the web of intrigue surrounding them. The tension is palpable, the air thick with anticipation and uncertainty. You know that your next move will be crucial - a misstep could mean the end of not only this mission, but also your entire career.
+
+Viper&#x27;s gaze flickers over to Agent X, an unreadable expression playing across his face. Meanwhile, Colonel Petrov keeps his attention fixed on you, as if he can sense the threat lurking just beyond his line of sight. You take a deep breath and steel yourself for what comes next - because in this world of espionage and betrayal, there&#x27;s no time for hesitation or regret.
+
+&quot;What do you do?&quot;</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#8ab4f8"></span>Colonel Petrov — suspicion: 6/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#f6b93b"></span>Colonel Petrov — interest: 5/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#f6b93b"></span>Viper — trust: 5/10</div>
+<div class="mood-bar"><span class="mood-dot" style="background:#8ab4f8"></span>Viper — composure: 7/10</div>
+<div class="memory-box"><div class="memory-label">Memory Summary</div>As Viper paces and the others discuss something quietly, you manage to stay hidden. Tension builds as Colonel Petrov enters and speaks in Russian. You decide whether to stay hidden or risk exposure by making a move. Meanwhile, Agent X approaches Viper at the bar to discuss escape routes. As they do so, Colonel Petrov watches them, his words like a snake hissing in your ear. The room holds its breath as every move could mean life or death. Agent X whispers to you about Colonel Petrov watching them, and Viper assures you that he&#x27;ll keep an eye on her. You realize the situation is dangerous; one wrong move could lead to catastrophic consequences.</div>
+</div>
+</body></html>

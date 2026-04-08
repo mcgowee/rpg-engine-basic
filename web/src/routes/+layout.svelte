@@ -67,6 +67,7 @@
 				<a href="/books" class:active={currentPath === '/books'}>Books</a>
 				<a href="/graphs" class:active={currentPath.startsWith('/graphs')}>Graphs</a>
 				<a href="/docs" class:active={currentPath.startsWith('/docs')}>Docs</a>
+				<a href="/playback" class:active={currentPath === '/playback'}>Playback</a>
 				<a href="/settings" class:active={currentPath === '/settings'}><Icon name="settings" size={14} /></a>
 			</nav>
 		{/if}
