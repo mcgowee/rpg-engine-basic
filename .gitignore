@@ -13,6 +13,9 @@ rpg.db
 # Settings (per-deployment)
 model_settings.json
 
+# Autoplay results
+results/
+
 # Runtime
 sessions/
 logs/
