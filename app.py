@@ -1963,6 +1963,22 @@ def ai_generate_scene():
     if not comfyui_client.download_image(comfyui_filename, local_path):
         return jsonify({"error": "Failed to save scene image"}), 500
 
+    # Record the scene image in the active game's history
+    session_key = _play_session_key(story_id, g.user_id)
+    if session_key in active_games:
+        state = active_games[session_key]
+        history = list(state.get("history") or [])
+        history.append(f"[SCENE_IMAGE:/images/scenes/{local_filename}]")
+        state["history"] = history
+        active_games[session_key] = state
+        # Auto-save
+        conn = get_db()
+        try:
+            _upsert_save(conn, story_id, g.user_id, 0, state)
+            conn.commit()
+        finally:
+            conn.close()
+
     return jsonify({
         "ok": True,
         "url": f"/images/scenes/{local_filename}",

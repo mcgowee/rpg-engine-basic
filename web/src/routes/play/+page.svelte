@@ -146,12 +146,16 @@
 				if (Array.isArray(hist) && hist.length > 0) {
 					for (const h of hist) {
 						const s = String(h);
-						const nl = s.indexOf('\n');
-						if (nl > 0 && s.startsWith('Player: ')) {
-							entries.push({ type: 'player', text: s.slice(8, nl).trim() });
-							entries.push({ type: 'narrator', text: s.slice(nl + 1).trim() });
+						if (s.startsWith('[SCENE_IMAGE:') && s.endsWith(']')) {
+							entries.push({ type: 'scene-image', text: s.slice(13, -1) });
 						} else {
-							entries.push({ type: 'narrator', text: s });
+							const nl = s.indexOf('\n');
+							if (nl > 0 && s.startsWith('Player: ')) {
+								entries.push({ type: 'player', text: s.slice(8, nl).trim() });
+								entries.push({ type: 'narrator', text: s.slice(nl + 1).trim() });
+							} else {
+								entries.push({ type: 'narrator', text: s });
+							}
 						}
 					}
 				}

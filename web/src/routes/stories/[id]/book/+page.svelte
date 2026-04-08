@@ -36,6 +36,18 @@
 
 	let sections = $derived(prose ? prose.split(/\n---\n|\n\n---\n\n/).map(s => s.trim()).filter(Boolean) : []);
 
+	// Extract scene images from history
+	let sceneImages = $derived.by((): string[] => {
+		const imgs: string[] = [];
+		for (const h of history) {
+			const s = String(h);
+			if (s.startsWith('[SCENE_IMAGE:') && s.endsWith(']')) {
+				imgs.push(s.slice(13, -1));
+			}
+		}
+		return imgs;
+	});
+
 	type CharPortrait = { key: string; label: string; portrait: string };
 	let charPortraits = $derived.by((): CharPortrait[] => {
 		const out: CharPortrait[] = [];
@@ -292,8 +304,19 @@
 			</button>
 		</div>
 
+		{#if sceneImages.length > 0}
+			<div class="book-scenes-note">
+				<p class="hint">This story includes {sceneImages.length} scene illustration{sceneImages.length === 1 ? '' : 's'} generated during play.</p>
+			</div>
+		{/if}
+
 		<div class="book-prose" transition:fade={{ duration: 300 }}>
 			{#each sections as section, i (i)}
+				{#if sceneImages[i]}
+					<div class="book-scene">
+						<img src={sceneImages[i]} alt="Scene illustration" />
+					</div>
+				{/if}
 				<div class="book-section">
 					{#each section.split('\n') as para}
 						{#if para.trim()}
@@ -340,6 +363,9 @@
 	.book-char { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
 	.book-char img { width: 80px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; }
 	.book-char-name { font-size: 0.78rem; color: #bdc1c6; }
+	.book-scenes-note { text-align: center; margin-bottom: 1rem; }
+	.book-scene { margin: 1.5rem -1rem; }
+	.book-scene img { width: 100%; height: auto; border-radius: 8px; display: block; }
 	.book-toolbar { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #2a2f38; }
 	.book-prose { font-size: 1.05rem; line-height: 1.75; color: #e8eaed; }
 	.book-section p { margin: 0 0 1rem; text-indent: 1.5rem; }
