@@ -2146,6 +2146,7 @@ Rules:
         # Ensure it starts with "I"
         if text and not text[0].isupper():
             text = text[0].upper() + text[1:]
+        logger.info("generate-player-action: turn=%s, action=%r", data.get("turn_number"), text[:100])
         return jsonify({"action": text})
     except Exception as e:
         logger.exception("generate-player-action failed")

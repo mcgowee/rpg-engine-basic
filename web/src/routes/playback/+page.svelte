@@ -93,7 +93,14 @@
 		const opts: RequestInit = { method, credentials: 'include', headers: { 'Content-Type': 'application/json' } };
 		if (body) opts.body = JSON.stringify(body);
 		const r = await fetch(`/api${path}`, opts);
-		return await r.json().catch(() => ({}));
+		const text = await r.text();
+		try {
+			const data = JSON.parse(text);
+			if (!r.ok && !data.error) data.error = `HTTP ${r.status}`;
+			return data;
+		} catch {
+			return { error: `HTTP ${r.status}: ${text.slice(0, 200)}` };
+		}
 	}
 
 	function parseMoods(data: Record<string, unknown>): Record<string, Record<string, number>> {
@@ -186,7 +193,14 @@
 					turn_number: i + 1,
 					total_turns: numTurns,
 				});
-				msg = String(genData.action ?? 'I look around.');
+				if (genData.error) {
+					const errMsg = String(genData.error);
+					console.error('generate-player-action error:', errMsg);
+					// Show error but keep playing with a fallback
+					msg = `[Action generation failed: ${errMsg.slice(0, 80)}]`;
+				} else {
+					msg = String(genData.action ?? 'I consider what to do next.');
+				}
 				generatedMessages = [...generatedMessages, msg];
 			}
 
