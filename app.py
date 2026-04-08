@@ -2080,6 +2080,118 @@ def delete_book(book_id: int):
     return jsonify({"ok": True})
 
 
+# ---------------------------------------------------------------------------
+# Playback scripts
+# ---------------------------------------------------------------------------
+
+PLAYBACK_SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "web", "static", "playback_scripts")
+
+
+@app.route("/ai/generate-player-action", methods=["POST"])
+@login_required
+def ai_generate_player_action():
+    """Generate what the player would naturally do next."""
+    data = request.get_json(silent=True) or {}
+    scene = (data.get("scene") or "").strip()
+    player_name = (data.get("player_name") or "the player").strip()
+    previous_actions = data.get("previous_actions", [])
+
+    if not scene:
+        return jsonify({"error": "scene is required"}), 400
+
+    prev_block = ""
+    if previous_actions:
+        prev_lines = [f"- {a}" for a in previous_actions[-5:]]
+        prev_block = f"\nYour previous actions:\n" + "\n".join(prev_lines)
+
+    prompt = f"""You are playing a text adventure as {player_name}. Based on the scene, write your next action. One sentence. First person. Be specific to what just happened. Don't repeat previous actions.
+
+Scene:
+{scene[:500]}
+{prev_block}
+
+Your action (one sentence, first person):"""
+
+    try:
+        llm = get_llm(get_model_for_role("tools"))
+        raw = llm.invoke(prompt)
+        text = _llm_result_to_text(raw).strip()
+        # Clean up — take first sentence only
+        text = text.split("\n")[0].strip()
+        if text.startswith('"') and text.endswith('"'):
+            text = text[1:-1]
+        if text.startswith("'") and text.endswith("'"):
+            text = text[1:-1]
+        return jsonify({"action": text})
+    except Exception as e:
+        logger.exception("generate-player-action failed")
+        return jsonify({"error": "Failed to generate action"}), 500
+
+
+@app.route("/playback-scripts", methods=["GET"])
+@login_required
+def list_playback_scripts():
+    """List saved playback scripts."""
+    os.makedirs(PLAYBACK_SCRIPTS_DIR, exist_ok=True)
+    scripts = []
+    for f in sorted(os.listdir(PLAYBACK_SCRIPTS_DIR)):
+        if not f.endswith(".json"):
+            continue
+        path = os.path.join(PLAYBACK_SCRIPTS_DIR, f)
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+            scripts.append({
+                "filename": f,
+                "name": data.get("name", f),
+                "story_title": data.get("story_title", ""),
+                "turns": len(data.get("messages", [])),
+                "created": data.get("created", ""),
+            })
+        except Exception:
+            continue
+    return jsonify(scripts)
+
+
+@app.route("/playback-scripts", methods=["POST"])
+@login_required
+def save_playback_script():
+    """Save a playback script."""
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    messages = data.get("messages", [])
+    if not messages:
+        return jsonify({"error": "messages is required"}), 400
+
+    os.makedirs(PLAYBACK_SCRIPTS_DIR, exist_ok=True)
+    from datetime import datetime, timezone
+    script = {
+        "name": name,
+        "story_id": data.get("story_id"),
+        "story_title": data.get("story_title", ""),
+        "messages": messages,
+        "created": datetime.now(timezone.utc).isoformat(),
+    }
+    filename = name.lower().replace(" ", "_").replace("/", "_")[:50] + ".json"
+    path = os.path.join(PLAYBACK_SCRIPTS_DIR, filename)
+    with open(path, "w") as f:
+        json.dump(script, f, indent=2, ensure_ascii=False)
+    return jsonify({"ok": True, "filename": filename}), 201
+
+
+@app.route("/playback-scripts/<filename>", methods=["GET"])
+@login_required
+def get_playback_script(filename: str):
+    """Load a playback script."""
+    path = os.path.join(PLAYBACK_SCRIPTS_DIR, filename)
+    if not os.path.exists(path):
+        return jsonify({"error": "Not found"}), 404
+    with open(path) as f:
+        return jsonify(json.load(f))
+
+
 # Cover image generation
 # ---------------------------------------------------------------------------
 
