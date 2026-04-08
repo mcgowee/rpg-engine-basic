@@ -1,7 +1,7 @@
 {
   "name": "narrator_with_memory",
-  "description": "Deprecated — identical to conversation. Kept so existing stories with subgraph_name narrator_with_memory keep working. Prefer conversation for new stories.",
-  "nodes": ["narrator", "memory"],
+  "description": "Level 2: Narrator + condense + memory. Narrator remembers previous turns via history and AI summary.",
+  "nodes": ["narrator", "condense", "memory"],
   "entry_point": {
     "router": "route_graph_entry",
     "mapping": {
@@ -9,7 +9,8 @@
     }
   },
   "edges": [
-    { "from": "narrator", "to": "memory" },
+    { "from": "narrator", "to": "condense" },
+    { "from": "condense", "to": "memory" },
     { "from": "memory", "to": "__end__" }
   ],
   "conditional_edges": []

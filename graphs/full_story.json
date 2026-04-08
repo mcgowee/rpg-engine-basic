@@ -1,0 +1,28 @@
+{
+  "name": "full_story",
+  "description": "Level 5: Complete story graph. Conditional routing skips mood+NPC+coda when no characters. Narrator gets the last word via coda.",
+  "nodes": ["narrator", "mood", "npc", "narrator_coda", "condense", "memory"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "narrator"
+    }
+  },
+  "edges": [
+    { "from": "mood", "to": "npc" },
+    { "from": "npc", "to": "narrator_coda" },
+    { "from": "narrator_coda", "to": "condense" },
+    { "from": "condense", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ],
+  "conditional_edges": [
+    {
+      "from": "narrator",
+      "router": "route_after_narrator",
+      "mapping": {
+        "npc": "mood",
+        "condense": "condense"
+      }
+    }
+  ]
+}

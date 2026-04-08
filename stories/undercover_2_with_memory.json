@@ -1,0 +1,14 @@
+{
+  "export_version": 1,
+  "title": "Undercover: With Memory",
+  "description": "A spy at a foreign embassy. Now the narrator remembers what happened.",
+  "genre": "thriller",
+  "opening": "You adjust your tie in the reflection of the embassy's glass doors. The invitation in your pocket is forged — but it's flawless. Inside, a gala is in full swing. Your mission: locate the safe in the ambassador's private study. You push through the doors into a wash of golden light and string music.",
+  "narrator_prompt": "You are the narrator for a spy thriller text adventure. Describe scenes in second person with tension and sensory detail. Keep responses to 2-3 paragraphs. End each beat with: What do you do?",
+  "narrator_model": "default",
+  "player_name": "Agent X",
+  "player_background": "A veteran intelligence operative working deep cover. You speak three languages, can pick most locks, and have a talent for reading people. Tonight's mission could make or break your career.",
+  "subgraph_name": "narrator_with_memory",
+  "notes": "Level 2 — Adds condense + memory nodes. The narrator now remembers previous turns. Compare with Level 1: reference something from an earlier turn and the narrator follows up. Check the Memory (AI summary) in the sidebar to see the rolling summary.",
+  "characters": {}
+}
