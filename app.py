@@ -2080,6 +2080,108 @@ def delete_book(book_id: int):
     return jsonify({"ok": True})
 
 
+@app.route("/ai/analyze-evaluation", methods=["POST"])
+@login_required
+def ai_analyze_evaluation():
+    """Take evaluation scores and generate actionable coding recommendations."""
+    from config import AZURE_ENDPOINT, AZURE_API_KEY
+
+    if not AZURE_ENDPOINT or not AZURE_API_KEY or AZURE_ENDPOINT.startswith("https://your-"):
+        return jsonify({"error": "Azure not configured"}), 503
+
+    data = request.get_json(silent=True) or {}
+    evaluation = data.get("evaluation", {})
+    game_title = data.get("game_title", "")
+    subgraph = data.get("subgraph", "")
+    turns = data.get("turns", [])
+
+    if not evaluation:
+        return jsonify({"error": "No evaluation data"}), 400
+
+    # Build context about the engine architecture
+    engine_context = """
+The RPG Engine architecture:
+- Narrator node: LLM generates scene descriptions. Has a "narrator_prompt" in the story that controls tone and style.
+- NPC node: each character has a "prompt" (personality instructions) and responds after the narrator.
+- Mood node: evaluates mood axes (UP/DOWN/SAME) before NPC speaks. Characters have named axes like "trust", "fear".
+- Condense node: LLM summarizes the story so far into memory_summary (~100 words).
+- Memory node: records each turn in history list.
+- Narrator coda: LLM writes a closing beat after NPCs speak, prompts the player.
+- Player action generator: LLM generates what the player says next (for automated testing).
+- Subgraphs wire these nodes together in different orders.
+
+Configurable per-story:
+- narrator_prompt: system instructions for the narrator LLM
+- character prompts: personality instructions per NPC
+- mood axes: named emotional scales per character
+- subgraph_name: which graph pipeline to use
+- player_name, player_background: who the player is
+"""
+
+    # Build the turn transcript summary
+    turn_summary = ""
+    for t in turns[:10]:
+        turn_summary += f"Turn {t.get('turn')}: Player: {t.get('message', '')[:60]} → Response: {t.get('response', '')[:100]}...\n"
+
+    prompt = f"""You are a senior game engineer analyzing playtest results for a text RPG engine. Based on the evaluation scores and the engine architecture, generate specific, actionable coding recommendations.
+
+Game: {game_title}
+Subgraph: {subgraph}
+
+Evaluation summary:
+{json.dumps(evaluation, indent=2)[:2000]}
+
+Turn transcript (abbreviated):
+{turn_summary}
+
+{engine_context}
+
+Generate a JSON response with specific recommendations. Each recommendation should say exactly WHAT to change, WHERE in the code/config, and WHY based on the evaluation data.
+
+{{
+  "analysis": {{
+    "primary_issue": "<the single biggest problem identified>",
+    "score_trend": "<are scores improving, degrading, or flat across turns?>",
+    "worst_turn": <turn number with lowest average score>,
+    "best_turn": <turn number with highest average score>
+  }},
+  "recommendations": [
+    {{
+      "priority": "high|medium|low",
+      "category": "narrator_prompt|character_prompt|mood_config|subgraph|condense|player_generator|new_node|story_content",
+      "title": "<short title>",
+      "description": "<what to change and why>",
+      "implementation": "<specific text to add/change, or code approach>",
+      "expected_impact": "<what improvement this should cause>"
+    }}
+  ],
+  "prompt_suggestions": {{
+    "narrator_prompt_additions": "<specific text to append to narrator_prompt to fix issues>",
+    "player_generator_improvements": "<how to improve auto-generated player actions>"
+  }}
+}}
+
+Respond with ONLY valid JSON, no markdown fences."""
+
+    try:
+        from llm.azure_provider import AzureProvider
+        azure = AzureProvider("analyst")
+        raw = azure.invoke(prompt)
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+        analysis = json.loads(text)
+        return jsonify({"analysis": analysis})
+    except json.JSONDecodeError:
+        return jsonify({"analysis": {"raw_response": raw[:2000], "parse_error": True}})
+    except Exception as e:
+        logger.exception("Azure analysis failed")
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+
+
 # ---------------------------------------------------------------------------
 # Playback scripts
 # ---------------------------------------------------------------------------

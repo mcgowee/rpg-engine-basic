@@ -58,9 +58,27 @@
 		suggestions?: string[];
 		parse_error?: boolean;
 	};
+	type Recommendation = {
+		priority: string;
+		category: string;
+		title: string;
+		description: string;
+		implementation: string;
+		expected_impact: string;
+	};
+	type Analysis = {
+		analysis?: { primary_issue?: string; score_trend?: string; worst_turn?: number; best_turn?: number };
+		recommendations?: Recommendation[];
+		prompt_suggestions?: { narrator_prompt_additions?: string; player_generator_improvements?: string };
+		raw_response?: string;
+		parse_error?: boolean;
+	};
 	let evaluation = $state<Evaluation | null>(null);
 	let evaluating = $state(false);
 	let evalError = $state('');
+	let analysis = $state<Analysis | null>(null);
+	let analyzing = $state(false);
+	let analysisError = $state('');
 	let activeTab = $state<'playback' | 'evaluate'>('playback');
 
 	// Save script
@@ -333,6 +351,36 @@
 		}
 	}
 
+	async function runAnalysis() {
+		if (!evaluation) return;
+		analyzing = true;
+		analysisError = '';
+		analysis = null;
+		try {
+			const data = await apiCall('POST', '/ai/analyze-evaluation', {
+				evaluation,
+				game_title: gameTitle,
+				subgraph: subgraphName,
+				turns: turns.map(t => ({ turn: t.turn, message: t.message, response: t.response.slice(0, 200) })),
+			});
+			if (data.error) {
+				analysisError = String(data.error);
+			} else if (data.analysis) {
+				analysis = data.analysis as Analysis;
+			}
+		} catch {
+			analysisError = 'Network error';
+		} finally {
+			analyzing = false;
+		}
+	}
+
+	function priorityColor(p: string): string {
+		if (p === 'high') return '#f28b82';
+		if (p === 'medium') return '#f6b93b';
+		return '#81c995';
+	}
+
 	function scoreColor(score: number): string {
 		if (score >= 8) return '#81c995';
 		if (score >= 6) return '#8ab4f8';
@@ -536,7 +584,86 @@
 							<button type="button" class="btn" onclick={runEvaluation}>
 								{evaluating ? 'Re-evaluating...' : 'Re-evaluate'}
 							</button>
+							<button type="button" class="btn primary" disabled={analyzing} onclick={runAnalysis}>
+								<Icon name="zap" size={14} /> {analyzing ? 'Analyzing...' : 'Get Recommendations'}
+							</button>
 						</div>
+
+						{#if analysisError}<p class="err">{analysisError}</p>{/if}
+
+						{#if analyzing}
+							<div class="eval-loading" style="margin-top:1rem">
+								<span class="spinner"></span> Azure is generating actionable recommendations...
+							</div>
+						{/if}
+
+						{#if analysis}
+							<div class="recs-panel" transition:fade={{ duration: 200 }}>
+								{#if analysis.analysis}
+									<div class="recs-overview">
+										<h3>Analysis</h3>
+										<dl class="recs-kv">
+											{#if analysis.analysis.primary_issue}
+												<dt>Primary Issue</dt><dd>{analysis.analysis.primary_issue}</dd>
+											{/if}
+											{#if analysis.analysis.score_trend}
+												<dt>Score Trend</dt><dd>{analysis.analysis.score_trend}</dd>
+											{/if}
+											{#if analysis.analysis.best_turn}
+												<dt>Best Turn</dt><dd>Turn {analysis.analysis.best_turn}</dd>
+											{/if}
+											{#if analysis.analysis.worst_turn}
+												<dt>Worst Turn</dt><dd>Turn {analysis.analysis.worst_turn}</dd>
+											{/if}
+										</dl>
+									</div>
+								{/if}
+
+								{#if analysis.recommendations?.length}
+									<h3>Recommendations</h3>
+									{#each analysis.recommendations as rec, i (i)}
+										<div class="rec-card">
+											<div class="rec-header">
+												<span class="rec-priority" style="color:{priorityColor(rec.priority)}">{rec.priority.toUpperCase()}</span>
+												<span class="rec-category">{rec.category}</span>
+												<strong class="rec-title">{rec.title}</strong>
+											</div>
+											<p class="rec-desc">{rec.description}</p>
+											<div class="rec-impl">
+												<strong>Implementation:</strong>
+												<pre class="rec-code">{rec.implementation}</pre>
+											</div>
+											<p class="rec-impact"><strong>Expected impact:</strong> {rec.expected_impact}</p>
+										</div>
+									{/each}
+								{/if}
+
+								{#if analysis.prompt_suggestions}
+									<div class="prompt-suggestions">
+										<h3>Prompt Suggestions</h3>
+										{#if analysis.prompt_suggestions.narrator_prompt_additions}
+											<div class="suggestion-block">
+												<strong>Add to narrator prompt:</strong>
+												<pre class="rec-code">{analysis.prompt_suggestions.narrator_prompt_additions}</pre>
+											</div>
+										{/if}
+										{#if analysis.prompt_suggestions.player_generator_improvements}
+											<div class="suggestion-block">
+												<strong>Player action generator:</strong>
+												<pre class="rec-code">{analysis.prompt_suggestions.player_generator_improvements}</pre>
+											</div>
+										{/if}
+									</div>
+								{/if}
+
+								{#if analysis.parse_error && analysis.raw_response}
+									<div class="eval-section">
+										<h3>Raw Response (parse failed)</h3>
+										<pre class="rec-code">{analysis.raw_response}</pre>
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -750,7 +877,25 @@
 	.score-table th { font-size: 0.75rem; }
 	.score-table td { text-align: center; }
 	.note-cell { text-align: left !important; font-size: 0.82rem; color: #9aa0a6; max-width: 250px; }
-	.eval-actions { margin-top: 1.5rem; }
+	.eval-actions { margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+	.recs-panel { margin-top: 2rem; }
+	.recs-overview { background: #1a1d23; border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem; margin-bottom: 1.5rem; }
+	.recs-kv { display: grid; grid-template-columns: 8rem 1fr; gap: 0.3rem 0.75rem; font-size: 0.9rem; margin: 0.5rem 0 0; }
+	.recs-kv dt { color: #9aa0a6; font-weight: 600; margin: 0; }
+	.recs-kv dd { margin: 0; color: #bdc1c6; }
+	.rec-card { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem; background: #1a1d23; }
+	.rec-header { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem; }
+	.rec-priority { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; }
+	.rec-category { font-size: 0.72rem; color: #8ab4f8; background: #111827; padding: 0.15rem 0.4rem; border-radius: 4px; }
+	.rec-title { font-size: 0.95rem; }
+	.rec-desc { font-size: 0.88rem; color: #bdc1c6; line-height: 1.5; margin: 0 0 0.5rem; }
+	.rec-impl { margin-bottom: 0.5rem; }
+	.rec-impl strong { font-size: 0.82rem; color: #9aa0a6; }
+	.rec-code { background: #0f1114; border: 1px solid #2a2f38; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82rem; white-space: pre-wrap; margin: 0.25rem 0 0; color: #e8eaed; overflow-x: auto; }
+	.rec-impact { font-size: 0.85rem; color: #81c995; margin: 0; }
+	.prompt-suggestions { margin-top: 1.5rem; }
+	.suggestion-block { margin-bottom: 1rem; }
+	.suggestion-block strong { font-size: 0.88rem; display: block; margin-bottom: 0.25rem; }
 
 	@media (max-width: 800px) { .playback-layout { flex-direction: column; } .playback-sidebar { width: 100%; max-height: none; } }
 </style>
