@@ -466,10 +466,25 @@
 	async function copyReport() {
 		const report = buildEvalReport();
 		try {
-			await navigator.clipboard.writeText(report);
-			toast('Report copied to clipboard', 'success');
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(report);
+				toast('Report copied to clipboard', 'success');
+			} else {
+				// Fallback for non-HTTPS or older browsers
+				const textarea = document.createElement('textarea');
+				textarea.value = report;
+				textarea.style.position = 'fixed';
+				textarea.style.opacity = '0';
+				document.body.appendChild(textarea);
+				textarea.select();
+				document.execCommand('copy');
+				document.body.removeChild(textarea);
+				toast('Report copied to clipboard', 'success');
+			}
 		} catch {
-			toast('Copy failed', 'error');
+			// If all else fails, download instead
+			downloadReport();
+			toast('Copy failed — downloaded as file instead', 'warning');
 		}
 	}
 
@@ -690,12 +705,6 @@
 							<button type="button" class="btn primary" disabled={analyzing} onclick={runAnalysis}>
 								<Icon name="zap" size={14} /> {analyzing ? 'Analyzing...' : 'Get Recommendations'}
 							</button>
-							<button type="button" class="btn" onclick={copyReport}>
-								<Icon name="copy" size={14} /> Copy Report
-							</button>
-							<button type="button" class="btn" onclick={downloadReport}>
-								<Icon name="download" size={14} /> Download .md
-							</button>
 						</div>
 
 						{#if analysisError}<p class="err">{analysisError}</p>{/if}
@@ -771,6 +780,20 @@
 										<pre class="rec-code">{analysis.raw_response}</pre>
 									</div>
 								{/if}
+							</div>
+						{/if}
+
+						{#if evaluation || analysis}
+							<div class="report-actions">
+								<h3>Export Report</h3>
+								<div class="report-buttons">
+									<button type="button" class="btn" onclick={copyReport}>
+										<Icon name="copy" size={14} /> Copy to Clipboard
+									</button>
+									<button type="button" class="btn" onclick={downloadReport}>
+										<Icon name="download" size={14} /> Download Markdown
+									</button>
+								</div>
 							</div>
 						{/if}
 					</div>
@@ -1009,6 +1032,9 @@
 	.rec-impl strong { font-size: 0.82rem; color: #9aa0a6; }
 	.rec-code { background: #0f1114; border: 1px solid #2a2f38; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82rem; white-space: pre-wrap; margin: 0.25rem 0 0; color: #e8eaed; overflow-x: auto; }
 	.rec-impact { font-size: 0.85rem; color: #81c995; margin: 0; }
+	.report-actions { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #2a2f38; }
+	.report-actions h3 { margin: 0 0 0.5rem; }
+	.report-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 	.prompt-suggestions { margin-top: 1.5rem; }
 	.suggestion-block { margin-bottom: 1rem; }
 	.suggestion-block strong { font-size: 0.88rem; display: block; margin-bottom: 0.25rem; }

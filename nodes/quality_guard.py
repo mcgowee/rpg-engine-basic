@@ -37,33 +37,25 @@ def quality_guard_node(state: dict) -> dict:
         logger.error(f"Quality guard: failed to get LLM: {e}")
         return {}
 
-    prompt = f"""You are a strict quality enforcer for a text adventure game. Your job is to PREVENT the narrator from being boring or repetitive.
+    prompt = f"""You are a creative writing coach helping improve a text adventure story. Read the recent turns and suggest what should happen NEXT to make the story more exciting.
 
-Read the recent turns below. If you detect ANY of these problems, you MUST issue a forceful correction. Do NOT say "NONE" unless the story is genuinely fresh and engaging.
-
-Recent turns:
+Recent story turns:
 {recent_text[:1500]}
 
-Player's next message: {message}
+The player is about to say: {message}
 
-Story so far: {memory_summary[:300]}
+Story summary: {memory_summary[:300]}
 
-Problems to detect (be aggressive — it's better to over-correct than let boredom slide):
+Your task: Write 1-3 short creative directions for what should happen next. Each direction should make the story MORE interesting. Think about:
+- Has the story been covering the same ground? If so, suggest a NEW direction.
+- Has nothing surprising happened recently? Suggest a twist or interruption.
+- Are characters repeating themselves? Suggest a revelation or conflict.
+- Is the mood stuck? Suggest a tonal shift.
 
-1. REPETITION: Same descriptions, same emotions, same sentence patterns? FORCE a completely different approach.
-2. PASSIVITY: Player is just talking/looking/thinking? DEMAND that something unexpected HAPPENS — an interruption, a discovery, a threat.
-3. STAGNATION: No new plot development in 2+ turns? REQUIRE a twist, revelation, or complication RIGHT NOW.
-4. MONOTONE: Same emotional tone every turn? INSIST on a shift — if it's been tense, force a moment of dark humor. If romantic, introduce danger.
-5. DIALOGUE LOOPS: Characters saying similar things? MANDATE new topics, secrets revealed, or arguments.
+Write each direction on its own line starting with a dash. Be specific and creative.
+If the story is already exciting and varied, write: NONE
 
-Write 1-3 FORCEFUL instructions. Start each with "YOU MUST" — these are not suggestions, they are requirements.
-
-Example:
-- YOU MUST introduce an unexpected interruption that changes the scene completely
-- YOU MUST have a character reveal a secret or lie about something
-- YOU MUST shift the emotional tone — break the pattern with surprise or humor
-
-Instructions (or NONE only if truly engaging):"""
+Directions:"""
 
     try:
         raw = llm_result_to_text(llm.invoke(prompt)).strip()
