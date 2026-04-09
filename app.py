@@ -2087,6 +2087,85 @@ def delete_book(book_id: int):
 PLAYBACK_SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "web", "static", "playback_scripts")
 
 
+@app.route("/ai/evaluate-playback", methods=["POST"])
+@login_required
+def ai_evaluate_playback():
+    """Send playback results to Azure for evaluation."""
+    from config import AZURE_ENDPOINT, AZURE_API_KEY, AZURE_DEPLOYMENT, AZURE_API_VERSION
+
+    if not AZURE_ENDPOINT or not AZURE_API_KEY or AZURE_ENDPOINT.startswith("https://your-"):
+        return jsonify({"error": "Azure not configured. Add AZURE_ENDPOINT and AZURE_API_KEY to .env"}), 503
+
+    data = request.get_json(silent=True) or {}
+    game_title = data.get("game_title", "")
+    turns = data.get("turns", [])
+    opening = data.get("opening", "")
+
+    if not turns:
+        return jsonify({"error": "No turns to evaluate"}), 400
+
+    # Build the transcript for the judge
+    transcript_parts = []
+    if opening:
+        transcript_parts.append(f"[Opening]: {opening[:300]}")
+    for t in turns:
+        transcript_parts.append(f"[Player Turn {t.get('turn', '?')}]: {t.get('message', '')}")
+        resp = t.get("response", "")
+        transcript_parts.append(f"[Response]: {resp[:500]}")
+    transcript = "\n\n".join(transcript_parts)
+
+    prompt = f"""You are an expert evaluator of interactive fiction and text adventure games. Analyze this play session and provide detailed feedback.
+
+Game: {game_title}
+Turns: {len(turns)}
+
+Transcript:
+{transcript}
+
+Evaluate the following and provide a JSON response:
+
+{{
+  "overall_score": <1-10>,
+  "summary": "<2-3 sentence overall assessment>",
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "weaknesses": ["<weakness 1>", "<weakness 2>"],
+  "turn_scores": [
+    {{
+      "turn": 1,
+      "relevance": <1-10 did the response address what the player said>,
+      "prose_quality": <1-10 writing quality, atmosphere, detail>,
+      "engagement": <1-10 does this make you want to keep playing>,
+      "note": "<brief note about this turn>"
+    }}
+  ],
+  "consistency": "<any contradictions between turns?>",
+  "pacing": "<is the story moving at a good pace?>",
+  "suggestions": ["<improvement suggestion 1>", "<suggestion 2>"]
+}}
+
+Respond with ONLY valid JSON, no markdown fences."""
+
+    try:
+        from llm.azure_provider import AzureProvider
+        azure = AzureProvider("judge")
+        raw = azure.invoke(prompt)
+        text = raw.strip()
+        # Strip markdown fences if present
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+        evaluation = json.loads(text)
+        return jsonify({"evaluation": evaluation})
+    except json.JSONDecodeError as e:
+        logger.warning("Azure evaluation returned invalid JSON: %s", str(e))
+        return jsonify({"evaluation": {"summary": raw[:1000], "parse_error": True}})
+    except Exception as e:
+        logger.exception("Azure evaluation failed")
+        return jsonify({"error": f"Azure evaluation failed: {str(e)}"}), 500
+
+
 @app.route("/ai/generate-player-action", methods=["POST"])
 @login_required
 def ai_generate_player_action():

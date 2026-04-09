@@ -46,6 +46,23 @@
 	let totalTime = $state(0);
 	let error = $state('');
 
+	// Evaluation
+	type Evaluation = {
+		overall_score?: number;
+		summary?: string;
+		strengths?: string[];
+		weaknesses?: string[];
+		turn_scores?: { turn: number; relevance: number; prose_quality: number; engagement: number; note: string }[];
+		consistency?: string;
+		pacing?: string;
+		suggestions?: string[];
+		parse_error?: boolean;
+	};
+	let evaluation = $state<Evaluation | null>(null);
+	let evaluating = $state(false);
+	let evalError = $state('');
+	let activeTab = $state<'playback' | 'evaluate'>('playback');
+
 	// Save script
 	let scriptName = $state('');
 	let savingScript = $state(false);
@@ -293,6 +310,36 @@
 		return '#81c995';
 	}
 
+	async function runEvaluation() {
+		evaluating = true;
+		evalError = '';
+		evaluation = null;
+		try {
+			const data = await apiCall('POST', '/ai/evaluate-playback', {
+				game_title: gameTitle,
+				opening: openingText,
+				turns: turns.map(t => ({ turn: t.turn, message: t.message, response: t.response })),
+			});
+			if (data.error) {
+				evalError = String(data.error);
+			} else if (data.evaluation) {
+				evaluation = data.evaluation as Evaluation;
+				activeTab = 'evaluate';
+			}
+		} catch {
+			evalError = 'Network error';
+		} finally {
+			evaluating = false;
+		}
+	}
+
+	function scoreColor(score: number): string {
+		if (score >= 8) return '#81c995';
+		if (score >= 6) return '#8ab4f8';
+		if (score >= 4) return '#f6b93b';
+		return '#f28b82';
+	}
+
 	async function reset() {
 		playState = 'idle';
 		turns = [];
@@ -395,6 +442,105 @@
 			{#if error}<p class="err">{error}</p>{/if}
 		</div>
 	{:else}
+		<!-- Tab bar -->
+		{#if turns.length > 0}
+			<div class="tab-bar">
+				<button type="button" class="tab-btn" class:active={activeTab === 'playback'} onclick={() => activeTab = 'playback'}>Playback</button>
+				<button type="button" class="tab-btn" class:active={activeTab === 'evaluate'} onclick={() => activeTab = 'evaluate'}>Evaluate</button>
+			</div>
+		{/if}
+
+		{#if activeTab === 'evaluate' && turns.length > 0}
+			<!-- Evaluate tab -->
+			<div class="eval-panel">
+				{#if !evaluation && !evaluating}
+					<div class="eval-start">
+						<h2>AI Evaluation</h2>
+						<p>Send this play session to Azure GPT-4o-mini for quality analysis. The judge evaluates relevance, prose quality, engagement, consistency, and pacing.</p>
+						<button type="button" class="btn primary" disabled={evaluating} onclick={runEvaluation}>
+							<Icon name="zap" size={14} /> Run Evaluation
+						</button>
+						{#if evalError}<p class="err">{evalError}</p>{/if}
+					</div>
+				{:else if evaluating}
+					<div class="eval-loading">
+						<span class="spinner"></span> Azure is evaluating {turns.length} turns...
+					</div>
+				{:else if evaluation}
+					<div class="eval-results" transition:fade={{ duration: 200 }}>
+						{#if evaluation.overall_score}
+							<div class="eval-overall">
+								<div class="eval-score" style="color:{scoreColor(evaluation.overall_score)}">{evaluation.overall_score}<span class="score-max">/10</span></div>
+								<p class="eval-summary">{evaluation.summary ?? ''}</p>
+							</div>
+						{/if}
+
+						{#if evaluation.strengths?.length}
+							<div class="eval-section">
+								<h3>Strengths</h3>
+								<ul>{#each evaluation.strengths as s}<li class="strength">{s}</li>{/each}</ul>
+							</div>
+						{/if}
+
+						{#if evaluation.weaknesses?.length}
+							<div class="eval-section">
+								<h3>Weaknesses</h3>
+								<ul>{#each evaluation.weaknesses as w}<li class="weakness">{w}</li>{/each}</ul>
+							</div>
+						{/if}
+
+						{#if evaluation.consistency}
+							<div class="eval-section">
+								<h3>Consistency</h3>
+								<p>{evaluation.consistency}</p>
+							</div>
+						{/if}
+
+						{#if evaluation.pacing}
+							<div class="eval-section">
+								<h3>Pacing</h3>
+								<p>{evaluation.pacing}</p>
+							</div>
+						{/if}
+
+						{#if evaluation.turn_scores?.length}
+							<div class="eval-section">
+								<h3>Per-Turn Scores</h3>
+								<table class="score-table">
+									<thead>
+										<tr><th>Turn</th><th>Relevance</th><th>Prose</th><th>Engage</th><th>Note</th></tr>
+									</thead>
+									<tbody>
+										{#each evaluation.turn_scores as ts (ts.turn)}
+											<tr>
+												<td>{ts.turn}</td>
+												<td style="color:{scoreColor(ts.relevance)}">{ts.relevance}</td>
+												<td style="color:{scoreColor(ts.prose_quality)}">{ts.prose_quality}</td>
+												<td style="color:{scoreColor(ts.engagement)}">{ts.engagement}</td>
+												<td class="note-cell">{ts.note}</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						{/if}
+
+						{#if evaluation.suggestions?.length}
+							<div class="eval-section">
+								<h3>Suggestions</h3>
+								<ul>{#each evaluation.suggestions as s}<li>{s}</li>{/each}</ul>
+							</div>
+						{/if}
+
+						<div class="eval-actions">
+							<button type="button" class="btn" onclick={runEvaluation}>
+								{evaluating ? 'Re-evaluating...' : 'Re-evaluate'}
+							</button>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{:else}
 		<div class="playback-layout">
 			<div class="playback-main">
 				<div class="controls">
@@ -507,6 +653,7 @@
 				</div>
 			</aside>
 		</div>
+		{/if}
 	{/if}
 </section>
 
@@ -574,5 +721,36 @@
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; margin-top: 0.5rem; }
+	/* Tab bar */
+	.tab-bar { display: flex; gap: 0; margin-bottom: 1rem; }
+	.tab-btn { padding: 0.5rem 1.25rem; border: 1px solid #2a2f38; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; font-size: 0.9rem; }
+	.tab-btn:first-child { border-radius: 8px 0 0 8px; }
+	.tab-btn:last-child { border-radius: 0 8px 8px 0; }
+	.tab-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+
+	/* Evaluate tab */
+	.eval-panel { max-width: 800px; }
+	.eval-start { text-align: center; padding: 2rem; border: 1px solid #2a2f38; border-radius: 12px; background: #1a1d23; }
+	.eval-start h2 { margin: 0 0 0.5rem; }
+	.eval-start p { color: #bdc1c6; margin: 0 0 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; line-height: 1.5; }
+	.eval-loading { text-align: center; padding: 3rem; color: #9aa0a6; }
+	.eval-results { padding: 0; }
+	.eval-overall { text-align: center; margin-bottom: 2rem; padding: 1.5rem; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 12px; }
+	.eval-score { font-size: 3rem; font-weight: 700; }
+	.score-max { font-size: 1.2rem; color: #5f6368; font-weight: 400; }
+	.eval-summary { color: #bdc1c6; margin: 0.5rem 0 0; line-height: 1.5; font-size: 0.95rem; }
+	.eval-section { margin-bottom: 1.5rem; }
+	.eval-section h3 { font-size: 1rem; margin: 0 0 0.5rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
+	.eval-section ul { padding-left: 1.25rem; margin: 0; }
+	.eval-section li { margin-bottom: 0.3rem; font-size: 0.9rem; color: #bdc1c6; line-height: 1.5; }
+	.eval-section p { font-size: 0.9rem; color: #bdc1c6; line-height: 1.5; }
+	.strength { color: #81c995 !important; }
+	.weakness { color: #f6b93b !important; }
+	.score-table { width: 100%; font-size: 0.85rem; }
+	.score-table th { font-size: 0.75rem; }
+	.score-table td { text-align: center; }
+	.note-cell { text-align: left !important; font-size: 0.82rem; color: #9aa0a6; max-width: 250px; }
+	.eval-actions { margin-top: 1.5rem; }
+
 	@media (max-width: 800px) { .playback-layout { flex-direction: column; } .playback-sidebar { width: 100%; max-height: none; } }
 </style>
