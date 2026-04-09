@@ -133,6 +133,9 @@
 <section class="settings">
 	<h1><Icon name="settings" size={24} /> Settings</h1>
 	<p class="lede">Configure which AI models are used for each role in the engine.</p>
+	<div class="settings-hero">
+		<img src="/images/settings-models.png" alt="Model configuration illustration" />
+	</div>
 
 	{#if loading}
 		<p class="muted"><span class="spinner"></span> Loading models…</p>
@@ -229,6 +232,8 @@
 <style>
 	.settings { max-width: 800px; margin: 0 auto; padding: 0 1rem 3rem; }
 	.lede { color: #9aa0a6; margin: 0 0 2rem; }
+	.settings-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.settings-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
 	.section { margin-bottom: 2.5rem; }
 	.section h2 { font-size: 1.2rem; margin: 0 0 0.5rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
 	.hint { font-size: 0.82rem; color: #9aa0a6; margin: 0.3rem 0; line-height: 1.5; }
@@ -264,4 +269,14 @@
 	.cascade-step { padding: 0.5rem 1.25rem; border: 1px solid #2a2f38; border-radius: 8px; background: #1a1d23; font-size: 0.88rem; text-align: center; }
 	.cascade-step.active { border-color: #1a73e8; background: #111827; }
 	.cascade-arrow { display: block; color: #5f6368; font-size: 0.75rem; margin-top: 0.15rem; }
+	:global([data-theme="light"]) .section h2 { border-bottom-color: #dfe3e8; }
+	:global([data-theme="light"]) .role-card { background: #f8fafc; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .role-desc { color: #334155; }
+	:global([data-theme="light"]) .is-default { background: #eefbf0; }
+	:global([data-theme="light"]) .model-table th { background: #f1f5f9; color: #4b5563; }
+	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
+	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }
+	:global([data-theme="light"]) .cascade-step { background: #f8fafc; border-color: #dfe3e8; color: #1f2937; }
+	:global([data-theme="light"]) .cascade-step.active { background: #e8f1ff; border-color: #1a73e8; color: #0b3f84; }
+	:global([data-theme="light"]) .settings-hero { border-color: #dfe3e8; }
 </style>

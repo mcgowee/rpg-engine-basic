@@ -22,13 +22,58 @@ STORIES_DIR = os.path.join(os.path.dirname(__file__), "..", "stories")
 PORTRAITS_DIR = os.path.join(os.path.dirname(__file__), "..", "web", "static", "images", "portraits")
 
 
+def portrait_style_suffix(genre: str) -> str:
+    """Tailor ComfyUI prompt ending by genre (romance/comedy → cute anime; drama → corporate anime)."""
+    g = (genre or "").lower()
+    if g in ("romance", "comedy"):
+        return (
+            "cute anime style portrait, cel-shaded, soft warm lighting, large expressive eyes, "
+            "friendly approachable face, head and shoulders, cozy slice-of-life mood"
+        )
+    if g == "drama":
+        return (
+            "stylized cartoon anime portrait, business professionals conducting a job interview, "
+            "modern glass-walled conference room daylight, sharp office attire, attentive interviewer "
+            "expression facing the candidate, cel-shaded, clean character design, head and shoulders, "
+            "subtle blurred meeting table or chairs in background"
+        )
+    if g == "thriller":
+        return (
+            "anime spy thriller portrait, seasoned intelligence operative, sharp observant eyes, "
+            "controlled expression, evening formal or tactical-chic attire, cool cinematic rim light, "
+            "cel-shaded, dangerous competence, head and shoulders, dark moody background"
+        )
+    return (
+        "portrait, head and shoulders, dark atmospheric background, RPG character art, "
+        "detailed face, cinematic lighting"
+    )
+
+
 def get_visual_description(character_name: str, personality: str, genre: str) -> str:
     """Use the LLM to convert a personality prompt to a visual description."""
     try:
         from llm import get_llm
         llm = get_llm()
+        style_hint = ""
+        gl = (genre or "").lower()
+        if gl in ("romance", "comedy"):
+            style_hint = (
+                "\nStyle hint: describe a cute anime-inspired look (slice-of-life romance VN) — "
+                "soft features, expressive eyes, warm palette for hair/outfit; keep it PG.\n"
+            )
+        elif gl == "drama":
+            style_hint = (
+                "\nStyle hint: corporate job interview — they are interviewers in a glass conference room, "
+                "polished office clothing, professional grooming, evaluating or welcoming the candidate; "
+                "stylized cartoon/anime portrait, not photorealistic.\n"
+            )
+        elif gl == "thriller":
+            style_hint = (
+                "\nStyle hint: spy thriller — seasoned intelligence types, formal gala or field-appropriate dress, "
+                "sharp eyes, composed face; stylized anime portrait, not photorealistic.\n"
+            )
         prompt = f"""Based on this RPG character description, write a short physical appearance description (2-3 sentences) for generating a portrait image. Focus on: face, hair, clothing, expression, age, build. Do not include personality or behavior — only visual details.
-
+{style_hint}
 Character name: {character_name}
 Genre: {genre}
 Personality description: {personality}
@@ -40,6 +85,19 @@ Physical appearance:"""
         return str(getattr(result, 'content', result)).strip()
     except Exception as e:
         print(f"  LLM failed: {e}")
+        gl = (genre or "").lower()
+        if gl in ("romance", "comedy"):
+            return f"{character_name}, young adult, cute anime slice-of-life character, warm expressive features"
+        if gl == "drama":
+            return (
+                f"{character_name}, corporate job interviewer, business professional, stylized anime cartoon look, "
+                "sharp office attire, glass conference room, evaluating candidate"
+            )
+        if gl == "thriller":
+            return (
+                f"{character_name}, seasoned intelligence operative, sharp observant eyes, "
+                "composed expression, formal or field-appropriate attire, anime spy thriller portrait"
+            )
         return f"{character_name}, {genre} character"
 
 
@@ -98,11 +156,27 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--comfyui", default=COMFYUI_URL)
     parser.add_argument("--skip-llm", action="store_true", help="Skip LLM visual description, use raw personality")
+    parser.add_argument(
+        "--only",
+        metavar="FILE",
+        help="Only process this story JSON filename (e.g. meet_cute_in_theory.json)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Regenerate portraits even if the image file already exists",
+    )
     args = parser.parse_args()
 
     os.makedirs(PORTRAITS_DIR, exist_ok=True)
 
     stories = sorted(f for f in os.listdir(STORIES_DIR) if f.endswith(".json"))
+    if args.only:
+        if args.only not in stories:
+            print(f"Unknown story file: {args.only}")
+            print(f"Available: {', '.join(stories)}")
+            sys.exit(1)
+        stories = [args.only]
     total = 0
 
     for story_file in stories:
@@ -128,8 +202,12 @@ def main():
 
             # Check if portrait already exists
             existing = char_data.get("portrait", "")
-            if existing and os.path.exists(os.path.join(PORTRAITS_DIR, existing)):
-                print(f"  [{char_key}] Portrait exists: {existing}, skipping")
+            if (
+                existing
+                and os.path.exists(os.path.join(PORTRAITS_DIR, existing))
+                and not args.force
+            ):
+                print(f"  [{char_key}] Portrait exists: {existing}, skipping (use --force to regenerate)")
                 continue
 
             print(f"  [{char_key}] Getting visual description...")
@@ -139,7 +217,7 @@ def main():
                 visual_desc = get_visual_description(label, personality, genre)
             print(f"  [{char_key}] Visual: {visual_desc[:80]}...")
 
-            comfyui_prompt = f"{visual_desc}, portrait, head and shoulders, dark atmospheric background, RPG character art, detailed face, cinematic lighting"
+            comfyui_prompt = f"{visual_desc}, {portrait_style_suffix(genre)}"
 
             print(f"  [{char_key}] Generating portrait (512x768)...")
             prefix = f"portrait_seed_{char_key}"

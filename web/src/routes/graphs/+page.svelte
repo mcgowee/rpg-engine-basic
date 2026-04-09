@@ -131,6 +131,9 @@
 			New Subgraph
 		</button>
 	</div>
+	<div class="hub-hero">
+		<img src="/images/graph-empty.png" alt="Graph blueprint illustration" />
+	</div>
 
 		{#if subgraphError}
 			<p class="err">{subgraphError}</p>
@@ -287,6 +290,8 @@
 	.hub-loading { margin: 1rem 0.5rem; color: #9aa0a6; }
 	.hub-templates { margin-top: 0.5rem; }
 	.sep { margin: 2rem 0.5rem; border: none; border-top: 1px solid #2a2f38; max-width: 1200px; }
+	.hub-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.hub-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
 	.head-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 	.hub-templates h2 { margin: 0; font-size: 1.35rem; }
 	.muted { color: #9aa0a6; }
@@ -309,4 +314,13 @@
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
 	.linkish { background: none; border: none; padding: 0; color: #8ab4f8; cursor: pointer; text-decoration: underline; font: inherit; }
 	.linkish.danger { color: #f28b82; }
+	:global([data-theme="light"]) .sep { border-top-color: #dfe3e8; }
+	:global([data-theme="light"]) .tbl th { background: #f1f5f9; color: #4b5563; }
+	:global([data-theme="light"]) .tbl th,
+	:global([data-theme="light"]) .tbl td { border-color: #dfe3e8; }
+	:global([data-theme="light"]) .builtin-row { background: #f8fafc; }
+	:global([data-theme="light"]) .not-compiled-row { background: #fff7ed; }
+	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
+	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }
+	:global([data-theme="light"]) .hub-hero { border-color: #dfe3e8; }
 </style>

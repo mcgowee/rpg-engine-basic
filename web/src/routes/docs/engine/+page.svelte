@@ -45,8 +45,15 @@
 
 <section class="docs">
 	<p class="breadcrumb"><a href="/docs">Docs</a> / Engine Reference</p>
+	<div class="doc-hero">
+		<img src="/images/docs-engine-hero.png" alt="Graph nodes and routes visualization" />
+	</div>
 	<h1>Engine Reference</h1>
 	<p class="lede">How nodes, routers, edges, and state work together to run a story. For graph builders who want to create custom subgraphs.</p>
+	<p class="see-also">
+		<strong>Choosing a builtin pipeline?</strong>
+		<a href="/docs/subgraphs">Subgraphs guide</a> — compares every shipped subgraph and when to use each.
+	</p>
 
 	{#if loading}
 		<p class="muted">Loading registry…</p>
@@ -138,6 +145,12 @@
 			<p>These are pre-built graphs you can use or clone from the <a href="/graphs">Graph Editor</a>. They're listed from simplest to most complex.</p>
 
 			<div class="graph-card">
+				<h3>basic_narrator</h3>
+				<p class="flow"><code>narrator → __end__</code></p>
+				<p>Single-turn narration only. Fastest option and useful for quick prototypes.</p>
+			</div>
+
+			<div class="graph-card">
 				<h3>conversation</h3>
 				<p class="flow"><code>narrator → memory → __end__</code></p>
 				<p>
@@ -149,28 +162,18 @@
 			</div>
 
 			<div class="graph-card">
-				<h3>narrator_with_memory <span class="deprecated">deprecated</span></h3>
-				<p class="flow"><code>narrator → memory → __end__</code> (same as <code>conversation</code>)</p>
-				<p>
-					Kept only so older stories with <code>subgraph_name: narrator_with_memory</code> keep working. New stories
-					should use <code>conversation</code>.
-				</p>
-			</div>
-
-			<div class="graph-card">
 				<h3>full_conversation</h3>
 				<p class="flow"><code>narrator → condense → memory → __end__</code></p>
 				<p>Adds AI memory summary. Condense compresses the story into ~100 words so the narrator has long-term context.</p>
 			</div>
 
 			<div class="graph-card">
-				<h3>conversation_with_npc</h3>
-				<p class="flow">
-					<code>narrator → npc → narrator_coda → condense → memory → __end__</code>
-				</p>
+				<h3>full_memory</h3>
+				<p class="flow"><code>narrator → mood → npc → condense → memory → __end__</code></p>
 				<p>
-					NPC dialogue sits <strong>between</strong> the opening narration and a short <code>narrator_coda</code> that
-					invites the player’s next move. Every character speaks each turn.
+					Fixed chain (no conditional routing): always runs mood and NPC after the narrator. Best when the story
+					<strong>always</strong> has a cast and mood axes; unlike <code>full_story</code>, it does not skip those
+					nodes when there are no characters.
 				</p>
 			</div>
 
@@ -187,11 +190,15 @@
 			</div>
 
 			<div class="graph-card">
-				<h3>conversation_with_mood</h3>
+				<h3>full_story</h3>
 				<p class="flow">
 					<code>narrator → [route_after_narrator] → mood → npc → narrator_coda → condense → memory → __end__</code>
 				</p>
-				<p>Mood shifts, then NPC lines, then narrator coda. Skips mood/NPC/coda when no characters.</p>
+				<p>
+					Canonical “full” pipeline: mood updates, NPC dialogue, narrator coda (player prompt), then rolling summary.
+					Without characters, routing skips mood, NPC, and coda and goes straight to condense. Same graph as the former
+					<code>conversation_with_mood</code> alias — use <code>full_story</code> only.
+				</p>
 			</div>
 		</div>
 
@@ -247,7 +254,13 @@
 <style>
 	.docs { padding: 0 1rem 2rem; max-width: 800px; margin: 0 auto; }
 	.breadcrumb { font-size: 0.85rem; color: #9aa0a6; margin: 0 0 0.5rem; }
+	.doc-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.doc-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
 	.lede { color: #9aa0a6; margin: 0 0 1.5rem; }
+	.see-also { margin: -0.5rem 0 1.25rem; padding: 0.65rem 0.85rem; border-radius: 8px; border: 1px solid #2a2f38; background: #1a1d23; font-size: 0.9rem; color: #bdc1c6; line-height: 1.5; }
+	.see-also strong { color: #e8eaed; }
+	:global([data-theme="light"]) .see-also { background: #f8fafc; border-color: #dfe3e8; color: #334155; }
+	:global([data-theme="light"]) .see-also strong { color: #111827; }
 	.section { margin-bottom: 2.5rem; }
 	.section h2 { margin: 0 0 0.5rem; font-size: 1.2rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
 	.section h3 { margin: 1rem 0 0.3rem; font-size: 1rem; }
@@ -268,14 +281,18 @@
 	.graph-card h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
 	.graph-card p { margin: 0.2rem 0; font-size: 0.88rem; color: #bdc1c6; }
 	.graph-card .flow { color: #8ab4f8; font-size: 0.85rem; }
-	.graph-card .deprecated {
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		color: #f9ab00;
-		vertical-align: middle;
-	}
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.nav-links { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #2a2f38; font-size: 0.9rem; }
+	:global([data-theme="light"]) .section h2,
+	:global([data-theme="light"]) .nav-links { border-bottom-color: #dfe3e8; border-top-color: #dfe3e8; }
+	:global([data-theme="light"]) .section p,
+	:global([data-theme="light"]) .section li,
+	:global([data-theme="light"]) .detail,
+	:global([data-theme="light"]) .state-io,
+	:global([data-theme="light"]) .returns,
+	:global([data-theme="light"]) .graph-card p { color: #334155; }
+	:global([data-theme="light"]) .card { background: #fff; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .summary { color: #111827; }
+	:global([data-theme="light"]) .doc-hero { border-color: #dfe3e8; }
 </style>

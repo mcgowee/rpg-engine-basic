@@ -5,9 +5,11 @@ import logging
 import os
 import sqlite3
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
+from datetime import datetime
 
 from flask import Flask, g, has_request_context, jsonify, request, session, Response
 from flask_limiter import Limiter
@@ -33,6 +35,8 @@ from db import (
     init_db,
     seed_builtin_stories,
     seed_builtin_subgraphs,
+    sync_builtin_story_characters_from_disk,
+    sync_builtin_story_covers_from_disk,
     sync_builtin_subgraphs_from_disk,
 )
 from game_cache import GameSessionCache
@@ -40,6 +44,7 @@ from graphs.builder import validate_graph_definition
 from graphs.registry import registry
 from llm import get_llm
 from llm.text import llm_result_to_text
+from image_records import create_image_record, mark_image_failed, mark_image_ready
 from nodes import NODE_REGISTRY
 from nodes.narrator import DEFAULT_NARRATOR_PROMPT
 from play_phases import (
@@ -809,6 +814,12 @@ def _resolve_main_template_for_write(conn, user_id, raw) -> tuple[int | None, st
 
 
 def _story_row_to_dict(r, include_content=False) -> dict:
+    try:
+        story_images = json.loads(r["story_images"] or "[]") if "story_images" in r.keys() else []
+    except (json.JSONDecodeError, TypeError):
+        story_images = []
+    if not isinstance(story_images, list):
+        story_images = []
     d = {
         "id": r["id"],
         "title": r["title"],
@@ -821,6 +832,8 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         "main_graph_template_id": _row_main_graph_template_id(r),
         "notes": r["notes"] or "",
         "cover_image": r["cover_image"] or "",
+        "cover_image_id": r["cover_image_id"] if "cover_image_id" in r.keys() else None,
+        "story_images": story_images,
         "is_public": bool(r["is_public"]),
         "play_count": r["play_count"],
         "created_at": r["created_at"],
@@ -895,8 +908,8 @@ def create_story():
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, main_graph_template_id, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes, story_images)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -914,6 +927,7 @@ def create_story():
                 tid,
                 json.dumps(characters),
                 data.get("notes", ""),
+                "[]",
             ),
         )
         conn.commit()
@@ -951,6 +965,13 @@ def update_story(story_id: int):
         data = request.get_json(silent=True) or {}
         characters = data.get("characters")
         characters_json = json.dumps(characters) if characters is not None else row["characters"]
+        update_story_images = data.get("story_images")
+        if update_story_images is not None:
+            if not isinstance(update_story_images, list):
+                update_story_images = []
+            story_images_json = json.dumps(update_story_images)
+        else:
+            story_images_json = row["story_images"] if "story_images" in row.keys() else "[]"
         if "main_graph_template_id" in data:
             tid, terr = _resolve_main_template_for_write(conn, g.user_id, data.get("main_graph_template_id"))
             if terr:
@@ -969,7 +990,7 @@ def update_story(story_id: int):
                   nsfw_rating = ?, nsfw_tags = ?, opening = ?,
                   narrator_prompt = ?, narrator_model = ?, player_name = ?,
                   player_background = ?, subgraph_name = ?, main_graph_template_id = ?,
-                  characters = ?, notes = ?, updated_at = datetime('now')
+                  characters = ?, notes = ?, story_images = ?, updated_at = datetime('now')
                WHERE id = ?""",
             (
                 data.get("title", row["title"]),
@@ -987,6 +1008,7 @@ def update_story(story_id: int):
                 tid,
                 characters_json,
                 data.get("notes", row["notes"]),
+                story_images_json,
                 story_id,
             ),
         )
@@ -1049,8 +1071,8 @@ def copy_story(story_id: int):
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, main_graph_template_id, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes, story_images)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 row["title"],
@@ -1068,6 +1090,7 @@ def copy_story(story_id: int):
                 mtid,
                 row["characters"] or "{}",
                 row["notes"] or "",
+                row["story_images"] if "story_images" in row.keys() else "[]",
             ),
         )
         conn.commit()
@@ -1113,6 +1136,7 @@ def export_story(story_id: int):
         "main_graph_template_name": tmpl_name,
         "characters": json.loads(row["characters"] or "{}"),
         "notes": row["notes"] or "",
+        "cover_image": row["cover_image"] or "",
     }
     slug = row["title"].lower().replace(" ", "_")[:50]
     return Response(
@@ -1153,8 +1177,8 @@ def import_story():
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, main_graph_template_id, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes, cover_image)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -1172,6 +1196,7 @@ def import_story():
                 tid,
                 json.dumps(characters),
                 data.get("notes", ""),
+                (data.get("cover_image") or "").strip(),
             ),
         )
         conn.commit()
@@ -2492,6 +2517,7 @@ def ai_generate_cover():
         return jsonify({"error": "Image generation is not available (ComfyUI not running)"}), 503
 
     conn = get_db()
+    image_id: int | None = None
     try:
         row = conn.execute(
             "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
@@ -2506,11 +2532,28 @@ def ai_generate_cover():
         opening = (row["opening"] or "")[:200]
 
         prompt = f"{genre} scene, {title}, {description}. {opening}. RPG concept art, atmospheric, cinematic lighting, detailed, moody"
+        image_id = create_image_record(
+            conn,
+            kind="cover",
+            scope="story",
+            owner_type="story",
+            owner_id=story_id,
+            owner_key=None,
+            prompt=prompt,
+            workflow_name="FluxForRPG",
+            model_name="flux1-dev-fp8.safetensors",
+            width=800,
+            height=500,
+        )
+        conn.commit()
 
         # Generate via ComfyUI
         prefix = f"cover_{story_id}"
         comfyui_filename = comfyui_client.generate_image(prompt, width=800, height=500, prefix=prefix)
         if not comfyui_filename:
+            if image_id is not None:
+                mark_image_failed(conn, image_id, "Image generation failed")
+                conn.commit()
             return jsonify({"error": "Image generation failed"}), 500
 
         # Download to static/images/covers/
@@ -2520,12 +2563,17 @@ def ai_generate_cover():
         local_path = os.path.join(covers_dir, local_filename)
 
         if not comfyui_client.download_image(comfyui_filename, local_path):
+            if image_id is not None:
+                mark_image_failed(conn, image_id, "Failed to save image")
+                conn.commit()
             return jsonify({"error": "Failed to save image"}), 500
 
+        if image_id is not None:
+            mark_image_ready(conn, image_id, local_path)
         # Update DB
         conn.execute(
-            "UPDATE stories SET cover_image = ?, updated_at = datetime('now') WHERE id = ?",
-            (local_filename, story_id),
+            "UPDATE stories SET cover_image = ?, cover_image_id = ?, updated_at = datetime('now') WHERE id = ?",
+            (local_filename, image_id, story_id),
         )
         conn.commit()
     finally:
@@ -2533,6 +2581,7 @@ def ai_generate_cover():
 
     return jsonify({
         "ok": True,
+        "image_id": image_id,
         "cover_image": local_filename,
         "url": f"/images/covers/{local_filename}",
     })
@@ -2559,6 +2608,25 @@ def ai_generate_scene():
     # Build a visual prompt from the scene text
     scene_excerpt = scene_text[:500]
     prompt = f"{scene_excerpt}, RPG scene illustration, atmospheric, cinematic lighting, detailed environment, moody"
+    image_id: int | None = None
+    conn = get_db()
+    try:
+        image_id = create_image_record(
+            conn,
+            kind="scene",
+            scope="turn",
+            owner_type="story",
+            owner_id=story_id,
+            owner_key=None,
+            prompt=prompt,
+            workflow_name="FluxForRPG",
+            model_name="flux1-dev-fp8.safetensors",
+            width=1024,
+            height=576,
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     scenes_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "scenes")
     os.makedirs(scenes_dir, exist_ok=True)
@@ -2570,11 +2638,32 @@ def ai_generate_scene():
 
     comfyui_filename = comfyui_client.generate_image(prompt, width=1024, height=576, prefix=prefix)
     if not comfyui_filename:
+        if image_id is not None:
+            conn = get_db()
+            try:
+                mark_image_failed(conn, image_id, "Scene generation failed")
+                conn.commit()
+            finally:
+                conn.close()
         return jsonify({"error": "Scene generation failed"}), 500
 
     local_path = os.path.join(scenes_dir, local_filename)
     if not comfyui_client.download_image(comfyui_filename, local_path):
+        if image_id is not None:
+            conn = get_db()
+            try:
+                mark_image_failed(conn, image_id, "Failed to save scene image")
+                conn.commit()
+            finally:
+                conn.close()
         return jsonify({"error": "Failed to save scene image"}), 500
+    if image_id is not None:
+        conn = get_db()
+        try:
+            mark_image_ready(conn, image_id, local_path)
+            conn.commit()
+        finally:
+            conn.close()
 
     # Record the scene image in the active game's history
     session_key = _play_session_key(story_id, g.user_id)
@@ -2593,8 +2682,124 @@ def ai_generate_scene():
 
     return jsonify({
         "ok": True,
+        "image_id": image_id,
         "url": f"/images/scenes/{local_filename}",
     })
+
+
+@app.route("/ai/generate-story-image", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_generate_story_image():
+    import comfyui_client
+
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+
+    prompt_input = (data.get("prompt") or "").strip()
+    if not comfyui_client.is_available():
+        return jsonify({"error": "Image generation not available (ComfyUI not running)"}), 503
+
+    conn = get_db()
+    image_id: int | None = None
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?",
+            (story_id, g.user_id),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+
+        title = row["title"] or "Untitled"
+        genre = row["genre"] or "fantasy"
+        description = row["description"] or ""
+        opening = (row["opening"] or "")[:220]
+        prompt = prompt_input
+        if not prompt:
+            prompt = (
+                f"{genre} RPG scene concept art inspired by '{title}'. "
+                f"{description}. {opening}. "
+                "Anime RPG style, vibrant colors, cinematic composition, detailed background"
+            )
+
+        image_id = create_image_record(
+            conn,
+            kind="story_image",
+            scope="story",
+            owner_type="story",
+            owner_id=story_id,
+            owner_key=None,
+            prompt=prompt,
+            workflow_name="FluxForRPG",
+            model_name="flux1-dev-fp8.safetensors",
+            width=1024,
+            height=640,
+        )
+        conn.commit()
+
+        out_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "story")
+        os.makedirs(out_dir, exist_ok=True)
+
+        image_suffix = image_id if image_id is not None else int(time.time())
+        local_filename = f"story_{story_id}_{image_suffix}.png"
+        local_path = os.path.join(out_dir, local_filename)
+
+        comfyui_filename = comfyui_client.generate_image(
+            prompt,
+            width=1024,
+            height=640,
+            prefix=f"storyimg_{story_id}",
+        )
+        if not comfyui_filename:
+            if image_id is not None:
+                mark_image_failed(conn, image_id, "Story image generation failed")
+                conn.commit()
+            return jsonify({"error": "Story image generation failed"}), 500
+
+        if not comfyui_client.download_image(comfyui_filename, local_path):
+            if image_id is not None:
+                mark_image_failed(conn, image_id, "Failed to save story image")
+                conn.commit()
+            return jsonify({"error": "Failed to save story image"}), 500
+
+        if image_id is not None:
+            mark_image_ready(conn, image_id, local_path)
+
+        try:
+            existing_images = json.loads(row["story_images"] or "[]") if "story_images" in row.keys() else []
+        except (json.JSONDecodeError, TypeError):
+            existing_images = []
+        if not isinstance(existing_images, list):
+            existing_images = []
+
+        existing_images.append({
+            "filename": local_filename,
+            "image_id": image_id,
+            "prompt": prompt,
+            "created_at": datetime.utcnow().isoformat() + "Z",
+        })
+        # Keep this bounded to avoid unbounded story payload growth.
+        existing_images = existing_images[-20:]
+        conn.execute(
+            "UPDATE stories SET story_images = ?, updated_at = datetime('now') WHERE id = ?",
+            (json.dumps(existing_images), story_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify(
+        {
+            "ok": True,
+            "image_id": image_id,
+            "filename": local_filename,
+            "prompt": prompt,
+            "url": f"/images/story/{local_filename}",
+        }
+    )
 
 
 @app.route("/ai/generate-portrait", methods=["POST"])
@@ -2616,6 +2821,7 @@ def ai_generate_portrait():
         return jsonify({"error": "Image generation not available (ComfyUI not running)"}), 503
 
     conn = get_db()
+    image_id: int | None = None
     try:
         row = conn.execute(
             "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
@@ -2633,8 +2839,25 @@ def ai_generate_portrait():
         char_label = character_key.replace("_", " ").title()
         genre = row["genre"] or "fantasy"
 
+        style_hint = ""
+        g0 = (genre or "").lower()
+        if g0 in ("romance", "comedy"):
+            style_hint = (
+                "\nStyle hint: describe a cute anime-inspired look (slice-of-life romance VN) — "
+                "soft features, expressive eyes, warm palette for hair/outfit; keep it PG.\n"
+            )
+        elif g0 == "drama":
+            style_hint = (
+                "\nStyle hint: corporate job interview — interviewers in a glass conference room, "
+                "polished office clothing, professional grooming; stylized cartoon/anime portrait, not photorealistic.\n"
+            )
+        elif g0 == "thriller":
+            style_hint = (
+                "\nStyle hint: spy thriller — intelligence operatives, formal gala or field attire, "
+                "sharp eyes, composed face; stylized anime portrait, not photorealistic.\n"
+            )
         visual_prompt = f"""Based on this RPG character description, write a short physical appearance description (2-3 sentences) for generating a portrait image. Focus on: face, hair, clothing, expression, age, build. Do not include personality or behavior — only visual details.
-
+{style_hint}
 Character name: {char_label}
 Genre: {genre}
 Personality description: {personality}
@@ -2646,10 +2869,60 @@ Physical appearance:"""
             visual_desc = llm_result_to_text(llm.invoke(visual_prompt)).strip()
         except Exception as e:
             logger.error("Portrait LLM failed: %s", e)
-            visual_desc = f"{char_label}, {genre} character"
+            if (genre or "").lower() == "drama":
+                visual_desc = (
+                    f"{char_label}, corporate job interviewer, business professional, stylized anime cartoon look, "
+                    "sharp office attire, glass conference room, evaluating candidate"
+                )
+            elif (genre or "").lower() == "thriller":
+                visual_desc = (
+                    f"{char_label}, seasoned intelligence operative, sharp observant eyes, "
+                    "composed expression, formal or field-appropriate attire, anime spy thriller portrait"
+                )
+            else:
+                visual_desc = f"{char_label}, {genre} character"
+
+        g_low = (genre or "").lower()
+        if g_low in ("romance", "comedy"):
+            style_suffix = (
+                "cute anime style portrait, cel-shaded, soft warm lighting, large expressive eyes, "
+                "friendly approachable face, head and shoulders, cozy slice-of-life mood"
+            )
+        elif g_low == "drama":
+            style_suffix = (
+                "stylized cartoon anime portrait, business professionals conducting a job interview, "
+                "modern glass-walled conference room daylight, sharp office attire, attentive interviewer "
+                "expression facing the candidate, cel-shaded, clean character design, head and shoulders, "
+                "subtle blurred meeting table or chairs in background"
+            )
+        elif g_low == "thriller":
+            style_suffix = (
+                "anime spy thriller portrait, seasoned intelligence operative, sharp observant eyes, "
+                "controlled expression, evening formal or tactical-chic attire, cool cinematic rim light, "
+                "cel-shaded, dangerous competence, head and shoulders, dark moody background"
+            )
+        else:
+            style_suffix = (
+                "portrait, head and shoulders, dark atmospheric background, RPG character art, "
+                "detailed face, cinematic lighting"
+            )
 
         # Step 2: Generate portrait via ComfyUI
-        comfyui_prompt = f"{visual_desc}, portrait, head and shoulders, dark atmospheric background, RPG character art, detailed face, cinematic lighting"
+        comfyui_prompt = f"{visual_desc}, {style_suffix}"
+        image_id = create_image_record(
+            conn,
+            kind="portrait",
+            scope="character",
+            owner_type="story",
+            owner_id=story_id,
+            owner_key=character_key,
+            prompt=comfyui_prompt,
+            workflow_name="FluxForRPG",
+            model_name="flux1-dev-fp8.safetensors",
+            width=512,
+            height=768,
+        )
+        conn.commit()
 
         portraits_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "portraits")
         os.makedirs(portraits_dir, exist_ok=True)
@@ -2657,13 +2930,21 @@ Physical appearance:"""
         prefix = f"portrait_{story_id}_{character_key}"
         comfyui_filename = comfyui_client.generate_image(comfyui_prompt, width=512, height=768, prefix=prefix)
         if not comfyui_filename:
+            if image_id is not None:
+                mark_image_failed(conn, image_id, "Portrait generation failed")
+                conn.commit()
             return jsonify({"error": "Portrait generation failed"}), 500
 
         local_filename = f"story_{story_id}_{character_key}.png"
         local_path = os.path.join(portraits_dir, local_filename)
 
         if not comfyui_client.download_image(comfyui_filename, local_path):
+            if image_id is not None:
+                mark_image_failed(conn, image_id, "Failed to save portrait")
+                conn.commit()
             return jsonify({"error": "Failed to save portrait"}), 500
+        if image_id is not None:
+            mark_image_ready(conn, image_id, local_path)
 
         # Step 3: Update character data with portrait filename
         char_data["portrait"] = local_filename
@@ -2678,10 +2959,36 @@ Physical appearance:"""
 
     return jsonify({
         "ok": True,
+        "image_id": image_id,
         "portrait": local_filename,
         "url": f"/images/portraits/{local_filename}",
         "visual_description": visual_desc,
     })
+
+
+@app.route("/images/<int:image_id>", methods=["GET"])
+@login_required
+def get_image_record(image_id: int):
+    """Return image metadata for images visible to the current user."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+
+        owner_type = row["owner_type"] or ""
+        owner_id = row["owner_id"]
+        if owner_type == "story" and owner_id:
+            s = conn.execute("SELECT user_id, is_public FROM stories WHERE id = ?", (owner_id,)).fetchone()
+            if not s:
+                return jsonify({"error": "Not found"}), 404
+            if s["user_id"] != g.user_id and not s["is_public"]:
+                return jsonify({"error": "Not found"}), 404
+
+        data = dict(row)
+        return jsonify(data)
+    finally:
+        conn.close()
 
 
 @app.route("/health", methods=["GET"])
@@ -2721,6 +3028,8 @@ init_db()
 seed_builtin_subgraphs()
 sync_builtin_subgraphs_from_disk()
 seed_builtin_stories()
+sync_builtin_story_covers_from_disk()
+sync_builtin_story_characters_from_disk()
 
 _conn = get_db()
 registry.load_from_db(_conn)

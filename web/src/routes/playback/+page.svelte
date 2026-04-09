@@ -876,7 +876,7 @@
 	{#if playState === 'idle'}
 		<div class="setup">
 			<!-- Mode selector -->
-			<div class="mode-toggle">
+			<div class="mode-toggle" aria-label="Playback mode">
 				<button type="button" class="mode-btn" class:active={mode === 'generate'} onclick={() => mode = 'generate'}>
 					Generate
 				</button>
@@ -1052,6 +1052,7 @@
 	{:else}
 		<!-- Tab bar -->
 		{#if turns.length > 0}
+			<p class="tab-hint">Results views</p>
 			<div class="tab-bar">
 				<button type="button" class="tab-btn" class:active={activeTab === 'playback'} onclick={() => activeTab = 'playback'}>Playback</button>
 				<button type="button" class="tab-btn" class:active={activeTab === 'evaluate'} onclick={() => activeTab = 'evaluate'}>Evaluate</button>
@@ -1369,7 +1370,7 @@
 												{#each Object.entries(snap.moods) as [char, axes]}
 													{#each Object.entries(axes) as [axis, val]}
 														<td>
-															<span class="nh-badge" style="color:{val <= 3 ? '#f28b82' : val >= 7 ? '#81c995' : '#8ab4f8'}">{val}/10</span>
+															<span class="nh-badge nh-mood" style="color:{val <= 3 ? '#f28b82' : val >= 7 ? '#81c995' : '#8ab4f8'}">{val}/10</span>
 														</td>
 													{/each}
 												{/each}
@@ -1538,11 +1539,13 @@
 	.playback { max-width: 1200px; margin: 0 auto; padding: 0 1rem 2rem; }
 	.lede { color: #9aa0a6; margin: 0 0 1.5rem; }
 	.setup { max-width: 700px; }
-	.mode-toggle { display: flex; gap: 0; margin-bottom: 0.75rem; }
-	.mode-btn { padding: 0.5rem 1.25rem; border: 1px solid #2a2f38; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; font-size: 0.9rem; }
+	.mode-toggle { display: inline-flex; gap: 0; margin-bottom: 0.6rem; border: 1px solid #2a2f38; border-radius: 10px; overflow: hidden; }
+	.mode-btn { padding: 0.5rem 1.25rem; border: 0; border-right: 1px solid #2a2f38; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; font-size: 0.9rem; transition: background-color 0.18s ease, color 0.18s ease; }
+	.mode-btn:last-child { border-right: 0; }
 	.mode-btn:first-child { border-radius: 8px 0 0 8px; }
 	.mode-btn:last-child { border-radius: 0 8px 8px 0; }
 	.mode-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+	.mode-btn:hover { color: #e8eaed; background: #242a33; }
 	.mode-desc { font-size: 0.85rem; color: #9aa0a6; margin: 0 0 1rem; line-height: 1.5; }
 	.setup-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 	.setup-row .field { flex: 1; min-width: 150px; }
@@ -1593,8 +1596,8 @@
 	.entry-moods { margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 	.entry-guidance { margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 4px; font-size: 0.78rem; color: #c58af9; white-space: pre-wrap; }
 	.guidance-label { font-weight: 600; color: #8a6abf; }
-	.mood-chip { font-size: 0.78rem; color: #9aa0a6; }
-	.mood-val { margin-left: 0.2rem; font-weight: 600; }
+	.mood-chip { font-size: 0.77rem; color: #d3d8df; background: #111722; border: 1px solid #2b3442; border-radius: 999px; padding: 0.22rem 0.5rem; display: inline-flex; align-items: center; gap: 0.32rem; }
+	.mood-val { margin-left: 0.12rem; font-weight: 700; }
 	.kv { margin: 0; display: grid; grid-template-columns: 5rem 1fr; gap: 0.2rem 0.5rem; font-size: 0.85rem; }
 	.kv dt { color: #9aa0a6; }
 	.kv dd { margin: 0; }
@@ -1615,11 +1618,13 @@
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; margin-top: 0.5rem; }
 	/* Tab bar */
-	.tab-bar { display: flex; gap: 0; margin-bottom: 1rem; }
-	.tab-btn { padding: 0.5rem 1.25rem; border: 1px solid #2a2f38; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; font-size: 0.9rem; }
-	.tab-btn:first-child { border-radius: 8px 0 0 8px; }
-	.tab-btn:last-child { border-radius: 0 8px 8px 0; }
+	.tab-hint { margin: 0 0 0.4rem; font-size: 0.78rem; color: #7f8691; letter-spacing: 0.03em; text-transform: uppercase; }
+	.tab-bar { display: flex; gap: 0.35rem; margin-bottom: 1rem; flex-wrap: wrap; }
+	.tab-btn { padding: 0.42rem 1rem; border: 1px solid #2a2f38; border-radius: 999px; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; font-size: 0.82rem; transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease; }
+	.tab-btn:first-child { border-radius: 999px; }
+	.tab-btn:last-child { border-radius: 999px; }
 	.tab-btn.active { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+	.tab-btn:hover { color: #e8eaed; border-color: #46505e; background: #20242c; }
 
 	/* Evaluate tab */
 	.eval-panel { max-width: 800px; }
@@ -1632,7 +1637,7 @@
 	.eval-score { font-size: 3rem; font-weight: 700; }
 	.score-max { font-size: 1.2rem; color: #5f6368; font-weight: 400; }
 	.eval-summary { color: #bdc1c6; margin: 0.5rem 0 0; line-height: 1.5; font-size: 0.95rem; }
-	.eval-section { margin-bottom: 1.5rem; }
+	.eval-section { margin-bottom: 1.5rem; border: 1px solid #2a2f38; border-radius: 10px; padding: 0.85rem 1rem; background: #161a20; }
 	.eval-section h3 { font-size: 1rem; margin: 0 0 0.5rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
 	.eval-section ul { padding-left: 1.25rem; margin: 0; }
 	.eval-section li { margin-bottom: 0.3rem; font-size: 0.9rem; color: #bdc1c6; line-height: 1.5; }
@@ -1669,7 +1674,7 @@
 	@media (max-width: 800px) { .playback-layout { flex-direction: column; } .playback-sidebar { width: 100%; max-height: none; } }
 
 	/* Node Health tab */
-	.nh-stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+	.nh-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.2rem, 1fr)); gap: 0.65rem; margin-bottom: 1.25rem; }
 	.nh-stat { background: #1a1d23; border: 1px solid #2a2f38; border-radius: 8px; padding: 0.75rem 1rem; text-align: center; min-width: 7rem; }
 	.nh-stat-value { display: block; font-size: 1.4rem; font-weight: 700; color: #8ab4f8; }
 	.nh-stat-label { display: block; font-size: 0.75rem; color: #9aa0a6; margin-top: 0.2rem; }
@@ -1678,11 +1683,12 @@
 	.nh-issue:last-child { border-bottom: none; }
 	.nh-ok { color: #81c995; font-size: 0.88rem; }
 	.nh-table td { font-size: 0.82rem; vertical-align: middle; }
-	.nh-badge { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.78rem; }
+	.nh-badge { display: inline-block; padding: 0.2rem 0.52rem; border-radius: 999px; font-size: 0.78rem; border: 1px solid transparent; }
 	.nh-ok { background: #1a3a1a; color: #81c995; }
 	.nh-skipped { background: #2a2f38; color: #9aa0a6; }
 	.nh-warn { background: #3d2e00; color: #f6b93b; }
 	.nh-error { background: #3c1111; color: #f28b82; }
+	.nh-mood { background: #131926; border-color: #2c3442; font-weight: 700; }
 	.nh-memory-entry { margin-bottom: 0.75rem; padding: 0.6rem 0.75rem; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 6px; }
 	.nh-memory-turn { font-weight: 600; color: #8ab4f8; font-size: 0.85rem; }
 	.nh-memory-words { font-size: 0.75rem; color: #9aa0a6; margin-left: 0.4rem; }
@@ -1690,4 +1696,13 @@
 	.nh-guard-entry { margin-bottom: 0.75rem; }
 	.nh-guard-turn { font-weight: 600; color: #c58af9; font-size: 0.85rem; display: block; margin-bottom: 0.25rem; }
 	.nh-guard-text { margin: 0; font-size: 0.82rem; color: #e8eaed; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 6px; padding: 0.5rem 0.75rem; white-space: pre-wrap; line-height: 1.5; }
+	:global([data-theme="light"]) .mode-toggle { border-color: #d9dde2; }
+	:global([data-theme="light"]) .mode-btn { background: #f7f9fb; color: #5a6472; border-right-color: #d9dde2; }
+	:global([data-theme="light"]) .mode-btn:hover { color: #1f2937; background: #eef2f7; }
+	:global([data-theme="light"]) .tab-hint { color: #7a8390; }
+	:global([data-theme="light"]) .tab-btn { background: #f7f9fb; border-color: #d9dde2; color: #5a6472; }
+	:global([data-theme="light"]) .tab-btn:hover { color: #1f2937; background: #eef2f7; border-color: #cdd4de; }
+	:global([data-theme="light"]) .mood-chip { color: #334155; background: #f3f7fb; border-color: #d8e3ef; }
+	:global([data-theme="light"]) .eval-section { background: #fafbfd; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .nh-mood { background: #eef5ff; border-color: #d4e4fb; }
 </style>

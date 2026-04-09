@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { toast as globalToast } from '$lib/toast.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import { coverImagePosition } from '$lib/coverDisplay';
 
 	let storyId = $derived.by(() => {
 		const raw = page.params.id ?? '';
@@ -16,6 +18,8 @@
 	let genre = $state('');
 	let opening = $state('');
 	let coverImage = $state('');
+	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
+	let storyImages = $state<StoryImage[]>([]);
 	let playerName = $state('');
 	let characters = $state<Record<string, Record<string, unknown>>>({});
 	let history = $state<string[]>([]);
@@ -48,6 +52,12 @@
 		return imgs;
 	});
 
+	let coverLoadFailed = $state(false);
+	let genreCoverLoadFailed = $state(false);
+	let brokenPortraits = new SvelteSet<string>();
+	let brokenScenes = new SvelteSet<string>();
+	let brokenStoryImages = new SvelteSet<string>();
+
 	type CharPortrait = { key: string; label: string; portrait: string };
 	let charPortraits = $derived.by((): CharPortrait[] => {
 		const out: CharPortrait[] = [];
@@ -59,6 +69,11 @@
 			}
 		}
 		return out;
+	});
+
+	let topStoryImages = $derived.by((): StoryImage[] => {
+		if (storyImages.length === 0) return [];
+		return [...storyImages].sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))).slice(0, 6);
 	});
 
 	onMount(async () => {
@@ -82,6 +97,7 @@
 			genre = data.genre ?? '';
 			opening = data.opening ?? '';
 			coverImage = data.cover_image ?? '';
+			storyImages = normalizeStoryImages(data.story_images);
 			playerName = data.player_name ?? '';
 			characters = data.characters ?? {};
 			history = Array.isArray(data.history) ? data.history : [];
@@ -201,6 +217,92 @@
 	function formatDate(s: string) {
 		try { return new Date(s).toLocaleString(); } catch { return s; }
 	}
+
+	function normalizedGenre(value: string): string {
+		return value.trim().toLowerCase();
+	}
+
+	function genreFallbackCoverSrc(): string {
+		const g = normalizedGenre(genre);
+		return g ? `/images/genre-${g}.png` : '';
+	}
+
+	function storyCoverSrc(): string {
+		return `/images/covers/${coverImage}`;
+	}
+
+	function storyImageSrc(filename: string): string {
+		return `/images/story/${filename}`;
+	}
+
+	function storyImageKey(img: StoryImage, idx: number): string {
+		return `${idx}:${img.filename}:${img.created_at ?? ''}`;
+	}
+
+	function portraitSrc(path: string): string {
+		return `/images/portraits/${path}`;
+	}
+
+	function isPortraitBroken(path: string): boolean {
+		return brokenPortraits.has(path);
+	}
+
+	function markPortraitBroken(path: string): void {
+		if (brokenPortraits.has(path)) return;
+		brokenPortraits.add(path);
+	}
+
+	function clearPortraitBroken(path: string): void {
+		if (!brokenPortraits.has(path)) return;
+		brokenPortraits.delete(path);
+	}
+
+	function isSceneBroken(path: string): boolean {
+		return brokenScenes.has(path);
+	}
+
+	function markSceneBroken(path: string): void {
+		if (brokenScenes.has(path)) return;
+		brokenScenes.add(path);
+	}
+
+	function clearSceneBroken(path: string): void {
+		if (!brokenScenes.has(path)) return;
+		brokenScenes.delete(path);
+	}
+
+	function normalizeStoryImages(value: unknown): StoryImage[] {
+		if (!Array.isArray(value)) return [];
+		const out: StoryImage[] = [];
+		for (const item of value) {
+			if (!item || typeof item !== 'object') continue;
+			const raw = item as Record<string, unknown>;
+			const filename = String(raw.filename ?? '').trim();
+			if (!filename) continue;
+			const imageId = raw.image_id == null ? null : Number(raw.image_id);
+			out.push({
+				filename,
+				image_id: Number.isFinite(imageId) ? imageId : null,
+				prompt: String(raw.prompt ?? ''),
+				created_at: String(raw.created_at ?? ''),
+			});
+		}
+		return out;
+	}
+
+	function isStoryImageBroken(key: string): boolean {
+		return brokenStoryImages.has(key);
+	}
+
+	function markStoryImageBroken(key: string): void {
+		if (brokenStoryImages.has(key)) return;
+		brokenStoryImages.add(key);
+	}
+
+	function clearStoryImageBroken(key: string): void {
+		if (!brokenStoryImages.has(key)) return;
+		brokenStoryImages.delete(key);
+	}
 </script>
 
 <svelte:head>
@@ -217,7 +319,25 @@
 		</div>
 	{:else if !prose}
 		{#if coverImage}
-			<div class="book-cover"><img src="/images/covers/{coverImage}" alt="" /></div>
+			<div class="book-cover">
+				{#if !coverLoadFailed}
+					<img
+						src={storyCoverSrc()}
+						alt=""
+						loading="lazy"
+						decoding="async"
+						style:object-position={coverImagePosition(coverImage)}
+						onerror={() => coverLoadFailed = true}
+					/>
+				{:else if genreFallbackCoverSrc() && !genreCoverLoadFailed}
+					<img src={genreFallbackCoverSrc()} alt="" loading="lazy" decoding="async" class="fallback-cover" onerror={() => genreCoverLoadFailed = true} />
+				{:else}
+					<div class="image-placeholder cover-placeholder">
+						<Icon name="image" size={24} />
+						<span>Cover unavailable</span>
+					</div>
+				{/if}
+			</div>
 		{/if}
 		<div class="book-header">
 			<h1>{title}</h1>
@@ -272,7 +392,25 @@
 	{:else}
 		<!-- Reading mode -->
 		{#if coverImage}
-			<div class="book-cover"><img src="/images/covers/{coverImage}" alt="" /></div>
+			<div class="book-cover">
+				{#if !coverLoadFailed}
+					<img
+						src={storyCoverSrc()}
+						alt=""
+						loading="lazy"
+						decoding="async"
+						style:object-position={coverImagePosition(coverImage)}
+						onerror={() => coverLoadFailed = true}
+					/>
+				{:else if genreFallbackCoverSrc() && !genreCoverLoadFailed}
+					<img src={genreFallbackCoverSrc()} alt="" loading="lazy" decoding="async" class="fallback-cover" onerror={() => genreCoverLoadFailed = true} />
+				{:else}
+					<div class="image-placeholder cover-placeholder">
+						<Icon name="image" size={24} />
+						<span>Cover unavailable</span>
+					</div>
+				{/if}
+			</div>
 		{/if}
 
 		<div class="book-header" transition:fade={{ duration: 200 }}>
@@ -280,13 +418,55 @@
 			{#if genre}<p class="book-genre">{genre}</p>{/if}
 		</div>
 
+		{#if topStoryImages.length > 0}
+			<div class="book-story-gallery">
+				<p class="book-story-gallery-label">Story Gallery</p>
+				<div class="book-story-gallery-grid">
+					{#each topStoryImages as img, idx (storyImageKey(img, idx))}
+						{@const key = storyImageKey(img, idx)}
+						<div class="book-story-thumb">
+							{#if !isStoryImageBroken(key)}
+								<img
+									src={storyImageSrc(img.filename)}
+									alt="Story gallery image {idx + 1}"
+									loading="lazy"
+									decoding="async"
+									onerror={() => markStoryImageBroken(key)}
+									onload={() => clearStoryImageBroken(key)}
+								/>
+							{:else}
+								<div class="image-placeholder story-image-placeholder">
+									<Icon name="image" size={16} />
+									<span>Image unavailable</span>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		{#if charPortraits.length > 0}
 			<div class="book-characters">
 				<p class="book-characters-label">Characters</p>
 				<div class="book-characters-grid">
 					{#each charPortraits as cp (cp.key)}
 						<div class="book-char">
-							<img src="/images/portraits/{cp.portrait}" alt={cp.label} />
+							{#if !isPortraitBroken(cp.portrait)}
+								<img
+									src={portraitSrc(cp.portrait)}
+									alt={cp.label}
+									loading="lazy"
+									decoding="async"
+									onerror={() => markPortraitBroken(cp.portrait)}
+									onload={() => clearPortraitBroken(cp.portrait)}
+								/>
+							{:else}
+								<div class="image-placeholder portrait-placeholder">
+									<Icon name="user" size={18} />
+									<span>No portrait</span>
+								</div>
+							{/if}
 							<span class="book-char-name">{cp.label}</span>
 						</div>
 					{/each}
@@ -314,7 +494,21 @@
 			{#each sections as section, i (i)}
 				{#if sceneImages[i]}
 					<div class="book-scene">
-						<img src={sceneImages[i]} alt="Scene illustration" />
+						{#if !isSceneBroken(sceneImages[i])}
+							<img
+								src={sceneImages[i]}
+								alt="Scene illustration"
+								loading="lazy"
+								decoding="async"
+								onerror={() => markSceneBroken(sceneImages[i])}
+								onload={() => clearSceneBroken(sceneImages[i])}
+							/>
+						{:else}
+							<div class="image-placeholder scene-placeholder">
+								<Icon name="image" size={20} />
+								<span>Scene image unavailable</span>
+							</div>
+						{/if}
 					</div>
 				{/if}
 				<div class="book-section">
@@ -343,8 +537,9 @@
 <style>
 	.book { max-width: 700px; margin: 0 auto; padding: 0 1rem 3rem; }
 	.book-center { text-align: center; padding: 3rem 1rem; color: #9aa0a6; }
-	.book-cover { margin: 0 -1rem 2rem; border-radius: 12px; overflow: hidden; }
-	.book-cover img { width: 100%; height: auto; display: block; }
+	.book-cover { margin: 0 -1rem 2rem; border-radius: 12px; overflow: hidden; border: 1px solid #2a2f38; background: #161a20; aspect-ratio: 16 / 6.5; }
+	.book-cover img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
+	.book-cover img.fallback-cover { opacity: 0.95; }
 	.book-header { text-align: center; margin-bottom: 1.5rem; }
 	.book-header h1 { font-size: 2.2rem; margin: 0 0 0.5rem; line-height: 1.2; }
 	.book-genre { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: #8ab4f8; margin: 0 0 0.5rem; }
@@ -358,14 +553,46 @@
 	.book-generate p { color: #bdc1c6; line-height: 1.6; margin: 0 0 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
 	.generate-btn { font-size: 1rem; padding: 0.65rem 1.5rem; }
 	.book-characters { text-align: center; margin-bottom: 2rem; }
+	.book-story-gallery { margin: 0 auto 1.25rem; max-width: 660px; }
+	.book-story-gallery-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: #9aa0a6; margin: 0 0 0.55rem; text-align: center; }
+	.book-story-gallery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.45rem; }
+	.book-story-thumb { border: 1px solid #2a2f38; border-radius: 8px; overflow: hidden; background: #161a20; aspect-ratio: 16 / 10; }
+	.book-story-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+	.story-image-placeholder { font-size: 0.68rem; }
 	.book-characters-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: #9aa0a6; margin: 0 0 0.75rem; }
 	.book-characters-grid { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; }
 	.book-char { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
-	.book-char img { width: 80px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; }
+	.book-char img { width: 80px; aspect-ratio: 2 / 3; height: auto; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; display: block; }
 	.book-char-name { font-size: 0.78rem; color: #bdc1c6; }
 	.book-scenes-note { text-align: center; margin-bottom: 1rem; }
 	.book-scene { margin: 1.5rem -1rem; }
-	.book-scene img { width: 100%; height: auto; border-radius: 8px; display: block; }
+	.book-scene img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; height: auto; border-radius: 8px; display: block; border: 1px solid #2a2f38; }
+	.image-placeholder {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		color: #7f8896;
+		background: linear-gradient(180deg, #1b2028 0%, #171b22 100%);
+	}
+	.cover-placeholder { font-size: 0.86rem; }
+	.portrait-placeholder {
+		width: 80px;
+		aspect-ratio: 2 / 3;
+		border-radius: 8px;
+		border: 1px solid #2a2f38;
+		font-size: 0.7rem;
+	}
+	.scene-placeholder {
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		border-radius: 8px;
+		border: 1px solid #2a2f38;
+		font-size: 0.82rem;
+	}
 	.book-toolbar { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #2a2f38; }
 	.book-prose { font-size: 1.05rem; line-height: 1.75; color: #e8eaed; }
 	.book-section p { margin: 0 0 1rem; text-indent: 1.5rem; }
@@ -387,4 +614,13 @@
 	.btn.sm { font-size: 0.8rem; padding: 0.35rem 0.65rem; }
 	.err { color: #f28b82; }
 	a { color: #8ab4f8; }
+	:global([data-theme="light"]) .saved-books,
+	:global([data-theme="light"]) .book-generate { background: #fff; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .book-toolbar,
+	:global([data-theme="light"]) .book-footer { border-color: #dfe3e8; }
+	:global([data-theme="light"]) .book-prose { color: #1f2937; }
+	:global([data-theme="light"]) .book-char-name { color: #334155; }
+	:global([data-theme="light"]) .title-input { color: #1f2937; border-color: #d1d5db; }
+	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
+	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }
 </style>

@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { authState } from '$lib/auth.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import StoryCardBanner from '$lib/components/StoryCardBanner.svelte';
 
 	type MyStory = {
 		id: number;
@@ -107,6 +108,7 @@
 			<p class="lede">
 				Welcome back, <strong>{authState.uid ?? 'player'}</strong>. Play a story, create your own, or explore how the engine works.
 			</p>
+			<p class="flow-note"><strong>Quick start:</strong> Create a story → Play it to generate turns → Open Playback to replay and evaluate sessions.</p>
 			<div class="quick-actions">
 				<button type="button" class="btn primary" onclick={() => goto('/stories/create')}><Icon name="plus" size={14} /> New Story</button>
 				<button type="button" class="btn" onclick={() => goto('/stories')}><Icon name="book" size={14} /> My Stories</button>
@@ -131,11 +133,7 @@
 				<ul class="card-grid">
 					{#each myPreview as s (s.id)}
 						<li class="card">
-							{#if s.cover_image}
-								<div class="card-banner" style="background-image: url('/images/covers/{s.cover_image}')"></div>
-							{:else if s.genre}
-								<div class="card-banner" style="background-image: url('/images/genre-{s.genre}.png')"></div>
-							{/if}
+							<StoryCardBanner coverImage={s.cover_image} genre={s.genre} height={100} />
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-meta">
 								{s.genre || '—'} · {formatWhen(s.updated_at)}
@@ -170,11 +168,7 @@
 				<ul class="card-grid public">
 					{#each publicPreview as s (s.id)}
 						<li class="card">
-							{#if s.cover_image}
-								<div class="card-banner" style="background-image: url('/images/covers/{s.cover_image}')"></div>
-							{:else if s.genre}
-								<div class="card-banner" style="background-image: url('/images/genre-{s.genre}.png')"></div>
-							{/if}
+							<StoryCardBanner coverImage={s.cover_image} genre={s.genre} height={100} />
 							<h3 class="card-title">{s.title}</h3>
 							<p class="card-desc">{s.description || 'No description.'}</p>
 							<p class="card-meta">
@@ -218,6 +212,7 @@
 	}
 	.welcome .lede { margin: 0 0 1rem; color: #9aa0a6; line-height: 1.5; }
 	.quick-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	.flow-note { margin: 0 0 0.9rem; font-size: 0.86rem; color: #c9d1dd; background: rgba(19, 31, 48, 0.65); border: 1px solid #2b3f5f; border-radius: 8px; padding: 0.42rem 0.62rem; display: inline-block; }
 	.btn {
 		padding: 0.45rem 0.85rem;
 		border: 1px solid #3c4043;
@@ -227,7 +222,7 @@
 		font: inherit;
 		font-size: 0.85rem;
 	}
-	.btn:hover { border-color: #5f6368; }
+	.btn:hover { border-color: #5f6368; transition: border-color 0.18s ease, background-color 0.18s ease; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
 	.btn.sm { font-size: 0.85rem; padding: 0.25rem 0.55rem; }
 	.card-grid {
@@ -241,8 +236,9 @@
 		border-radius: 10px;
 		overflow: hidden;
 		background: #1a1d23;
+		transition: border-color 0.18s ease, transform 0.18s ease;
 	}
-	.card-banner { height: 100px; background-size: cover; background-position: center; opacity: 0.7; }
+	.card:hover { border-color: #46505e; transform: translateY(-1px); }
 	.card-title { margin: 0.6rem 1rem 0.35rem; font-size: 1rem; line-height: 1.3; }
 	.card-desc {
 		margin: 0 0 0.5rem; padding: 0 1rem; font-size: 0.88rem; line-height: 1.4;
@@ -262,4 +258,6 @@
 		border-radius: 8px;
 		border: 1px solid #5c2020;
 	}
+	:global([data-theme="light"]) .flow-note { color: #1f3f69; background: rgba(237, 246, 255, 0.95); border-color: #cddff8; }
+	:global([data-theme="light"]) .card:hover { border-color: #cfd7e3; }
 </style>

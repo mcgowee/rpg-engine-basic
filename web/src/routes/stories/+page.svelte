@@ -220,8 +220,17 @@
 		<p class="err">{error}</p>
 		<button type="button" class="btn" onclick={() => load()}>Retry</button>
 	{:else if items.length === 0}
-		<p class="muted">No stories yet — create your first one.</p>
-		<p><button type="button" class="btn primary" onclick={() => goto('/stories/create')}>New Story</button></p>
+		<div class="empty-state">
+			<img
+				src="/images/empty-stories.png"
+				alt="Adventurer starting a new quest"
+				class="empty-illustration"
+				loading="lazy"
+				decoding="async"
+			/>
+			<p class="muted">No stories yet — create your first one.</p>
+			<p><button type="button" class="btn primary" onclick={() => goto('/stories/create')}>New Story</button></p>
+		</div>
 	{:else}
 		<div class="table-wrap">
 			<table class="tbl">
@@ -297,14 +306,21 @@
 	.err { color: #f28b82; }
 	.table-wrap { overflow-x: auto; }
 	.tbl { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-	.tbl th, .tbl td { border: 1px solid #2a2f38; padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+	.tbl th, .tbl td { border: 1px solid #2a2f38; padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
 	.tbl th { background: #1a1d23; color: #9aa0a6; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.03em; }
 	.title-cell { font-weight: 600; max-width: 12rem; }
 	.small { font-size: 0.8rem; white-space: nowrap; color: #9aa0a6; }
-	.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	.actions { display: flex; flex-wrap: wrap; gap: 0.42rem; }
+	.empty-state { border: 1px dashed #394250; border-radius: 10px; padding: 1rem; background: #161a21; max-width: 28rem; }
+	.empty-illustration { width: 100%; border-radius: 8px; border: 1px solid #2a2f38; margin: 0 0 0.75rem; display: block; }
 	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; }
 	.btn:hover { border-color: #5f6368; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
-	.linkish { background: none; border: none; padding: 0; color: #8ab4f8; cursor: pointer; text-decoration: underline; font: inherit; }
+	.linkish { background: #151b24; border: 1px solid #2f3f57; padding: 0.2rem 0.45rem; color: #8ab4f8; cursor: pointer; text-decoration: none; border-radius: 999px; font: inherit; font-size: 0.8rem; transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease; }
+	.linkish:hover { background: #1c2736; border-color: #416089; color: #cde4ff; }
 	.linkish.danger { color: #f28b82; }
+	:global([data-theme="light"]) .empty-state { border-color: #d8dee7; background: #f9fbfd; }
+	:global([data-theme="light"]) .empty-illustration { border-color: #d8dee7; }
+	:global([data-theme="light"]) .linkish { background: #f2f7ff; border-color: #d2e1f7; color: #1e63ba; }
+	:global([data-theme="light"]) .linkish:hover { background: #eaf2ff; border-color: #bdd4f4; color: #154d98; }
 </style>

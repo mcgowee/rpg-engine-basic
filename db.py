@@ -70,6 +70,7 @@ def init_db():
             characters TEXT DEFAULT '{}',
             notes TEXT DEFAULT '',
             cover_image TEXT DEFAULT '',
+            story_images TEXT DEFAULT '[]',
             is_public BOOLEAN DEFAULT 0,
             play_count INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
@@ -95,6 +96,33 @@ def init_db():
             saved_at TEXT DEFAULT (datetime('now')),
             UNIQUE(story_id, user_id, slot)
         );
+
+        CREATE TABLE IF NOT EXISTS images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'story',
+            owner_type TEXT,
+            owner_id INTEGER,
+            owner_key TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            prompt TEXT DEFAULT '',
+            negative_prompt TEXT DEFAULT '',
+            seed INTEGER,
+            workflow_name TEXT DEFAULT '',
+            model_name TEXT DEFAULT '',
+            width INTEGER,
+            height INTEGER,
+            provider TEXT DEFAULT 'comfyui',
+            mime TEXT DEFAULT '',
+            storage_path TEXT DEFAULT '',
+            sha256 TEXT DEFAULT '',
+            error TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_images_owner ON images(owner_type, owner_id, owner_key);
+        CREATE INDEX IF NOT EXISTS idx_images_kind_status ON images(kind, status);
     """)
     conn.commit()
     migrate_schema(conn)
@@ -119,6 +147,78 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     if "nsfw_tags" not in cols:
         conn.execute("ALTER TABLE stories ADD COLUMN nsfw_tags TEXT DEFAULT '[]'")
         conn.commit()
+    if "cover_image_id" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN cover_image_id INTEGER REFERENCES images(id)")
+        conn.commit()
+    if "story_images" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN story_images TEXT DEFAULT '[]'")
+        conn.commit()
+
+    # Retire removed quality_guard/legacy subgraphs — point stories at current builtins.
+    conn.execute(
+        """UPDATE stories SET subgraph_name = 'full_story'
+           WHERE subgraph_name IN (
+             'guarded_story',
+             'guarded_full_memory',
+             'guarded_narrator',
+             'guarded_narrator_with_memory',
+             'guarded_narrator_npc_memory',
+             'narrator_with_npc'
+           )"""
+    )
+    conn.commit()
+    conn.execute(
+        """UPDATE stories SET subgraph_name = 'full_memory'
+           WHERE subgraph_name = 'narrator_with_mood'"""
+    )
+    conn.commit()
+    conn.execute(
+        """UPDATE stories SET subgraph_name = 'full_conversation'
+           WHERE subgraph_name = 'narrator_with_memory'"""
+    )
+    conn.commit()
+    conn.execute(
+        """UPDATE stories SET subgraph_name = 'smart_conversation'
+           WHERE subgraph_name = 'conversation_with_npc'"""
+    )
+    conn.commit()
+    conn.execute(
+        """UPDATE stories SET subgraph_name = 'full_story'
+           WHERE subgraph_name = 'conversation_with_mood'"""
+    )
+    conn.commit()
+
+    # Ensure images table/indexes exist for older databases.
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'story',
+            owner_type TEXT,
+            owner_id INTEGER,
+            owner_key TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'queued',
+            prompt TEXT DEFAULT '',
+            negative_prompt TEXT DEFAULT '',
+            seed INTEGER,
+            workflow_name TEXT DEFAULT '',
+            model_name TEXT DEFAULT '',
+            width INTEGER,
+            height INTEGER,
+            provider TEXT DEFAULT 'comfyui',
+            mime TEXT DEFAULT '',
+            storage_path TEXT DEFAULT '',
+            sha256 TEXT DEFAULT '',
+            error TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_images_owner ON images(owner_type, owner_id, owner_key);
+        CREATE INDEX IF NOT EXISTS idx_images_kind_status ON images(kind, status);
+        """
+    )
+    conn.commit()
 
 
 def seed_builtin_subgraphs():
@@ -166,10 +266,12 @@ def sync_builtin_subgraphs_from_disk() -> None:
 
     conn = get_db()
     try:
+        names_on_disk: list[str] = []
         for path in sorted(GRAPHS_DIR.glob("*.json")):
             with open(path) as f:
                 definition = json.load(f)
             name = definition.get("name", path.stem)
+            names_on_disk.append(name)
             row = conn.execute(
                 "SELECT id FROM subgraphs WHERE name = ? AND is_builtin = 1",
                 (name,),
@@ -182,6 +284,80 @@ def sync_builtin_subgraphs_from_disk() -> None:
                        updated_at = datetime('now')
                    WHERE name = ? AND is_builtin = 1""",
                 (json.dumps(definition), description, name),
+            )
+        if names_on_disk:
+            placeholders = ",".join("?" * len(names_on_disk))
+            conn.execute(
+                f"DELETE FROM subgraphs WHERE is_builtin = 1 AND name NOT IN ({placeholders})",
+                tuple(names_on_disk),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def sync_builtin_story_covers_from_disk() -> None:
+    """Apply cover_image from stories/*.json to system user's stories (startup sync)."""
+    from config import BASE_DIR
+
+    stories_dir = BASE_DIR / "stories"
+    if not stories_dir.exists():
+        return
+
+    conn = get_db()
+    try:
+        system = conn.execute(
+            "SELECT id FROM users WHERE uid = 'system'"
+        ).fetchone()
+        if not system:
+            return
+        system_uid = system["id"]
+
+        for path in sorted(stories_dir.glob("*.json")):
+            with open(path) as f:
+                data = json.load(f)
+            title = data.get("title", path.stem)
+            cover = (data.get("cover_image") or "").strip()
+            if not cover:
+                continue
+            conn.execute(
+                """UPDATE stories SET cover_image = ?, updated_at = datetime('now')
+                   WHERE user_id = ? AND title = ?""",
+                (cover, system_uid, title),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def sync_builtin_story_characters_from_disk() -> None:
+    """Apply characters (including portrait filenames) from stories/*.json to system user's stories."""
+    from config import BASE_DIR
+
+    stories_dir = BASE_DIR / "stories"
+    if not stories_dir.exists():
+        return
+
+    conn = get_db()
+    try:
+        system = conn.execute(
+            "SELECT id FROM users WHERE uid = 'system'"
+        ).fetchone()
+        if not system:
+            return
+        system_uid = system["id"]
+
+        for path in sorted(stories_dir.glob("*.json")):
+            with open(path) as f:
+                data = json.load(f)
+            title = data.get("title", path.stem)
+            characters = data.get("characters", {})
+            if not isinstance(characters, dict):
+                characters = {}
+            conn.execute(
+                """UPDATE stories SET characters = ?, updated_at = datetime('now')
+                   WHERE user_id = ? AND title = ?""",
+                (json.dumps(characters), system_uid, title),
             )
         conn.commit()
     finally:
@@ -224,8 +400,8 @@ def seed_builtin_stories():
             conn.execute(
                 """INSERT INTO stories (user_id, title, description, genre, opening,
                       narrator_prompt, narrator_model, player_name, player_background,
-                      subgraph_name, characters, notes, is_public)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                      subgraph_name, characters, notes, cover_image, is_public)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
                 (
                     system_uid,
                     title,
@@ -239,6 +415,7 @@ def seed_builtin_stories():
                     data.get("subgraph_name", "conversation"),
                     json.dumps(characters) if isinstance(characters, dict) else "{}",
                     data.get("notes", ""),
+                    (data.get("cover_image") or "").strip(),
                 ),
             )
         conn.commit()

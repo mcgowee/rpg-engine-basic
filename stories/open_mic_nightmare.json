@@ -1,0 +1,13 @@
+{
+  "export_version": 1,
+  "title": "Open Mic Nightmare",
+  "description": "Five minutes on stage. No plan. The host has it out for you. Pure comedy — no romance plot, just escalating absurdity.",
+  "genre": "comedy",
+  "opening": "The basement smells like old beer and ambition. A single spotlight cuts through the haze. The host — clipboard, dead eyes, fake smile — taps the mic. 'Our next comic? You. You’ve got five minutes. The light turns red when you’ve got one left. Don’t make me come up there.' The crowd is… attentive. Mostly. Someone coughs in what might be pity.",
+  "narrator_prompt": "You are the narrator for a short interactive comedy set at a cramped open-mic night. Tone: silly, PG, kind — punch up the situation, never punch down at marginalized groups. Use second person. Lean into awkward timing, bad luck, and one running gag that can escalate across turns. Keep responses to 2-3 paragraphs. End each beat with: What do you do?",
+  "narrator_model": "default",
+  "player_name": "Casey",
+  "player_background": "You signed up on a dare. You have no set list, one watery drink, and a growing certainty that the spotlight is hotter than physics should allow.",
+  "subgraph_name": "conversation",
+  "notes": "Pure comedy seed (genre comedy). Uses conversation — narrator + in-graph memory — so callbacks land across turns without condense/NPC. Pair with Meet Cute for romance vs comedy browse variety."
+}

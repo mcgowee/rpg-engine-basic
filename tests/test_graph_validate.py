@@ -6,11 +6,12 @@ from pathlib import Path
 from graphs.builder import validate_graph_definition
 
 
-def test_valid_builtin_conversation_with_mood():
-    path = Path(__file__).resolve().parent.parent / "graphs" / "conversation_with_mood.json"
+def test_valid_builtin_full_story():
+    path = Path(__file__).resolve().parent.parent / "graphs" / "full_story.json"
     definition = json.loads(path.read_text())
     assert validate_graph_definition(definition) == []
     assert "narrator_coda" in definition["nodes"]
+    assert "mood" in definition["nodes"]
 
 
 def test_valid_builtin_smart_conversation():
@@ -31,21 +32,6 @@ def test_valid_builtin_smart_conversation():
     assert ce[0]["mapping"] == {"npc": "npc", "condense": "condense"}
 
 
-def test_valid_builtin_conversation_with_npc():
-    """Fixed NPC path: no conditional edges; same node list as smart_conversation when NPCs run."""
-    path = Path(__file__).resolve().parent.parent / "graphs" / "conversation_with_npc.json"
-    definition = json.loads(path.read_text())
-    assert validate_graph_definition(definition) == []
-    assert definition["nodes"] == [
-        "narrator",
-        "npc",
-        "narrator_coda",
-        "condense",
-        "memory",
-    ]
-    assert definition["conditional_edges"] == []
-
-
 def test_valid_builtin_conversation():
     path = Path(__file__).resolve().parent.parent / "graphs" / "conversation.json"
     definition = json.loads(path.read_text())
@@ -53,13 +39,11 @@ def test_valid_builtin_conversation():
     assert "memory" in definition["nodes"]
 
 
-def test_narrator_with_memory_matches_conversation_structure():
-    """Deprecated alias must stay structurally identical (only name/description differ)."""
-    root = Path(__file__).resolve().parent.parent / "graphs"
-    conv = json.loads((root / "conversation.json").read_text())
-    nwm = json.loads((root / "narrator_with_memory.json").read_text())
-    for key in ("nodes", "entry_point", "edges", "conditional_edges"):
-        assert conv[key] == nwm[key], f"mismatch on {key}"
+def test_valid_builtin_full_conversation():
+    path = Path(__file__).resolve().parent.parent / "graphs" / "full_conversation.json"
+    definition = json.loads(path.read_text())
+    assert validate_graph_definition(definition) == []
+    assert definition["nodes"] == ["narrator", "condense", "memory"]
 
 
 def test_invalid_unknown_node():

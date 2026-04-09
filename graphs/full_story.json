@@ -1,6 +1,6 @@
 {
   "name": "full_story",
-  "description": "Level 5: Complete story graph. Conditional routing skips mood+NPC+coda when no characters. Narrator gets the last word via coda.",
+  "description": "Full story graph: narrator → (optional) mood → NPC → narrator coda → condense → memory. With characters, the narrator sets the scene only; mood updates, then NPC lines, then coda asks what you do. With no characters, routing skips mood, NPC, and coda and goes straight to condense. Use for character-driven stories with mood axes and rolling memory.",
   "nodes": ["narrator", "mood", "npc", "narrator_coda", "condense", "memory"],
   "entry_point": {
     "router": "route_graph_entry",

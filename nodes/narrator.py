@@ -12,11 +12,7 @@ logger = logging.getLogger(__name__)
 # Subgraphs that run a dedicated npc (or mood→npc) node after the narrator.
 _SUBGRAPHS_WITH_SEPARATE_NPC_LAYER = frozenset({
     "smart_conversation",
-    "conversation_with_npc",
-    "conversation_with_mood",
-    "guarded_narrator_npc_memory",
-    "guarded_story",
-    "guarded_full_memory",
+    "full_story",
     "full_memory",
 })
 
@@ -112,7 +108,7 @@ def narrator_node(state: dict) -> dict:
     from nodes.story_context import build_story_context
     story_context_line = build_story_context(state)
 
-    # Quality guard guidance (injected by quality_guard node if it ran)
+    # Optional per-turn guidance (e.g. from tooling or future nodes)
     guidance = (state.get("_narrator_guidance") or "").strip()
     guidance_block = f"\nIMPORTANT — quality notes for this turn:\n{guidance}\n" if guidance else ""
 

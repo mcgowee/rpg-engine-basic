@@ -4,6 +4,9 @@
 
 <section class="docs">
 	<p class="breadcrumb"><a href="/docs">Docs</a> / Creating Stories</p>
+	<div class="doc-hero">
+		<img src="/images/docs-stories-hero.png" alt="Story creator writing a magical adventure" />
+	</div>
 	<h1>Creating Stories</h1>
 	<p class="lede">How to build your own text adventures — from simple narrator-only stories to multi-character dramas with mood tracking.</p>
 
@@ -32,15 +35,19 @@
 		</dl>
 
 		<h3>Subgraph</h3>
-		<p>Which graph pipeline runs each turn. This is the most important choice — it determines what the engine does with the player's input. See <a href="/docs/engine">Engine Reference</a> for details on each subgraph.</p>
+		<p>
+			Which graph pipeline runs each turn. This is the most important choice — it determines what the engine does with the player's input.
+			See <a href="/docs/subgraphs">Subgraphs</a> for a full comparison of builtins, or <a href="/docs/engine">Engine Reference</a> for nodes and routers.
+		</p>
 		<div class="tip">
 			<strong>Which subgraph should I pick?</strong>
 			<ul>
+				<li><code>basic_narrator</code> — narrator only. Best for minimal or one-shot stories.</li>
 				<li><code>conversation</code> — narrator + <code>memory</code> (no NPC/condense). Good default; use <code>full_conversation</code> for a rolling AI summary on long arcs.</li>
-				<li><code>narrator_with_memory</code> — deprecated alias of <code>conversation</code>; kept for old saves only.</li>
 				<li><code>full_conversation</code> — adds condense + memory summary. Good for longer stories.</li>
 				<li><code>smart_conversation</code> — adds NPCs that respond in character. Automatically skips NPC step if no characters defined.</li>
-				<li><code>conversation_with_mood</code> — adds mood tracking before NPC dialogue. Best for character-driven stories.</li>
+				<li><code>full_memory</code> — narrator → mood → NPC → condense → memory (no narrator coda; linear flow).</li>
+				<li><code>full_story</code> — mood + NPC + narrator coda + condense + memory; skips mood/NPC/coda when no characters. Best default for character-driven stories with mood axes.</li>
 			</ul>
 		</div>
 
@@ -54,7 +61,7 @@
 		</dl>
 
 		<h3>Characters</h3>
-		<p>NPCs that respond in character each turn. Only used if your subgraph includes the <code>npc</code> node (<code>smart_conversation</code> or <code>conversation_with_mood</code>).</p>
+		<p>NPCs that respond in character each turn. Only used if your subgraph includes the <code>npc</code> node (<code>smart_conversation</code> or <code>full_story</code> — or <code>full_memory</code> and similar).</p>
 		<p>Each character needs:</p>
 		<dl class="field-list">
 			<dt>Key</dt><dd>Snake_case identifier (e.g. <code>old_silas</code>). Used internally.</dd>
@@ -109,9 +116,116 @@
 		</ul>
 	</div>
 
-	<div class="section">
+	<div class="section" id="builtin-stories">
 		<h2>Builtin Stories</h2>
-		<p>These stories are seeded into every fresh database. Each demonstrates a different engine feature. Copy one to your account to experiment with it.</p>
+		<p>
+			These stories are seeded into every fresh database from <code>stories/*.json</code>. Each demonstrates a different engine feature.
+			Copy one to your account to experiment with it. The table lists every seed; below it, a few stories have longer “things to try” notes.
+		</p>
+
+		<div class="table-wrap">
+			<table class="tbl tbl-stories">
+				<thead>
+					<tr>
+						<th>Story</th>
+						<th>Genre</th>
+						<th>Subgraph</th>
+						<th>NPCs</th>
+						<th class="tbl-notes">Notes</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>The Midnight Lighthouse</td>
+						<td>mystery</td>
+						<td><code>conversation</code></td>
+						<td>0</td>
+						<td>Narrator + memory; default-style solo arc.</td>
+					</tr>
+					<tr>
+						<td>The Last Train</td>
+						<td>thriller</td>
+						<td><code>smart_conversation</code></td>
+						<td>2</td>
+						<td>Two distinct NPC voices.</td>
+					</tr>
+					<tr>
+						<td>Meet Cute (In Theory)</td>
+						<td>romance</td>
+						<td><code>smart_conversation</code></td>
+						<td>2</td>
+						<td>Rom-com café; same two-NPC tutorial as Last Train, warmer tone.</td>
+					</tr>
+					<tr>
+						<td>Open Mic Nightmare</td>
+						<td>comedy</td>
+						<td><code>conversation</code></td>
+						<td>0</td>
+						<td>Pure comedy; narrator + memory for callbacks (no NPCs).</td>
+					</tr>
+					<tr>
+						<td>The Job Interview</td>
+						<td>drama</td>
+						<td><code>full_story</code></td>
+						<td>2</td>
+						<td>Mood axes + narrator coda.</td>
+					</tr>
+					<tr>
+						<td>The Interrogation</td>
+						<td>thriller</td>
+						<td><code>full_story</code></td>
+						<td>1</td>
+						<td>Multiple mood axes on one character.</td>
+					</tr>
+					<tr>
+						<td>Spy Thriller: Narrator Only</td>
+						<td>thriller</td>
+						<td><code>basic_narrator</code></td>
+						<td>0</td>
+						<td>Tutorial 1/5 — narrator only, no in-graph memory.</td>
+					</tr>
+					<tr>
+						<td>Spy Thriller: Rolling Memory</td>
+						<td>thriller</td>
+						<td><code>full_conversation</code></td>
+						<td>0</td>
+						<td>Tutorial 2/5 — condense + rolling AI summary.</td>
+					</tr>
+					<tr>
+						<td>Spy Thriller: Meet the Handler</td>
+						<td>thriller</td>
+						<td><code>smart_conversation</code></td>
+						<td>1</td>
+						<td>Tutorial 3/5 — NPC dialogue + narrator coda.</td>
+					</tr>
+					<tr>
+						<td>Spy Thriller: Trust &amp; Tension</td>
+						<td>thriller</td>
+						<td><code>full_memory</code></td>
+						<td>1</td>
+						<td>Tutorial 4/5 — mood axes + fixed mood→NPC chain.</td>
+					</tr>
+					<tr>
+						<td>Spy Thriller: Full Pipeline</td>
+						<td>thriller</td>
+						<td><code>full_story</code></td>
+						<td>2</td>
+						<td>Tutorial 5/5 — full_story; coda + conditional routing.</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<p class="hint">
+			<strong>Fun &amp; tutorials:</strong> <strong>Meet Cute (In Theory)</strong> — PG rom-com, two NPCs (same <code>smart_conversation</code> idea as <strong>The Last Train</strong>). <strong>Open Mic Nightmare</strong> — pure <strong>comedy</strong>, solo, <code>conversation</code> so jokes can callback across turns.
+			<strong>Spy Thriller tutorials (1–5):</strong> same embassy gala premise — <strong>Narrator Only</strong> → <strong>Rolling Memory</strong> → <strong>Meet the Handler</strong> → <strong>Trust &amp; Tension</strong> → <strong>Full Pipeline</strong>
+			(subgraphs <code>basic_narrator</code> → <code>full_conversation</code> → <code>smart_conversation</code> → <code>full_memory</code> → <code>full_story</code>).
+			<a href="https://github.com/mcgowee/rpg-engine-basic/blob/main/docs/BUILTIN_STORIES.md" target="_blank" rel="noopener noreferrer"
+				>Repo table with filenames</a
+			>
+			— keep in sync when adding seeds.
+		</p>
+
+		<h3>Examples (things to try)</h3>
 
 		<div class="story-card">
 			<h3>The Midnight Lighthouse</h3>
@@ -121,29 +235,40 @@
 		</div>
 
 		<div class="story-card">
-			<h3>The Blackrock Keeper</h3>
-			<p class="meta">Mystery · <code>smart_conversation</code> · Old Silas</p>
-			<p>Same lighthouse with an NPC. Demonstrates conditional edges — <code>route_after_narrator</code> checks if characters exist and routes to NPC or skips it.</p>
-			<p class="try"><strong>Try:</strong> Copy and remove Old Silas. Play again — the same subgraph skips the NPC step entirely. That's the conditional edge at work.</p>
-		</div>
-
-		<div class="story-card">
 			<h3>The Last Train</h3>
 			<p class="meta">Thriller · <code>smart_conversation</code> · Diana, Gerald</p>
 			<p>Two NPCs with distinct personalities on a late-night train. Demonstrates multiple characters responding independently.</p>
-			<p class="try"><strong>Try:</strong> Address one character directly and see how both still respond in character. Edit a character's prompt to change their personality.</p>
+			<p class="try"><strong>Try:</strong> Address one character directly and see how both still respond in character. To see <code>route_after_narrator</code> skip the NPC path, copy <strong>Spy Thriller: Meet the Handler</strong>, delete its characters in the editor, and play — same subgraph, fewer nodes run.</p>
+		</div>
+
+		<div class="story-card">
+			<h3>Meet Cute (In Theory)</h3>
+			<p class="meta">Romance · <code>smart_conversation</code> · Jamie, Riley</p>
+			<p>
+				A dating-app brunch in a busy café: your date (Jamie) and a barista (Riley) who won’t let the moment be boring. Same engine path as <em>The Last Train</em>, but built for laughs and chemistry instead of suspense.
+			</p>
+			<p class="try"><strong>Try:</strong> Play for banter first — then copy the story and crank the narrator prompt toward full farce or full earnest romance to see how tone shifts.</p>
+		</div>
+
+		<div class="story-card">
+			<h3>Open Mic Nightmare</h3>
+			<p class="meta">Comedy · <code>conversation</code> · No characters</p>
+			<p>
+				A doomed five-minute stand-up set: hostile host, pitying crowd, escalating absurdity. No NPCs — comedy comes from the narrator and your choices, with memory so running gags can land.
+			</p>
+			<p class="try"><strong>Try:</strong> Reference an earlier bit on a later turn and watch the narrator pick it up. Tighten or loosen the narrator prompt to swing from dry wit to full cartoon.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>The Job Interview</h3>
-			<p class="meta">Drama · <code>conversation_with_mood</code> · Ms. Chen (5), Big Dave (7)</p>
+			<p class="meta">Drama · <code>full_story</code> · Ms. Chen (5), Big Dave (7)</p>
 			<p>Two interviewers with opposite personalities. Demonstrates mood tracking — watch sidebar numbers change based on your answers.</p>
 			<p class="try"><strong>Try:</strong> Give confident vs. evasive answers. Change starting moods and replay to see how it affects the dynamic from turn one.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>The Interrogation</h3>
-			<p class="meta">Thriller · <code>conversation_with_mood</code> · Marcus Webb (3 axes)</p>
+			<p class="meta">Thriller · <code>full_story</code> · Marcus Webb (3 axes)</p>
 			<p>One suspect with three mood axes: cooperativeness, anxiety, honesty. Demonstrates multi-dimensional mood tracking.</p>
 			<p class="try"><strong>Try:</strong> Build trust slowly, then confront with evidence. Add a new axis like "desperation" and see how it changes responses.</p>
 		</div>
@@ -173,6 +298,8 @@
 <style>
 	.docs { padding: 0 1rem 2rem; max-width: 800px; margin: 0 auto; }
 	.breadcrumb { font-size: 0.85rem; color: #9aa0a6; margin: 0 0 0.5rem; }
+	.doc-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.doc-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
 	.lede { color: #9aa0a6; margin: 0 0 1.5rem; }
 	.section { margin-bottom: 2rem; }
 	.section h2 { margin: 0 0 0.5rem; font-size: 1.2rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
@@ -193,5 +320,29 @@
 	.story-card .meta { font-size: 0.82rem; color: #9aa0a6; }
 	.story-card .try { font-size: 0.85rem; background: #13151a; border-radius: 6px; padding: 0.5rem 0.75rem; margin-top: 0.5rem; }
 	.story-card .try strong { color: #8ab4f8; }
+	.table-wrap { overflow-x: auto; margin: 0.75rem 0 1rem; -webkit-overflow-scrolling: touch; }
+	.tbl { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+	.tbl th,
+	.tbl td { border: 1px solid #2a2f38; padding: 0.45rem 0.55rem; text-align: left; vertical-align: top; }
+	.tbl th { background: #1a1d23; color: #9aa0a6; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+	.tbl code { font-size: 0.82rem; }
+	.tbl-stories .tbl-notes { min-width: 11rem; }
+	.hint { font-size: 0.85rem; color: #9aa0a6; margin: 0.75rem 0 1.25rem; line-height: 1.5; }
+	.hint a { font-weight: 600; }
 	.nav-links { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #2a2f38; font-size: 0.9rem; }
+	:global([data-theme="light"]) .section h2,
+	:global([data-theme="light"]) .nav-links { border-bottom-color: #dfe3e8; border-top-color: #dfe3e8; }
+	:global([data-theme="light"]) .section p,
+	:global([data-theme="light"]) .section li,
+	:global([data-theme="light"]) .field-list dd,
+	:global([data-theme="light"]) .story-card p { color: #334155; }
+	:global([data-theme="light"]) .tip,
+	:global([data-theme="light"]) .example-box,
+	:global([data-theme="light"]) .story-card .try { background: #f8fafc; border: 1px solid #dfe3e8; }
+	:global([data-theme="light"]) .story-card { background: #fff; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .doc-hero { border-color: #dfe3e8; }
+	:global([data-theme="light"]) .tbl th { background: #f1f5f9; color: #4b5563; }
+	:global([data-theme="light"]) .tbl th,
+	:global([data-theme="light"]) .tbl td { border-color: #dfe3e8; }
+	:global([data-theme="light"]) .hint { color: #64748b; }
 </style>

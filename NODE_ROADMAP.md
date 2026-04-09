@@ -11,8 +11,8 @@
 | Node | LLM? | What it does | Status |
 |------|------|-------------|--------|
 | **movement** | Yes | Detects if player is trying to move to a different location | Not started |
-| **npc** | Yes | NPCs respond in character based on their personality prompts | ✅ Done (`nodes/npc.py`, builtin `conversation_with_npc` / `conversation_with_mood`) |
-| **mood** | Yes | Tracks NPC mood shifts (up/down/same) based on player actions | ✅ Done (`nodes/mood.py`, `route_after_narrator` in `routers/routing.py`) |
+| **npc** | Yes | NPCs respond in character based on their personality prompts | ✅ Done (`nodes/npc.py`, builtin `smart_conversation` / `full_story`) |
+| **mood** | Yes | Per-axis **1–10** mood (axes) or legacy single field via **UP/DOWN/SAME** step | ✅ Done (`nodes/mood.py`; `route_after_narrator` in `routers/routing.py`) |
 | **rules** | Yes | Checks win/lose conditions and trigger words | Not started (main-graph `rules` transitions can fire when state sets `_rules_transition` to the condition string) |
 
 ## Round 3: Social/milestone system

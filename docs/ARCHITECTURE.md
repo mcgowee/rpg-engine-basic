@@ -27,7 +27,9 @@ The shared `State` `TypedDict` in `graphs/builder.py` defines the fields graphs 
 
 - **Player input / output:** `message`, `response`
 - **Memory:** `history` (list of turn strings), `memory_summary` (LLM-compressed summary)
-- **Story context:** `narrator` (`prompt`, `model`), `player`, `characters`, `game_title`, `opening`, `paused`, `turn_count`
+- **Story context:** `narrator` (`prompt`, `model`), `player`, `characters`, `story` (genre, tone, NSFW metadata, etc.), `game_title`, `opening`, `paused`, `turn_count`
+
+The `State` `TypedDict` in `graphs/builder.py` lists the fields LangGraph merges; at play time the dict may also include **`story`** and other keys added by `_build_state_from_story` / saves.
 
 At runtime, `app.py` adds private keys such as `_story_id` and `_subgraph_name` for bookkeeping; these are not part of the graph schema but ride along in the same dict.
 
@@ -39,16 +41,17 @@ Registered in `nodes/__init__.py` as `NODE_REGISTRY`:
 |------|------|------|
 | `narrator` | Yes | Builds the main scene response from prompts + context |
 | `npc` | Yes | Appends in-character dialogue per NPC |
-| `mood` | Yes | Adjusts per-character mood axes from the player’s action |
+| `mood` | Yes | Updates per-character mood (axes 1–10 or legacy single-field step) |
+| `narrator_coda` | Yes | Optional closing beat after NPC lines (e.g. player prompt) |
 | `condense` | Yes | Refreshes `memory_summary` from `history` |
 | `memory` | No | Appends the turn to `history`, updates `turn_count` |
 
 ### Routers (`routers/`)
 
 - `route_graph_entry` — always enters at `narrator`.
-- `route_after_narrator` — if `characters` is non-empty, next is the NPC path (graphs map this to `mood` when mood is in the pipeline); otherwise skips to `condense`.
+- `route_after_narrator` — returns the string **`npc`** when `characters` is non-empty, else **`condense`**. The graph’s **mapping** renames that to the next node (e.g. map `"npc"` → `mood` so the chain is mood → npc, or map `"npc"` → `npc` when there is no mood node).
 
-Example: `graphs/conversation_with_mood.json` wires `narrator` → conditional → `mood` → `npc` → `condense` → `memory` → end.
+Example: `graphs/full_story.json` wires `narrator` → conditional → `mood` → `npc` → `narrator_coda` → `condense` → `memory` → end.
 
 ### Registry
 
@@ -96,3 +99,9 @@ The **`main_graph_templates`** table and UI (`web/src/routes/graphs/main/+page.s
 | Graph compile | `graphs/builder.py`, `graphs/registry.py` |
 | Node behavior | `nodes/*.py` |
 | Frontend proxy | `web/src/lib/server/flask.ts`, `web/src/routes/api/[...path]/+server.ts` |
+
+## Other docs
+
+- [docs/SUBGRAPHS.md](SUBGRAPHS.md) — builtin subgraph comparison (pipelines, routing).
+- [NODE_STATUS.md](../NODE_STATUS.md) — nodes and builtins snapshot.
+- [docs/INDEX.md](INDEX.md) — list of documentation in this repo.

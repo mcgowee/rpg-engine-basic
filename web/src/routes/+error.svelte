@@ -49,4 +49,7 @@
 		font-size: 0.9rem;
 	}
 	.btn:hover { border-color: #5f6368; }
+	:global([data-theme="light"]) h1 { color: #1f2937; }
+	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
+	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }
 </style>

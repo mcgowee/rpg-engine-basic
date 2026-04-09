@@ -8,7 +8,19 @@
 
 <section class="docs">
 	<h1>Documentation</h1>
+	<div class="doc-hero">
+		<img src="/images/docs-stories-hero.png" alt="Story creator writing a magical adventure" />
+	</div>
 	<p class="lede">Everything you need to know about the RPG Engine, organized by what you want to do.</p>
+	<p class="repo-docs-hint">
+		<a
+			href="https://github.com/mcgowee/rpg-engine-basic/blob/main/docs/INDEX.md"
+			target="_blank"
+			rel="noopener noreferrer"
+			>Repository doc index</a
+		>
+		<span class="hint-rest"> — architecture, node status, deploy notes, and what to update when graphs change.</span>
+	</p>
 
 	<div class="cards">
 		<a href="/docs/playing" class="doc-card">
@@ -37,12 +49,41 @@
 				<p>How nodes, routers, edges, and state work together. Build custom subgraphs, test them, and understand the LangGraph pipeline.</p>
 			</div>
 		</a>
+
+		<a href="/docs/subgraphs" class="doc-card">
+			<div class="doc-icon"><Icon name="git-branch" size={28} /></div>
+			<div>
+				<h2>Subgraphs</h2>
+				<p class="level">Choosing a pipeline</p>
+				<p>Compare every builtin subgraph: what runs each turn, when routing skips NPCs or mood, and which story types fit best.</p>
+			</div>
+		</a>
 	</div>
 </section>
 
 <style>
 	.docs { padding: 0 1rem 2rem; max-width: 800px; margin: 0 auto; }
-	.lede { color: #9aa0a6; margin: 0 0 2rem; }
+	.doc-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.doc-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
+	.lede { color: #9aa0a6; margin: 0 0 1rem; }
+	.repo-docs-hint {
+		font-size: 0.88rem;
+		color: #9aa0a6;
+		line-height: 1.5;
+		margin: 0 0 1.75rem;
+	}
+	.repo-docs-hint a {
+		color: #8ab4f8;
+		font-weight: 600;
+	}
+	.hint-rest { color: #9aa0a6; font-weight: 400; }
+	:global([data-theme='light']) .repo-docs-hint,
+	:global([data-theme='light']) .hint-rest {
+		color: #64748b;
+	}
+	:global([data-theme='light']) .repo-docs-hint a {
+		color: #1a73e8;
+	}
 	.cards { display: flex; flex-direction: column; gap: 1rem; }
 	.doc-card {
 		display: flex;
@@ -61,4 +102,12 @@
 	.doc-card h2 { margin: 0 0 0.15rem; font-size: 1.15rem; }
 	.doc-card p { margin: 0.3rem 0 0; font-size: 0.9rem; color: #bdc1c6; line-height: 1.5; }
 	.level { font-size: 0.78rem !important; color: #8ab4f8 !important; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin: 0 0 0.4rem !important; }
+	:global([data-theme="light"]) .doc-card {
+		background: #fff;
+		border-color: #dfe3e8;
+		color: #1f2937;
+	}
+	:global([data-theme="light"]) .doc-card:hover { border-color: #c5ccd6; }
+	:global([data-theme="light"]) .doc-card p { color: #4b5563; }
+	:global([data-theme="light"]) .doc-hero { border-color: #dfe3e8; }
 </style>

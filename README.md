@@ -88,6 +88,11 @@ Open the dev URL Vite prints (often `http://localhost:5173`). API calls go to `/
 
 ## Further reading
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — graph model, play flow, data model, gaps vs UI.
+- [docs/INDEX.md](docs/INDEX.md) — map of repo docs vs in-app `/docs` pages.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — graph model, play flow, main graph phases, API boundaries.
+- [docs/SUBGRAPHS.md](docs/SUBGRAPHS.md) — builtin subgraph pipelines and routing (mirrored under `web/static/docs/` for the web app).
+- [docs/BUILTIN_STORIES.md](docs/BUILTIN_STORIES.md) — seed stories table (subgraph, genre, filenames).
+- [NODE_STATUS.md](NODE_STATUS.md) — implemented nodes and builtins snapshot.
 - [NODE_ROADMAP.md](NODE_ROADMAP.md) — node ideas and future work.
 - [SECURITY.md](SECURITY.md) — trust boundaries, rate limits, production cookies.
+- [deploy/](deploy/) — systemd and VPS notes (see also `deploy.sh`).

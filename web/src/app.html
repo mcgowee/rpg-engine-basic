@@ -17,6 +17,7 @@
 				line-height: 1.45;
 				background: #0f1114;
 				color: #e8eaed;
+				transition: background-color 0.2s ease, color 0.2s ease;
 			}
 			a { color: #8ab4f8; }
 			a:hover { text-decoration: underline; }
@@ -124,6 +125,10 @@
 			}
 			/* Light theme overrides */
 			[data-theme="light"] {
+				background: #f8f9fa;
+				color: #1a1a1a;
+			}
+			[data-theme="light"] body {
 				background: #f8f9fa;
 				color: #1a1a1a;
 			}

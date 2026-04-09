@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { coverImagePosition } from '$lib/coverDisplay';
 
 	type BookRow = {
 		id: number;
@@ -65,6 +66,7 @@
 		<p class="err">{error}</p>
 	{:else if books.length === 0}
 		<div class="empty">
+			<img src="/images/empty-books.png" alt="Magical book waiting to be written" class="empty-illustration" />
 			<p>No books yet.</p>
 			<p class="muted">Play a story, then click <strong>Book</strong> on your stories list to create one.</p>
 		</div>
@@ -73,7 +75,10 @@
 			{#each books as book (book.id)}
 				<li class="book-card">
 					{#if book.cover_image}
-						<div class="book-cover" style="background-image: url('/images/covers/{book.cover_image}')"></div>
+						<div
+							class="book-cover"
+							style="background-image: url('/images/covers/{book.cover_image}'); background-position: {coverImagePosition(book.cover_image)};"
+						></div>
 					{:else if book.genre}
 						<div class="book-cover" style="background-image: url('/images/genre-{book.genre}.png')"></div>
 					{:else}
@@ -108,6 +113,7 @@
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.empty { padding: 2rem; text-align: center; border: 1px solid #2a2f38; border-radius: 10px; background: #1a1d23; }
+	.empty-illustration { width: 100%; max-width: 26rem; border-radius: 8px; border: 1px solid #2a2f38; margin: 0 auto 0.85rem; display: block; }
 	.book-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
 	.book-card { border: 1px solid #2a2f38; border-radius: 10px; overflow: hidden; background: #1a1d23; display: flex; flex-direction: column; }
 	.book-cover { height: 120px; background-size: cover; background-position: center; opacity: 0.7; }
@@ -121,4 +127,10 @@
 	.btn:hover { border-color: #5f6368; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
 	.btn.sm { font-size: 0.8rem; padding: 0.35rem 0.65rem; }
+	:global([data-theme="light"]) .empty { background: #f8fafc; border-color: #dfe3e8; color: #1f2937; }
+	:global([data-theme="light"]) .empty-illustration { border-color: #dfe3e8; }
+	:global([data-theme="light"]) .book-card { background: #fff; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .book-cover-empty { background: #f1f5f9; color: #6b7280; border-bottom: 1px solid #dfe3e8; }
+	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
+	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }
 </style>

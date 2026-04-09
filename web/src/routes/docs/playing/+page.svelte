@@ -4,6 +4,9 @@
 
 <section class="docs">
 	<p class="breadcrumb"><a href="/docs">Docs</a> / Playing Stories</p>
+	<div class="doc-hero">
+		<img src="/images/docs-playing-hero.png" alt="RPG party exploring ruins" />
+	</div>
 	<h1>Playing Stories</h1>
 	<p class="lede">How to find, play, and interact with stories in the RPG Engine.</p>
 
@@ -34,7 +37,7 @@
 			<dt>Turns</dt>
 			<dd>How many turns you've taken</dd>
 			<dt>Subgraph</dt>
-			<dd>Which graph pipeline is running (see <a href="/docs/engine">Engine Reference</a>)</dd>
+			<dd>Which graph pipeline is running — see <a href="/docs/subgraphs">Subgraphs</a> for a comparison, or <a href="/docs/engine">Engine Reference</a> for nodes and routers</dd>
 		</dl>
 	</div>
 
@@ -60,7 +63,11 @@
 	<div class="section">
 		<h2>Memory</h2>
 		<p>Click <strong>Memory (AI summary)</strong> in the sidebar to see what the engine remembers about the story so far. This is a compressed summary that the narrator uses for context.</p>
-		<p>Whether you see a rolling AI summary depends on the <a href="/docs/engine">subgraph</a>. <code>conversation</code> and richer graphs track turn history; <code>full_conversation</code> and NPC graphs also maintain the compressed summary the narrator uses.</p>
+		<p>
+			Whether you see a rolling AI summary depends on the <a href="/docs/subgraphs">subgraph</a>.
+			<code>conversation</code> keeps turn history in the graph; <code>full_conversation</code> and other graphs that
+			include <code>condense</code> maintain the compressed summary the narrator uses for long-range context.
+		</p>
 	</div>
 
 	<div class="section">
@@ -86,6 +93,8 @@
 <style>
 	.docs { padding: 0 1rem 2rem; max-width: 800px; margin: 0 auto; }
 	.breadcrumb { font-size: 0.85rem; color: #9aa0a6; margin: 0 0 0.5rem; }
+	.doc-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.doc-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
 	.lede { color: #9aa0a6; margin: 0 0 1.5rem; }
 	.section { margin-bottom: 2rem; }
 	.section h2 { margin: 0 0 0.5rem; font-size: 1.2rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.3rem; }
@@ -96,4 +105,10 @@
 	.info-list dt { color: #9aa0a6; font-weight: 600; margin: 0; }
 	.info-list dd { margin: 0; color: #bdc1c6; }
 	.example-box { background: #13151a; border-radius: 6px; padding: 0.65rem 0.85rem; font-size: 0.85rem; line-height: 1.6; margin: 0.5rem 0; color: #bdc1c6; }
+	:global([data-theme="light"]) .section h2 { border-bottom-color: #dfe3e8; }
+	:global([data-theme="light"]) .section p,
+	:global([data-theme="light"]) .section li,
+	:global([data-theme="light"]) .info-list dd { color: #334155; }
+	:global([data-theme="light"]) .example-box { background: #f8fafc; color: #334155; border: 1px solid #dfe3e8; }
+	:global([data-theme="light"]) .doc-hero { border-color: #dfe3e8; }
 </style>

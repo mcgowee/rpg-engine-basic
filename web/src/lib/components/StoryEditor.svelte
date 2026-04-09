@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
+	import { coverImagePosition } from '$lib/coverDisplay';
 
 	type Props = {
 		mode: 'create' | 'edit';
@@ -30,8 +32,18 @@
 	let coverCacheBust = $state('');
 	let generatingCover = $state(false);
 	let coverError = $state('');
+	let coverLoadFailed = $state(false);
+	let genreCoverLoadFailed = $state(false);
+	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
+	let storyImages = $state<StoryImage[]>([]);
+	let manualStoryImagePrompt = $state('');
+	let generatingStoryImage = $state(false);
+	let storyImageError = $state('');
+	let storyImageOk = $state('');
+	let brokenStoryImages = new SvelteSet<string>();
 	let generatingPortrait = $state('');
 	let portraitError = $state('');
+	let brokenPortraits = new SvelteSet<string>();
 
 	// Shared content
 	let narratorPrompt = $state('You are the narrator for a text adventure. Describe scenes in second person. End each beat with: What do you do?');
@@ -158,16 +170,11 @@
 			});
 			recs.push({ name: 'full_conversation', match: true, reason: 'No characters — narrator + rolling memory summary for longer arcs' });
 		} else if (hasMoodAxes) {
-			recs.push({ name: 'conversation_with_mood', match: true, reason: 'Characters with mood axes — mood shifts tracked each turn' });
+			recs.push({ name: 'full_story', match: true, reason: 'Characters with mood axes — mood shifts tracked each turn' });
 			recs.push({ name: 'smart_conversation', match: false, reason: 'Has characters but skips mood tracking' });
 		} else {
 			recs.push({ name: 'smart_conversation', match: true, reason: 'Characters without mood axes — NPCs respond, mood skipped; can skip NPC path when no characters' });
-			recs.push({
-				name: 'conversation_with_npc',
-				match: true,
-				reason: 'Same NPC + coda + memory as smart when you always have characters — simpler graph (no branch after narrator)',
-			});
-			recs.push({ name: 'conversation_with_mood', match: false, reason: 'Would track moods, but no axes defined yet' });
+			recs.push({ name: 'full_story', match: false, reason: 'Would track moods, but no axes defined yet' });
 		}
 		return recs;
 	});
@@ -177,6 +184,128 @@
 		'slice-of-life', 'historical', 'supernatural', 'post-apocalyptic',
 		'urban-fantasy', 'erotica', 'drama', 'comedy',
 	];
+
+	function normalizedGenre(value: string): string {
+		return value.trim().toLowerCase();
+	}
+
+	function storyCoverSrc(): string {
+		if (!coverImage) return '';
+		return `/images/covers/${coverImage}${coverCacheBust}`;
+	}
+
+	function genreCoverFallbackSrc(): string {
+		const g = normalizedGenre(genre);
+		return g && GENRES.includes(g) ? `/images/genre-${g}.png` : '';
+	}
+
+	function portraitSrc(portrait: string): string {
+		return `/images/portraits/${portrait}`;
+	}
+
+	function storyImageSrc(filename: string): string {
+		return `/images/story/${filename}`;
+	}
+
+	function storyImageKey(img: StoryImage, idx: number): string {
+		return `${idx}:${img.filename}:${img.created_at ?? ''}`;
+	}
+
+	function isStoryImageBroken(key: string): boolean {
+		return brokenStoryImages.has(key);
+	}
+
+	function markStoryImageBroken(key: string): void {
+		if (brokenStoryImages.has(key)) return;
+		brokenStoryImages.add(key);
+	}
+
+	function clearStoryImageBroken(key: string): void {
+		if (!brokenStoryImages.has(key)) return;
+		brokenStoryImages.delete(key);
+	}
+
+	function normalizeStoryImages(value: unknown): StoryImage[] {
+		if (!Array.isArray(value)) return [];
+		const out: StoryImage[] = [];
+		for (const item of value) {
+			if (!item || typeof item !== 'object') continue;
+			const raw = item as Record<string, unknown>;
+			const filename = String(raw.filename ?? '').trim();
+			if (!filename) continue;
+			const imageId = raw.image_id == null ? null : Number(raw.image_id);
+			out.push({
+				filename,
+				image_id: Number.isFinite(imageId) ? imageId : null,
+				prompt: String(raw.prompt ?? ''),
+				created_at: String(raw.created_at ?? ''),
+			});
+		}
+		return out;
+	}
+
+	function buildAutoStoryImagePrompt(): string {
+		const parts = [title.trim(), genre.trim(), tone.trim(), description.trim(), opening.trim()]
+			.filter(Boolean)
+			.slice(0, 4);
+		return parts.join(' | ');
+	}
+
+	function removeStoryImage(index: number): void {
+		storyImages = storyImages.filter((_, i) => i !== index);
+	}
+
+	async function generateStoryImage(prompt: string): Promise<void> {
+		if (!storyId || generatingStoryImage) return;
+		generatingStoryImage = true;
+		storyImageError = '';
+		storyImageOk = '';
+		try {
+			const r = await fetch('/api/ai/generate-story-image', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ story_id: storyId, prompt }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (!r.ok || !j.filename) {
+				storyImageError = j.error ?? 'Story image generation failed';
+				return;
+			}
+			const next: StoryImage = {
+				filename: String(j.filename),
+				image_id: j.image_id == null ? null : Number(j.image_id),
+				prompt: String(j.prompt ?? ''),
+				created_at: String(j.created_at ?? new Date().toISOString()),
+			};
+			storyImages = [...storyImages, next];
+			storyImageOk = 'Story image generated.';
+			manualStoryImagePrompt = '';
+		} catch {
+			storyImageError = 'Network error';
+		} finally {
+			generatingStoryImage = false;
+		}
+	}
+
+	function portraitErrorKey(idx: number, portrait: string): string {
+		return `${idx}:${portrait}`;
+	}
+
+	function isPortraitBroken(idx: number, portrait: string): boolean {
+		return brokenPortraits.has(portraitErrorKey(idx, portrait));
+	}
+
+	function markPortraitBroken(idx: number, portrait: string): void {
+		const key = portraitErrorKey(idx, portrait);
+		if (brokenPortraits.has(key)) return;
+		brokenPortraits.add(key);
+	}
+
+	function clearPortraitBroken(idx: number, portrait: string): void {
+		const key = portraitErrorKey(idx, portrait);
+		if (!brokenPortraits.has(key)) return;
+		brokenPortraits.delete(key);
+	}
 
 	const NSFW_RATINGS = [
 		{ value: 'none', label: 'None — clean, no sexual or graphic content' },
@@ -192,10 +321,6 @@
 		'dom/sub', 'roleplay-within-roleplay', 'monster/creature', 'mind-control',
 		'size-difference', 'incest', 'non-con',
 	];
-
-	function subgraphDeprecatedNote(name: string): string {
-		return name === 'narrator_with_memory' ? ' — deprecated, use conversation' : '';
-	}
 
 	onMount(async () => {
 		try {
@@ -246,6 +371,7 @@
 					if (s.characters && typeof s.characters === 'object') {
 						characterEntries = dictToCharEntries(s.characters);
 					}
+					storyImages = normalizeStoryImages(s.story_images);
 				}
 			} catch { /* ignore */ }
 		}
@@ -274,6 +400,7 @@
 				player_name: playerName.trim() || 'Adventurer',
 				player_background: playerBackground.trim(),
 				characters: charactersToDict(),
+				story_images: storyImages,
 				notes: notes.trim(),
 			};
 			const url = mode === 'edit' ? `/api/stories/${storyId}` : '/api/stories';
@@ -340,6 +467,8 @@
 			if (r.ok && j.cover_image) {
 				coverImage = j.cover_image;
 				coverCacheBust = '?t=' + Date.now();
+				coverLoadFailed = false;
+				genreCoverLoadFailed = false;
 			} else {
 				coverError = j.error ?? 'Cover generation failed';
 			}
@@ -569,7 +698,30 @@
 					<span class="hint">Generated from your story's title, genre, and description.</span>
 					{#if coverImage}
 						<div class="cover-preview">
-							<img src="/images/covers/{coverImage}{coverCacheBust}" alt="Story cover" />
+							{#if !coverLoadFailed}
+								<img
+									src={storyCoverSrc()}
+									alt="Story cover"
+									loading="lazy"
+									decoding="async"
+									style:object-position={coverImagePosition(coverImage)}
+									onerror={() => coverLoadFailed = true}
+								/>
+							{:else if genreCoverFallbackSrc() && !genreCoverLoadFailed}
+								<img
+									src={genreCoverFallbackSrc()}
+									alt="Genre fallback cover"
+									loading="lazy"
+									decoding="async"
+									class="fallback-img"
+									onerror={() => genreCoverLoadFailed = true}
+								/>
+							{:else}
+								<div class="image-placeholder cover-placeholder">
+									<Icon name="image" size={20} />
+									<span>Cover unavailable</span>
+								</div>
+							{/if}
 						</div>
 					{:else}
 						<p class="muted" style="font-size:0.85rem">No cover image yet.</p>
@@ -580,6 +732,67 @@
 						{#if generatingCover}<span class="spinner"></span> Generating...{:else}🎨 Generate Cover{/if}
 					</button>
 					{#if coverError}<p class="err" style="font-size:0.85rem">{coverError}</p>{/if}
+				</div>
+
+				<div class="field">
+					<strong>Story Images</strong>
+					<span class="hint">Generate scene-setting images for this story and save them with the story.</span>
+					<div class="story-image-actions">
+						<button
+							type="button"
+							class="btn sm"
+							disabled={generatingStoryImage}
+							title="Generate a starter image from current story details"
+							onclick={() => generateStoryImage(buildAutoStoryImagePrompt())}
+						>
+							{#if generatingStoryImage}<span class="spinner"></span> Generating...{:else}✨ Auto Generate{/if}
+						</button>
+					</div>
+					<textarea
+						rows="2"
+						placeholder="Manual image prompt (optional)"
+						bind:value={manualStoryImagePrompt}
+					></textarea>
+					<button
+						type="button"
+						class="btn sm"
+						disabled={generatingStoryImage}
+						title="Generate image from this prompt"
+						onclick={() => generateStoryImage(manualStoryImagePrompt.trim())}
+					>
+						{#if generatingStoryImage}<span class="spinner"></span> Generating...{:else}🖼️ Generate from Prompt{/if}
+					</button>
+					{#if storyImageError}<p class="err" style="font-size:0.85rem">{storyImageError}</p>{/if}
+					{#if storyImageOk}<p class="ok" style="font-size:0.85rem">{storyImageOk}</p>{/if}
+
+					{#if storyImages.length > 0}
+						<div class="story-image-grid">
+							{#each storyImages as img, idx (storyImageKey(img, idx))}
+								{@const key = storyImageKey(img, idx)}
+								<div class="story-image-card">
+									{#if !isStoryImageBroken(key)}
+										<img
+											src={storyImageSrc(img.filename)}
+											alt="Story image {idx + 1}"
+											loading="lazy"
+											decoding="async"
+											onerror={() => markStoryImageBroken(key)}
+											onload={() => clearStoryImageBroken(key)}
+										/>
+									{:else}
+										<div class="image-placeholder story-image-placeholder">
+											<Icon name="image" size={18} />
+											<span>Image unavailable</span>
+										</div>
+									{/if}
+									{#if img.prompt}
+										<p class="story-image-prompt">{img.prompt}</p>
+									{/if}
+									<button type="button" class="btn sm danger" onclick={() => removeStoryImage(idx)}>Remove</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -597,7 +810,7 @@
 				{@render aiButtons('notes', () => notes, (v) => notes = v)}
 			</div>
 
-			<label class="field">
+			<label class="field field-meta">
 				<strong>Genre</strong>
 				<select bind:value={genre}>
 					<option value="">— select —</option>
@@ -605,13 +818,13 @@
 				</select>
 			</label>
 
-			<label class="field">
+			<label class="field field-meta">
 				<strong>Tone</strong>
 				<span class="hint">Comma-separated descriptors: e.g. "dark, romantic, tense" or "lighthearted, campy, humorous"</span>
 				<input type="text" bind:value={tone} placeholder="e.g. dark, romantic, tense" />
 			</label>
 
-			<label class="field">
+			<label class="field field-meta">
 				<strong>NSFW Rating</strong>
 				<select bind:value={nsfwRating}>
 					{#each NSFW_RATINGS as r}<option value={r.value}>{r.label}</option>{/each}
@@ -624,7 +837,7 @@
 					<span class="hint">Select all that apply to this story.</span>
 					<div class="tag-grid">
 						{#each NSFW_TAGS as tag}
-							<label class="tag-check">
+							<label class="tag-check" class:selected={nsfwTags.includes(tag)}>
 								<input type="checkbox"
 									checked={nsfwTags.includes(tag)}
 									onchange={() => {
@@ -691,7 +904,7 @@
 				<select bind:value={subgraphName}>
 					{#each subgraphs as sg}
 						<option value={sg.name}>
-							{sg.name}{subgraphDeprecatedNote(sg.name)} — {sg.description || 'no description'}
+							{sg.name} — {sg.description || 'no description'}
 						</option>
 					{/each}
 				</select>
@@ -766,9 +979,23 @@
 					{#if mode === 'edit'}
 						<div class="field">
 							<strong>Portrait</strong>
-							{#if char.portrait}
+							{#if char.portrait && !isPortraitBroken(idx, char.portrait)}
 								<div class="portrait-preview">
-									<img src="/images/portraits/{char.portrait}" alt="{char.key} portrait" />
+									<img
+										src={portraitSrc(char.portrait)}
+										alt="{char.key} portrait"
+										loading="lazy"
+										decoding="async"
+										onerror={() => markPortraitBroken(idx, char.portrait ?? '')}
+										onload={() => clearPortraitBroken(idx, char.portrait ?? '')}
+									/>
+								</div>
+							{:else if char.portrait}
+								<div class="portrait-preview">
+									<div class="image-placeholder portrait-placeholder">
+										<Icon name="user" size={20} />
+										<span>Portrait unavailable</span>
+									</div>
 								</div>
 							{/if}
 							<button type="button" class="btn sm"
@@ -833,11 +1060,13 @@
 {/if}
 
 <style>
-	.tabs { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 2px solid #2a2f38; }
-	.tabs button { padding: 0.5rem 1rem; border: 1px solid #2a2f38; border-bottom: none; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; border-radius: 8px 8px 0 0; margin-bottom: -2px; }
-	.tabs button.active { background: #0f1114; color: #e8eaed; border-bottom: 2px solid #0f1114; font-weight: 600; }
+	.tabs { display: flex; gap: 0.35rem; margin-bottom: 1rem; border-bottom: 1px solid #2a2f38; padding-bottom: 0.4rem; flex-wrap: wrap; }
+	.tabs button { padding: 0.45rem 0.85rem; border: 1px solid #2a2f38; background: #1a1d23; color: #9aa0a6; cursor: pointer; font: inherit; border-radius: 8px; transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease; }
+	.tabs button:hover { color: #e8eaed; border-color: #46505e; background: #20242c; }
+	.tabs button.active { background: #1a73e8; color: #fff; border-color: #1a73e8; font-weight: 600; }
 	.tab-content { max-width: 700px; }
 	.field { display: block; margin-bottom: 1rem; }
+	.field-meta { border: 1px solid #2a2f38; border-radius: 10px; padding: 0.75rem 0.85rem; background: #161a20; }
 	.field strong { display: block; margin-bottom: 0.25rem; }
 	.field input, .field textarea, .field select { width: 100%; box-sizing: border-box; }
 	.hint { display: block; font-size: 0.82rem; color: #9aa0a6; margin-bottom: 0.3rem; }
@@ -863,10 +1092,47 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
-	.cover-preview { margin: 0.5rem 0; }
-	.cover-preview img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
-	.portrait-preview { margin: 0.5rem 0; }
-	.portrait-preview img { max-width: 150px; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
+	.cover-preview {
+		margin: 0.5rem 0;
+		width: min(100%, 460px);
+		aspect-ratio: 16 / 6.5;
+		border-radius: 8px;
+		overflow: hidden;
+		border: 1px solid #2a2f38;
+		background: #161a20;
+	}
+	.cover-preview img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
+	.cover-preview img.fallback-img { opacity: 0.95; }
+	.portrait-preview {
+		margin: 0.5rem 0;
+		width: 120px;
+		aspect-ratio: 2 / 3;
+		border-radius: 8px;
+		overflow: hidden;
+		border: 1px solid #2a2f38;
+		background: #161a20;
+	}
+	.portrait-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+	.image-placeholder {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		color: #7f8896;
+		font-size: 0.76rem;
+		background: linear-gradient(180deg, #1b2028 0%, #171b22 100%);
+	}
+	.cover-placeholder { font-size: 0.8rem; }
+	.portrait-placeholder { font-size: 0.72rem; }
+	.story-image-actions { display: flex; gap: 0.4rem; margin: 0.3rem 0; }
+	.story-image-grid { margin-top: 0.55rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.55rem; }
+	.story-image-card { border: 1px solid #2a2f38; border-radius: 8px; padding: 0.45rem; background: #161a20; display: flex; flex-direction: column; gap: 0.35rem; }
+	.story-image-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; border: 1px solid #2a2f38; display: block; }
+	.story-image-placeholder { width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; border: 1px solid #2a2f38; font-size: 0.72rem; }
+	.story-image-prompt { margin: 0; font-size: 0.76rem; line-height: 1.35; color: #9aa0a6; }
 	.danger { color: #f28b82; border-color: #c5221f; }
 	.sg-rec-box { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1.25rem; background: #1a1d23; }
 	.sg-rec-title { font-size: 0.95rem; display: block; margin-bottom: 0.2rem; }
@@ -894,7 +1160,17 @@
 	.suggest-item:hover { background: #2a2f38; }
 	.axis-preview { font-weight: 600; margin-right: 0.35rem; }
 	.axis-range { color: #9aa0a6; font-size: 0.82rem; }
-	.tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.3rem 0.75rem; margin-top: 0.35rem; }
-	.tag-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; color: #e8eaed; cursor: pointer; }
-	.tag-check input[type="checkbox"] { accent-color: #1a73e8; }
+	.tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.45rem; margin-top: 0.35rem; }
+	.tag-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; color: #e8eaed; cursor: pointer; border: 1px solid #2a2f38; border-radius: 999px; padding: 0.38rem 0.62rem; background: #12161c; transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease, transform 0.18s ease; }
+	.tag-check:hover { border-color: #4b5565; background: #1b2129; transform: translateY(-1px); }
+	.tag-check.selected { border-color: #1a73e8; background: #112946; color: #d5e8ff; }
+	.tag-check input[type="checkbox"] { accent-color: #1a73e8; margin: 0; }
+	:global([data-theme="light"]) .tabs { border-bottom-color: #dfe3e7; }
+	:global([data-theme="light"]) .tabs button { border-color: #d9dde2; background: #f7f8fa; color: #5a6472; }
+	:global([data-theme="light"]) .tabs button:hover { color: #1f2937; border-color: #cdd3db; background: #f2f5f8; }
+	:global([data-theme="light"]) .tabs button.active { color: #fff; background: #1a73e8; border-color: #1a73e8; }
+	:global([data-theme="light"]) .field-meta { border-color: #dfe3e7; background: #fafbfc; }
+	:global([data-theme="light"]) .tag-check { border-color: #d5dbe3; background: #fff; color: #2f3a49; }
+	:global([data-theme="light"]) .tag-check:hover { border-color: #c2cad5; background: #f5f8fc; }
+	:global([data-theme="light"]) .tag-check.selected { border-color: #1a73e8; background: #e8f2ff; color: #164a91; }
 </style>

@@ -7,6 +7,7 @@
 	import { checkAuth, logout, authState } from '$lib/auth.svelte';
 	import { themeState, initTheme, toggleTheme } from '$lib/theme.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import TrainingDocsBar from '$lib/components/TrainingDocsBar.svelte';
 	import { toasts } from '$lib/toast.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
@@ -14,6 +15,12 @@
 
 	let currentPath = $derived(page.url.pathname);
 	let isLoginPage = $derived(currentPath === '/login');
+	let mobileNavOpen = $state(false);
+
+	$effect(() => {
+		void currentPath;
+		mobileNavOpen = false;
+	});
 
 	onMount(() => {
 		initTheme();
@@ -61,18 +68,31 @@
 
 		{#if authState.uid}
 			<nav class="nav" aria-label="Main navigation">
-				<a href="/" class:active={currentPath === '/'}>Lobby</a>
-				<a href="/stories" class:active={currentPath.startsWith('/stories') && !currentPath.includes('browse')}>Stories</a>
-				<a href="/stories/browse" class:active={currentPath.includes('browse')}>Browse</a>
-				<a href="/books" class:active={currentPath === '/books'}>Books</a>
-				<a href="/graphs" class:active={currentPath.startsWith('/graphs')}>Graphs</a>
-				<a href="/docs" class:active={currentPath.startsWith('/docs')}>Docs</a>
-				<a href="/playback" class:active={currentPath === '/playback'}>Playback</a>
-				<a href="/settings" class:active={currentPath === '/settings'}><Icon name="settings" size={14} /></a>
+				<a class="nav-link nav-link-primary" href="/" class:active={currentPath === '/'}>Lobby</a>
+				<a class="nav-link nav-link-primary" href="/stories" class:active={currentPath.startsWith('/stories') && !currentPath.includes('browse')}>Stories</a>
+				<a class="nav-link nav-link-primary" href="/stories/browse" class:active={currentPath.includes('browse')}>Browse</a>
+				<a class="nav-link" href="/books" class:active={currentPath === '/books'}>Books</a>
+				<a class="nav-link" href="/graphs" class:active={currentPath.startsWith('/graphs')}>Graphs</a>
+				<a class="nav-link" href="/docs" class:active={currentPath.startsWith('/docs')}>Docs</a>
+				<a class="nav-link" href="/playback" class:active={currentPath === '/playback'}>Playback</a>
+				<a class="nav-link nav-link-icon" href="/settings" class:active={currentPath === '/settings'}><Icon name="settings" size={14} /></a>
 			</nav>
 		{/if}
 
 		<div class="header-right">
+			{#if authState.uid}
+				<button
+					type="button"
+					class="mobile-nav-toggle"
+					onclick={() => (mobileNavOpen = !mobileNavOpen)}
+					aria-expanded={mobileNavOpen}
+					aria-controls="mobile-nav-panel"
+					aria-label="Toggle navigation menu"
+				>
+					<Icon name={mobileNavOpen ? 'x' : 'menu'} size={14} />
+					<span>{mobileNavOpen ? 'Close' : 'Menu'}</span>
+				</button>
+			{/if}
 			<button type="button" class="theme-toggle" onclick={toggleTheme}
 				title={themeState.current === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 				aria-label="Toggle theme">
@@ -87,8 +107,31 @@
 		</div>
 	</header>
 
+	{#if authState.uid}
+		<div
+			id="mobile-nav-panel"
+			class="mobile-nav-panel"
+			class:open={mobileNavOpen}
+			aria-hidden={!mobileNavOpen}
+		>
+			<div class="mobile-nav-grid">
+				<a href="/" class="nav-link nav-link-primary" class:active={currentPath === '/'}>Lobby</a>
+				<a href="/stories" class="nav-link nav-link-primary" class:active={currentPath.startsWith('/stories') && !currentPath.includes('browse')}>Stories</a>
+				<a href="/stories/browse" class="nav-link nav-link-primary" class:active={currentPath.includes('browse')}>Browse</a>
+				<a href="/playback" class="nav-link" class:active={currentPath === '/playback'}>Playback</a>
+				<a href="/books" class="nav-link" class:active={currentPath === '/books'}>Books</a>
+				<a href="/graphs" class="nav-link" class:active={currentPath.startsWith('/graphs')}>Graphs</a>
+				<a href="/docs" class="nav-link" class:active={currentPath.startsWith('/docs')}>Docs</a>
+				<a href="/settings" class="nav-link nav-link-icon" class:active={currentPath === '/settings'}>
+					<Icon name="settings" size={14} /> Settings
+				</a>
+			</div>
+		</div>
+	{/if}
+
 	<div id="main-content">
 		{#if authState.uid || isLoginPage}
+			<TrainingDocsBar />
 			{@render children()}
 		{/if}
 	</div>
@@ -100,7 +143,8 @@
 				<a href="/docs">Documentation</a> ·
 				<a href="/docs/playing">Player Guide</a> ·
 				<a href="/docs/stories">Story Creator Guide</a> ·
-				<a href="/docs/engine">Engine Reference</a>
+				<a href="/docs/engine">Engine Reference</a> ·
+				<a href="/docs/subgraphs">Subgraphs</a>
 			</p>
 			<p class="footer-tech">Built with <a href="https://langchain-ai.github.io/langgraph/" target="_blank" rel="noopener">LangGraph</a>, <a href="https://flask.palletsprojects.com/" target="_blank" rel="noopener">Flask</a>, and <a href="https://svelte.dev/" target="_blank" rel="noopener">SvelteKit</a></p>
 		</div>
@@ -159,25 +203,32 @@
 	.nav {
 		display: flex;
 		align-items: center;
-		gap: 0.15rem;
+		gap: 0.25rem;
 		flex: 1;
 		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: thin;
+		padding-bottom: 0.1rem;
 	}
-	.nav a {
+	.nav-link {
 		color: #9aa0a6;
 		font-size: 0.85rem;
 		font-weight: 500;
 		text-decoration: none;
-		padding: 0.35rem 0.6rem;
+		padding: 0.35rem 0.62rem;
 		border-radius: 6px;
 		white-space: nowrap;
-		transition: background 0.1s, color 0.1s;
+		border: 1px solid transparent;
+		transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 	}
-	.nav a:hover { color: #e8eaed; background: #2a2f38; text-decoration: none; }
-	.nav a.active { color: #8ab4f8; background: #1a2a4a; }
-	:global([data-theme="light"]) .nav a { color: #555; }
-	:global([data-theme="light"]) .nav a:hover { color: #1a1a1a; background: #f0f0f0; }
-	:global([data-theme="light"]) .nav a.active { color: #1a73e8; background: #e3f2fd; }
+	.nav-link-primary { color: #c6d7ff; }
+	.nav-link-icon { padding-inline: 0.48rem; }
+	.nav-link:hover { color: #e8eaed; background: #2a2f38; border-color: #38404d; text-decoration: none; }
+	.nav-link.active { color: #8ab4f8; background: #1a2a4a; border-color: #34558a; }
+	:global([data-theme="light"]) .nav-link { color: #555; }
+	:global([data-theme="light"]) .nav-link-primary { color: #1f4f96; }
+	:global([data-theme="light"]) .nav-link:hover { color: #1a1a1a; background: #f0f0f0; border-color: #dadde2; }
+	:global([data-theme="light"]) .nav-link.active { color: #1a73e8; background: #e3f2fd; border-color: #c3ddfb; }
 	/* Header right */
 	.header-right {
 		display: flex;
@@ -185,19 +236,37 @@
 		gap: 0.5rem;
 		margin-left: auto;
 	}
+	.mobile-nav-toggle {
+		display: none;
+		align-items: center;
+		gap: 0.35rem;
+		background: #1a1d23;
+		border: 1px solid #3c4043;
+		color: #e8eaed;
+		padding: 0.3rem 0.55rem;
+		border-radius: 6px;
+		font: inherit;
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: background-color 0.15s, border-color 0.15s;
+	}
+	.mobile-nav-toggle:hover {
+		background: #252a33;
+		border-color: #5f6368;
+	}
 	.theme-toggle {
-		background: none;
+		background: #1a1d23;
 		border: 1px solid #3c4043;
 		padding: 0.25rem 0.4rem;
 		border-radius: 6px;
 		font-size: 0.9rem;
 		line-height: 1;
 		cursor: pointer;
-		transition: border-color 0.15s;
+		transition: border-color 0.15s, background-color 0.15s;
 	}
-	.theme-toggle:hover { border-color: #5f6368; }
-	:global([data-theme="light"]) .theme-toggle { border-color: #ccc; }
-	:global([data-theme="light"]) .theme-toggle:hover { border-color: #999; }
+	.theme-toggle:hover { border-color: #5f6368; background: #252a33; }
+	:global([data-theme="light"]) .theme-toggle { border-color: #d5d9df; background: #f7f9fb; }
+	:global([data-theme="light"]) .theme-toggle:hover { border-color: #c7ced9; background: #f0f3f7; }
 	.who {
 		font-size: 0.82rem;
 		color: #9aa0a6;
@@ -221,6 +290,40 @@
 	.header-btn:hover { border-color: #5f6368; text-decoration: none; }
 	:global([data-theme="light"]) .header-btn { color: #333; border-color: #ccc; }
 	:global([data-theme="light"]) .header-btn:hover { border-color: #999; }
+	:global([data-theme="light"]) .mobile-nav-toggle {
+		background: #f7f9fb;
+		border-color: #d5d9df;
+		color: #2f3742;
+	}
+	:global([data-theme="light"]) .mobile-nav-toggle:hover {
+		background: #f0f3f7;
+		border-color: #c7ced9;
+	}
+	.mobile-nav-panel {
+		display: none;
+		padding: 0 1rem 0.6rem;
+		background: #13151a;
+		border-bottom: 1px solid #2a2f38;
+	}
+	.mobile-nav-panel.open {
+		display: block;
+	}
+	.mobile-nav-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.4rem;
+	}
+	.mobile-nav-grid .nav-link {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.45rem 0.55rem;
+		font-size: 0.82rem;
+	}
+	:global([data-theme="light"]) .mobile-nav-panel {
+		background: #fff;
+		border-bottom-color: #e0e0e0;
+	}
 	/* Main */
 	#main-content {
 		min-height: calc(100vh - 8rem);
@@ -245,8 +348,9 @@
 	/* Responsive */
 	@media (max-width: 640px) {
 		.header { flex-wrap: wrap; gap: 0.35rem; }
-		.nav { order: 3; width: 100%; overflow-x: auto; padding-top: 0.25rem; border-top: 1px solid #2a2f38; }
+		.nav { display: none; }
 		.header-right { order: 2; }
 		.brand-tag { display: none; }
+		.mobile-nav-toggle { display: inline-flex; }
 	}
 </style>

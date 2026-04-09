@@ -1,57 +1,48 @@
 # Node Status
 
-## Active Pipeline: `full_memory`
+Snapshot of **implemented nodes**, **builtin subgraphs**, and how they fit together. For a player-facing comparison of pipelines (when to pick which graph), see [docs/SUBGRAPHS.md](docs/SUBGRAPHS.md). For architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Nodes (implemented)
+
+| Node | File | LLM? | Purpose |
+|------|------|------|---------|
+| **narrator** | `nodes/narrator.py` | Yes (creative) | Core scene narration. Genre/tone/NSFW-aware. Can separate “scene only” vs NPC dialogue when the subgraph uses a dedicated `npc` node. |
+| **mood** | `nodes/mood.py` | Yes (classification) | Updates per-character mood. **Mood axes:** LLM outputs a **1–10** value per axis. **Legacy single field:** UP / DOWN / SAME adjusts a single `mood` number by ±1. |
+| **npc** | `nodes/npc.py` | Yes (dialogue) | NPCs speak in character; reads mood and memory context. |
+| **narrator_coda** | `nodes/narrator_coda.py` | Yes (creative) | Closing beat after NPC lines (e.g. prompt the player). Used in `smart_conversation` and `full_story`. |
+| **condense** | `nodes/condense.py` | Yes (summarization) | Compresses history into a rolling `memory_summary` for long-term context. |
+| **memory** | `nodes/memory.py` | No | Appends the turn to `history`, stores condense output, increments `turn_count`. |
+
+## Routers
+
+| Router | Returns | Role |
+|--------|---------|------|
+| `route_graph_entry` | `narrator` | Entry: always start at narrator. |
+| `route_after_narrator` | `npc` or `condense` | If `characters` is non-empty, return value is **`npc`** (graphs map that string to the next node, e.g. `mood` or `npc`). If no characters, **`condense`** — skips NPC/mood/coda paths that depend on a cast. |
+
+## Builtin subgraphs (see `graphs/*.json`)
+
+The Story Editor default for new stories is **`conversation`** (`web/src/lib/components/StoryEditor.svelte`). All six builtins are registered from DB seed / `sync_builtin_subgraphs_from_disk()`.
+
+| Subgraph | Pipeline (simplified) | Conditional after narrator? |
+|----------|------------------------|-----------------------------|
+| `basic_narrator` | narrator → end | No |
+| `conversation` | narrator → memory → end | No |
+| `full_conversation` | narrator → condense → memory → end | No |
+| `smart_conversation` | narrator → (npc → coda or condense) → memory → end | Yes |
+| `full_memory` | narrator → mood → npc → condense → memory → end | No (fixed chain; does not skip when there are no characters) |
+| `full_story` | narrator → (mood → npc → coda or condense) → memory → end | Yes |
+
+**Rename:** older stories may have had `conversation_with_mood`; migrations in `db.py` map that to **`full_story`**.
+
+## Story metadata → prompts
 
 ```
-narrator → mood → npc → condense → memory
+Story Editor → DB (genre, tone, nsfw_rating, nsfw_tags, …)
+    → state["story"] in play
+        → nodes/story_context.py → prompt strings for narrator, condense, etc.
 ```
 
-5 nodes, ~5.5s avg per turn with mistral-nemo:latest.
+## Planned / future nodes
 
-## Node Details
-
-| Node | File | Status | LLM Call | Purpose |
-|------|------|--------|----------|---------|
-| **narrator** | `nodes/narrator.py` | Active | Yes (creative) | Core scene narration. Genre/tone/NSFW-aware. NPC-separation mode for subgraphs with dedicated NPC node. |
-| **mood** | `nodes/mood.py` | Active | Yes (classification) | Rates each character's emotional axes (1-10) per turn. Number-based rating, not UP/DOWN/SAME. |
-| **npc** | `nodes/npc.py` | Active | Yes (dialogue) | Each character speaks in their own voice. Reads mood state, memory summary, narrator scene. |
-| **condense** | `nodes/condense.py` | Active | Yes (summarization) | Compresses full history into rolling 60-80 word summary. Story-context-aware. |
-| **memory** | `nodes/memory.py` | Active | No | Appends current turn to history, stores condense output. Pure bookkeeping. |
-| **quality_guard** | `nodes/quality_guard.py` | Available | Yes (classification) | Pre-narrator analysis suggesting plot twists. Removed from active pipeline — caused tone drift. |
-| **narrator_coda** | `nodes/narrator_coda.py` | Available | Yes (creative) | Closing beat after NPC dialogue ("What do you do?"). Not needed when narrator handles this. |
-| **prompt_trim** | `nodes/prompt_trim.py` | Utility | No | Truncates text to char limit. Used by narrator and NPC nodes. |
-
-## Shared Utilities
-
-| File | Purpose |
-|------|---------|
-| `nodes/story_context.py` | Builds genre/tone/NSFW context string from `state["story"]`. Used by narrator, quality_guard, condense. |
-| `nodes/prompt_trim.py` | Text truncation utility. |
-
-## Available Subgraphs
-
-| Subgraph | Nodes | Recommended For |
-|----------|-------|----------------|
-| `full_memory` | narrator → mood → npc → condense → memory | **Default.** Stories with characters and mood axes. |
-| `guarded_full_memory` | quality_guard → narrator → mood → npc → condense → memory | Testing quality guard behavior. |
-| `guarded_narrator_with_memory` | quality_guard → narrator → condense → memory | Stories without characters. |
-| `guarded_narrator` | quality_guard → narrator | Lightweight testing. |
-| `basic_narrator` | narrator only | Simplest possible pipeline. |
-
-## Planned Nodes
-
-| Node | Priority | Purpose |
-|------|----------|---------|
-| **tension_tracker** | Next | Single 1-10 tension score per turn. Feeds into narrator for pacing awareness. |
-| **consequence** | High | Tracks lasting effects of player choices ("Alex knows your secret"). |
-| **world_state** | Medium | Tracks location, time of day, weather, who's present. |
-| **director** | Medium | Determines narrative phase (setup → rising action → climax → resolution). |
-
-## Story Metadata Flow
-
-```
-Story Editor → DB (genre, tone, nsfw_rating, nsfw_tags)
-    → _build_state_from_story() → state["story"]
-        → nodes/story_context.py → prompt strings
-            → narrator, quality_guard, condense read it
-```
+See [NODE_ROADMAP.md](NODE_ROADMAP.md) for ideas (tension, consequence, world_state, director, …).

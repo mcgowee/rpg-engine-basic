@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { fade, slide } from 'svelte/transition';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { toast as globalToast, toastError } from '$lib/toast.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -20,7 +21,9 @@
 	let subgraphName = $state('');
 	type MoodAxis = { axis: string; low: string; high: string; value: number };
 	type CharDisplay = { label: string; moods: MoodAxis[]; legacyMood?: number; portrait?: string };
+	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
 	let characters = $state<CharDisplay[]>([]);
+	let storyImages = $state<StoryImage[]>([]);
 	let memorySummary = $state('');
 	let turnCount = $state(0);
 	let paused = $state(false);
@@ -31,10 +34,17 @@
 	let logEl = $state<HTMLDivElement | undefined>(undefined);
 	let sidebarOpen = $state(true);
 	let generatingScene = $state(false);
+	let brokenPortraitImages = new SvelteSet<string>();
+	let brokenSceneImages = new SvelteSet<string>();
+	let brokenStoryImages = new SvelteSet<string>();
 
 	// Derived values
 	let canSend = $derived(!loading && !paused && message.trim().length > 0);
 	let hasCharacters = $derived(characters.length > 0);
+	let recentStoryImages = $derived.by((): StoryImage[] => {
+		if (storyImages.length === 0) return [];
+		return [...storyImages].sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))).slice(0, 4);
+	});
 
 	const slotIndices = Array.from({ length: SAVE_SLOT_COUNT }, (_, i) => i);
 
@@ -112,6 +122,25 @@
 		}
 	}
 
+	function normalizeStoryImages(value: unknown): StoryImage[] {
+		if (!Array.isArray(value)) return [];
+		const out: StoryImage[] = [];
+		for (const item of value) {
+			if (!item || typeof item !== 'object') continue;
+			const raw = item as Record<string, unknown>;
+			const filename = String(raw.filename ?? '').trim();
+			if (!filename) continue;
+			const imageId = raw.image_id == null ? null : Number(raw.image_id);
+			out.push({
+				filename,
+				image_id: Number.isFinite(imageId) ? imageId : null,
+				prompt: String(raw.prompt ?? ''),
+				created_at: String(raw.created_at ?? ''),
+			});
+		}
+		return out;
+	}
+
 	async function boot() {
 		bootError = null;
 		booting = true;
@@ -125,6 +154,15 @@
 		storyId = id;
 
 		try {
+			try {
+				const sr = await fetch(`/api/stories/${id}`, { credentials: 'include' });
+				if (sr.ok) {
+					const story = (await sr.json().catch(() => ({}))) as Record<string, unknown>;
+					storyImages = normalizeStoryImages(story.story_images);
+				}
+			} catch {
+				storyImages = [];
+			}
 			const st = await fetch(`/api/play/status?story_id=${id}`, { credentials: 'include' });
 			if (st.status === 200) {
 				const data = (await st.json()) as Record<string, unknown>;
@@ -342,6 +380,60 @@
 		if (!s) return '—';
 		try { return new Date(s).toLocaleString(); } catch { return s; }
 	}
+
+	function portraitImageSrc(path: string): string {
+		return `/images/portraits/${path}`;
+	}
+
+	function isPortraitBroken(path: string): boolean {
+		return brokenPortraitImages.has(path);
+	}
+
+	function markPortraitBroken(path: string): void {
+		if (brokenPortraitImages.has(path)) return;
+		brokenPortraitImages.add(path);
+	}
+
+	function clearPortraitBroken(path: string): void {
+		if (!brokenPortraitImages.has(path)) return;
+		brokenPortraitImages.delete(path);
+	}
+
+	function isSceneBroken(path: string): boolean {
+		return brokenSceneImages.has(path);
+	}
+
+	function markSceneBroken(path: string): void {
+		if (brokenSceneImages.has(path)) return;
+		brokenSceneImages.add(path);
+	}
+
+	function clearSceneBroken(path: string): void {
+		if (!brokenSceneImages.has(path)) return;
+		brokenSceneImages.delete(path);
+	}
+
+	function storyImageSrc(filename: string): string {
+		return `/images/story/${filename}`;
+	}
+
+	function storyImageKey(img: StoryImage, idx: number): string {
+		return `${idx}:${img.filename}:${img.created_at ?? ''}`;
+	}
+
+	function isStoryImageBroken(key: string): boolean {
+		return brokenStoryImages.has(key);
+	}
+
+	function markStoryImageBroken(key: string): void {
+		if (brokenStoryImages.has(key)) return;
+		brokenStoryImages.add(key);
+	}
+
+	function clearStoryImageBroken(key: string): void {
+		if (!brokenStoryImages.has(key)) return;
+		brokenStoryImages.delete(key);
+	}
 </script>
 
 <svelte:head>
@@ -354,18 +446,27 @@
 		<p><a href="/stories">← Back to stories</a></p>
 	</section>
 {:else if booting}
-	<section class="page narrow"><p class="muted">Loading game…</p></section>
+	<section class="page narrow"><p class="muted state-note">Loading game…</p></section>
 {:else if storyId != null}
 	<div class="layout">
 		{#if hasCharacters}
 			<aside class="portrait-sidebar">
 				{#each characters as char (char.label)}
 					<div class="portrait-card">
-						{#if char.portrait}
-							<img src="/images/portraits/{char.portrait}" alt={char.label} class="portrait-img" />
+						{#if char.portrait && !isPortraitBroken(char.portrait)}
+							<img
+								src={portraitImageSrc(char.portrait)}
+								alt={char.label}
+								class="portrait-img"
+								loading="lazy"
+								decoding="async"
+								onerror={() => markPortraitBroken(char.portrait ?? '')}
+								onload={() => clearPortraitBroken(char.portrait ?? '')}
+							/>
 						{:else}
 							<div class="portrait-placeholder">
 								<Icon name="user" size={32} />
+								<span>No portrait</span>
 							</div>
 						{/if}
 						<span class="portrait-name">{char.label}</span>
@@ -383,7 +484,22 @@
 							</div>
 						{:else if entry.type === 'scene-image'}
 							<div class="row scene-row">
-								<img src={entry.text} alt="Generated scene" class="scene-img" />
+								{#if !isSceneBroken(entry.text)}
+									<img
+										src={entry.text}
+										alt="Generated scene"
+										class="scene-img"
+										loading="lazy"
+										decoding="async"
+										onerror={() => markSceneBroken(entry.text)}
+										onload={() => clearSceneBroken(entry.text)}
+									/>
+								{:else}
+									<div class="scene-placeholder">
+										<Icon name="image" size={20} />
+										<span>Scene image unavailable</span>
+									</div>
+								{/if}
 							</div>
 						{:else}
 							<div class="row narrator-row">
@@ -457,6 +573,34 @@
 				</section>
 			{/if}
 
+			{#if recentStoryImages.length > 0}
+				<section class="side-block">
+					<h2>Story Gallery</h2>
+					<div class="story-gallery-grid">
+						{#each recentStoryImages as img, idx (storyImageKey(img, idx))}
+							{@const key = storyImageKey(img, idx)}
+							<div class="story-thumb">
+								{#if !isStoryImageBroken(key)}
+									<img
+										src={storyImageSrc(img.filename)}
+										alt="Story gallery image {idx + 1}"
+										loading="lazy"
+										decoding="async"
+										onerror={() => markStoryImageBroken(key)}
+										onload={() => clearStoryImageBroken(key)}
+									/>
+								{:else}
+									<div class="story-thumb-placeholder">
+										<Icon name="image" size={16} />
+										<span>Unavailable</span>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
+
 			<section class="side-block">
 				<details>
 					<summary>Memory (AI summary)</summary>
@@ -505,31 +649,66 @@
 
 <style>
 	.page.narrow { padding: 1rem; max-width: 40rem; }
+	.state-note { border: 1px dashed #3a414d; border-radius: 10px; padding: 0.75rem 0.85rem; background: #171b22; }
 	.layout { display: flex; gap: 0.75rem; max-width: 1300px; margin: 0 auto; padding: 0 0.5rem 2rem; min-height: calc(100vh - 2rem); }
 	.portrait-sidebar { width: 100px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.25rem; overflow-y: auto; max-height: calc(100vh - 2rem); }
 	.portrait-card { text-align: center; }
-	.portrait-img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
-	.portrait-placeholder { width: 100%; aspect-ratio: 2/3; border-radius: 8px; border: 1px solid #2a2f38; background: #1a1d23; display: flex; align-items: center; justify-content: center; color: #5f6368; }
+	.portrait-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; display: block; aspect-ratio: 2 / 3; }
+	.portrait-placeholder {
+		width: 100%;
+		aspect-ratio: 2 / 3;
+		border-radius: 8px;
+		border: 1px solid #2a2f38;
+		background: linear-gradient(180deg, #1a1d23 0%, #161a20 100%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		color: #7f8896;
+		font-size: 0.68rem;
+	}
 	.portrait-name { display: block; font-size: 0.72rem; color: #9aa0a6; margin-top: 0.25rem; line-height: 1.2; }
 	.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.75rem; }
-	.transcript-wrap { flex: 1; min-height: 200px; border: 1px solid #2a2f38; border-radius: 10px; background: #1a1d23; overflow: hidden; }
+	.transcript-wrap { flex: 1; min-height: 200px; border: 1px solid #2a2f38; border-radius: 10px; background: #1a1d23; overflow: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
 	.transcript { height: min(60vh, 520px); overflow-y: auto; padding: 0.75rem; }
 	.row { margin-bottom: 0.65rem; }
 	.player-row { display: flex; justify-content: flex-end; }
 	.narrator-row { display: flex; justify-content: flex-start; }
-	.bubble { max-width: 92%; padding: 0.75rem; border-radius: 8px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; border: 1px solid #2a2f38; border-left: 3px solid; }
+	.bubble { max-width: 92%; padding: 0.75rem; border-radius: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; border: 1px solid #2a2f38; border-left: 3px solid; transition: border-color 0.18s ease, background-color 0.18s ease; }
 	.prefix { display: block; font-weight: 700; font-size: 0.8rem; margin-bottom: 0.2rem; opacity: 0.7; }
 	.bubble.player { background: #1a1d23; border-left-color: #1a73e8; }
 	.bubble.narrator { background: #1a1d23; border-left-color: #81c995; }
 	.scene-row { display: flex; justify-content: center; }
-	.scene-img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #2a2f38; }
+	.scene-img {
+		width: min(100%, 760px);
+		aspect-ratio: 16 / 9;
+		object-fit: cover;
+		border-radius: 8px;
+		border: 1px solid #2a2f38;
+		display: block;
+	}
+	.scene-placeholder {
+		width: min(100%, 760px);
+		aspect-ratio: 16 / 9;
+		border-radius: 8px;
+		border: 1px solid #2a2f38;
+		background: linear-gradient(180deg, #1a1d23 0%, #161a20 100%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		color: #7f8896;
+		font-size: 0.8rem;
+	}
 	.input-actions { display: flex; gap: 0.35rem; margin-top: 0.4rem; }
 	.input-area { border-top: 1px solid #2a2f38; padding-top: 0.75rem; }
-	.paused-note { margin: 0 0 0.5rem; color: #f6b93b; font-weight: 600; }
+	.paused-note { margin: 0 0 0.5rem; color: #f6b93b; font-weight: 600; border: 1px solid #624800; border-radius: 8px; padding: 0.4rem 0.55rem; background: #201a09; }
 	.input-row { display: flex; gap: 0.5rem; align-items: flex-end; }
 	.inp { flex: 1; min-width: 12rem; }
 	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; }
-	.btn:hover { border-color: #5f6368; }
+	.btn:hover { border-color: #5f6368; transition: border-color 0.18s ease, background-color 0.18s ease; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.btn.sm { font-size: 0.8rem; padding: 0.35rem 0.65rem; }
@@ -546,8 +725,23 @@
 	.mood-list { list-style: none; margin: 0.2rem 0 0; padding: 0; font-size: 0.82rem; }
 	.mood-list li { margin-bottom: 0.15rem; }
 	.mood-range { color: #9aa0a6; font-size: 0.78rem; }
-	.mood-badge { color: #9aa0a6; font-size: 0.8rem; }
+	.mood-badge { color: #c8d5e8; font-size: 0.78rem; border: 1px solid #2d3e56; border-radius: 999px; padding: 0.16rem 0.45rem; background: #132035; display: inline-block; }
 	.memory-text { font-size: 0.85rem; line-height: 1.4; margin: 0.5rem 0 0; white-space: pre-wrap; color: #bdc1c6; }
+	.story-gallery-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
+	.story-thumb { border: 1px solid #2a2f38; border-radius: 6px; overflow: hidden; background: #161a20; aspect-ratio: 16 / 10; }
+	.story-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+	.story-thumb-placeholder {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.2rem;
+		font-size: 0.62rem;
+		color: #7f8896;
+		background: linear-gradient(180deg, #1a1d23 0%, #161a20 100%);
+	}
 	.slot-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }
 	.slot-row { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.65rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1a1d23; }
 	.slot-row:last-child { border-bottom: none; }
@@ -557,5 +751,8 @@
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.inline-err { margin: 0.35rem 0 0; font-size: 0.9rem; }
-	@media (max-width: 800px) { .layout { flex-direction: column; } .portrait-sidebar { display: none; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } }
+	:global([data-theme="light"]) .state-note { border-color: #d7dde7; background: #f8fbff; }
+	:global([data-theme="light"]) .paused-note { border-color: #f0d187; background: #fff9e6; color: #8a6200; }
+	:global([data-theme="light"]) .mood-badge { color: #315b8f; border-color: #cfe0f5; background: #ecf4ff; }
+	@media (max-width: 800px) { .layout { flex-direction: column; } .portrait-sidebar { display: none; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } .input-row { flex-direction: column; align-items: stretch; } .send { width: 100%; } }
 </style>

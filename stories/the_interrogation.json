@@ -8,7 +8,8 @@
   "narrator_model": "default",
   "player_name": "Detective Reyes",
   "player_background": "A veteran homicide detective known for getting confessions through patience and psychology, not intimidation. You've read the case file twice. Something doesn't add up.",
-  "subgraph_name": "conversation_with_mood",
+  "subgraph_name": "full_story",
+  "cover_image": "story_interrogation.png",
   "notes": "Demonstrates mood axes. Marcus has three emotional dimensions that shift based on your approach: cooperativeness (stonewalling → cooperative), anxiety (calm → panicking), and honesty (deceptive → truthful). Watch the sidebar to track your progress breaking through.",
   "characters": {
     "marcus_webb": {

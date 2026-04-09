@@ -324,6 +324,9 @@
 				New main graph template
 			{/if}
 		</h1>
+		<div class="editor-hero">
+			<img src="/images/graph-empty.png" alt="Graph blueprint illustration" />
+		</div>
 
 		{#if saveErrors.length}
 			<div class="err-box" role="alert">
@@ -468,6 +471,8 @@
 	.editor-page { padding: 0 0.5rem 2rem; max-width: 1400px; }
 	.back { margin: 0 0 1rem; }
 	h1 { margin-top: 0; }
+	.editor-hero { margin: 0 0 1rem; border-radius: 10px; overflow: hidden; border: 1px solid #2a2f38; max-width: 56rem; }
+	.editor-hero img { width: 100%; height: clamp(160px, 23vw, 220px); object-fit: cover; object-position: center; display: block; }
 	.muted { color: #9aa0a6; }
 	.err { color: #f28b82; }
 	.err-box { background: #2a1515; border: 1px solid #5c2020; padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 8px; }
@@ -499,4 +504,12 @@
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.actions { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
 	.cancel { color: #8ab4f8; }
+	:global([data-theme="light"]) .panel,
+	:global([data-theme="light"]) .phase-card { background: #fff; border-color: #dfe3e8; }
+	:global([data-theme="light"]) .json-pre { background: #f8fafc; border-color: #dfe3e8; color: #334155; }
+	:global([data-theme="light"]) .transition-block { background: #f8fafc; }
+	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
+	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }
+	:global([data-theme="light"]) .err-box { background: #fff1f2; border-color: #fecdd3; }
+	:global([data-theme="light"]) .editor-hero { border-color: #dfe3e8; }
 </style>
