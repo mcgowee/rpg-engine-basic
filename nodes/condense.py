@@ -2,7 +2,6 @@
 
 import logging
 
-from config import DEFAULT_MODEL
 from llm import get_llm
 from llm.text import llm_result_to_text
 
@@ -38,8 +37,13 @@ def condense_node(state: dict) -> dict:
         logger.error(f"Condense node: could not get LLM: {e}")
         return {}
 
-    prompt = f"""You are a story memory manager. Your job is to maintain a concise summary of everything important that has happened in this story.
+    # Story context for accurate summarization
+    from nodes.story_context import build_story_context
+    story_context = build_story_context(state)
+    story_line = f"\nStory context: {story_context}\n" if story_context else ""
 
+    prompt = f"""You are a story memory manager. Your job is to maintain a concise summary of everything important that has happened in this story.
+{story_line}
 Current summary:
 {summary_placeholder}
 
@@ -49,22 +53,40 @@ Recent raw turns (last 3 completed exchanges):
 New events to incorporate:
 {current_turn}
 
-Update the summary to include any important new information from the new events. Rules:
-- Keep the summary under 100 words
-- Focus on: key facts, relationship developments, promises made, things characters revealed, emotional shifts, milestone moments
-- Drop: scenery descriptions, small talk, redundant details
+Rewrite the summary incorporating new events. You MUST follow these rules:
+- HARD LIMIT: 60-80 words. Count your words. If over 80, delete sentences until under 80.
+- When adding new info, REPLACE older details with shorter versions — do not just append
+- Focus on: key facts, relationship status, secrets revealed, emotional turning points
+- Drop: scenery, exact dialogue, small talk, redundant details, character greetings
 - Write in past tense, third person
-- If the summary is getting long, compress older details to make room for new ones
+- Return ONLY the summary text — no labels, no word counts, no commentary
 
-Updated summary:
-
-"""
+Updated summary:"""
 
     try:
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw).strip()
         if not text:
             return {}
+
+        # Clean up common LLM meta-text artifacts
+        for prefix in [
+            "here is the updated summary:",
+            "updated summary:",
+            "here's the updated summary:",
+            "summary:",
+        ]:
+            if text.lower().startswith(prefix):
+                text = text[len(prefix):].strip()
+
+        # Strip wrapping quotes if the model added them
+        if text.startswith('"') and text.endswith('"'):
+            text = text[1:-1].strip()
+
+        if not text:
+            return {}
+
+        logger.info("Condense: %s", text[:100])
         return {"memory_summary": text}
     except Exception as e:
         logger.error(f"Condense node error: {e}")

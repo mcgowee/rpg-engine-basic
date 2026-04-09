@@ -57,26 +57,42 @@ def mood_node(state: dict) -> dict:
             high_label = axis.get("high", "high")
             value = int(axis.get("value", 5))
 
-            prompt = f"""You are evaluating how a character's emotional state should change after a conversation exchange.
+            npc_prompt = (npc.get("prompt") or "").strip()
+            personality_line = f"\nCharacter personality: {npc_prompt}" if npc_prompt else ""
+
+            narrator_response = (state.get("response") or "").strip()
+            response_snippet = narrator_response[:500] if narrator_response else ""
+
+            prompt = f"""Rate a character's emotional state after this scene on a scale of 1-10.
+{personality_line}
 
 Character: {label}
-Trait: {axis_name} (currently {value}/10, where 1 = {low_label} and 10 = {high_label})
-Player action: {player_message}
+Emotion: {axis_name} (1 = {low_label}, 10 = {high_label})
+Previous value: {value}/10
 
-{summary_block}Context:
-{context_text}
+What just happened:
+Player: {player_message}
+Scene: {response_snippet}
 
-Based on the player's action, should {label}'s {axis_name} go UP (toward {high_label}), DOWN (toward {low_label}), or SAME?
-Reply with ONLY one word: UP, DOWN, or SAME."""
+{summary_block}
+Based on the scene above, what should {label}'s {axis_name} be NOW? Consider:
+- Flirting, bonding, compliments, physical closeness, shared laughter → higher
+- Rejection, lies, conflict, distance, betrayal → lower
+- If nothing changed this emotion, keep it the same
+
+Reply with ONLY a single number from 1 to 10:"""
 
             try:
-                result = llm_result_to_text(llm.invoke(prompt)).strip().upper()
-                if "UP" in result:
-                    new_value = min(10, value + 1)
-                elif "DOWN" in result:
-                    new_value = max(1, value - 1)
+                result = llm_result_to_text(llm.invoke(prompt)).strip()
+                # Extract first number found in response
+                import re
+                numbers = re.findall(r'\b(\d+)\b', result)
+                if numbers:
+                    parsed = int(numbers[0])
+                    new_value = max(1, min(10, parsed))
                 else:
                     new_value = value
+                    logger.warning(f"Mood: could not parse number from '{result}' for {npc_key}/{axis_name}")
 
                 updated_moods.append({
                     "axis": axis_name,

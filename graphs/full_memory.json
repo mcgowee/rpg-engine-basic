@@ -1,0 +1,19 @@
+{
+  "name": "full_memory",
+  "description": "Narrator + mood + NPC + condense + memory. No quality guard — lets the narrator drive pacing naturally.",
+  "nodes": ["narrator", "mood", "npc", "condense", "memory"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "narrator"
+    }
+  },
+  "edges": [
+    { "from": "narrator", "to": "mood" },
+    { "from": "mood", "to": "npc" },
+    { "from": "npc", "to": "condense" },
+    { "from": "condense", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ],
+  "conditional_edges": []
+}

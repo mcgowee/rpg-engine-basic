@@ -14,6 +14,10 @@ _SUBGRAPHS_WITH_SEPARATE_NPC_LAYER = frozenset({
     "smart_conversation",
     "conversation_with_npc",
     "conversation_with_mood",
+    "guarded_narrator_npc_memory",
+    "guarded_story",
+    "guarded_full_memory",
+    "full_memory",
 })
 
 DEFAULT_NARRATOR_PROMPT = (
@@ -83,22 +87,30 @@ def narrator_node(state: dict) -> dict:
     narrator_prompt = _effective_narrator_prompt(narrator_prompt, separate_npc_layer)
 
     if separate_npc_layer:
+        char_names_str = ", ".join(char_names) if char_names else "characters"
         beat_instr = (
-            "Narrate what happens next up to the moment where present characters may react — "
-            "describe the scene and their bearing, but do NOT put spoken lines in their mouths "
-            "(they speak on their own lines next). "
-            "Do not ask 'What do you do?' or otherwise prompt the player yet; the beat closes after they speak."
+            "Narrate what happens next — describe the scene, actions, body language, and atmosphere. "
+            f"CRITICAL RULE: Do NOT write any dialogue or quoted speech for {char_names_str}. "
+            "They will speak in their own voice in a separate section after yours. "
+            "You may describe their expressions, gestures, and reactions but NEVER put words in their mouth. "
+            "Do not ask 'What do you do?' or prompt the player. "
+            "Keep your response concise — aim for 2-4 short paragraphs."
         )
     else:
         beat_instr = (
             "Narrate what happens next. Include spoken lines as needed using quotes; "
-            "keep second person on the player character:"
+            "keep second person on the player character. "
+            "Keep your response concise — aim for 2-4 short paragraphs, not long prose:"
         )
         if not characters:
             beat_instr += (
                 " No named characters are defined for this story — do not invent recurring named NPCs or "
                 "give them dialogue here; anonymous or environmental voices are fine if clearly not a cast member."
             )
+
+    # Story metadata — genre, tone, NSFW boundaries
+    from nodes.story_context import build_story_context
+    story_context_line = build_story_context(state)
 
     # Quality guard guidance (injected by quality_guard node if it ran)
     guidance = (state.get("_narrator_guidance") or "").strip()
@@ -109,6 +121,7 @@ def narrator_node(state: dict) -> dict:
 Game: {state.get("game_title", "Untitled")}
 Player: {player.get("name", "Adventurer")} — {player.get("background", "")}
 {chars_line}
+{story_context_line}
 {context_section}{guidance_block}
 Player just said: {state.get("message", "")}
 

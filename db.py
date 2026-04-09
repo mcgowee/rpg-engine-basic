@@ -57,6 +57,9 @@ def init_db():
             title TEXT NOT NULL,
             description TEXT DEFAULT '',
             genre TEXT DEFAULT '',
+            tone TEXT DEFAULT '',
+            nsfw_rating TEXT DEFAULT 'none',
+            nsfw_tags TEXT DEFAULT '[]',
             opening TEXT DEFAULT '',
             narrator_prompt TEXT DEFAULT '',
             narrator_model TEXT DEFAULT 'default',
@@ -106,6 +109,15 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
             """ALTER TABLE stories ADD COLUMN main_graph_template_id INTEGER
                REFERENCES main_graph_templates(id)"""
         )
+        conn.commit()
+    if "tone" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN tone TEXT DEFAULT ''")
+        conn.commit()
+    if "nsfw_rating" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN nsfw_rating TEXT DEFAULT 'none'")
+        conn.commit()
+    if "nsfw_tags" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN nsfw_tags TEXT DEFAULT '[]'")
         conn.commit()
 
 

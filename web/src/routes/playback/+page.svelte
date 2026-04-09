@@ -89,7 +89,142 @@
 	let analysis = $state<Analysis | null>(null);
 	let analyzing = $state(false);
 	let analysisError = $state('');
-	let activeTab = $state<'playback' | 'evaluate'>('playback');
+	let activeTab = $state<'playback' | 'evaluate' | 'node_health'>('playback');
+
+	// Node health analysis (client-side only, no API)
+	type NodeStatus = 'ok' | 'skipped' | 'warn' | 'error';
+	type NodeHealthTurn = {
+		turn: number;
+		guard: { status: NodeStatus; detail: string };
+		narrator: { status: NodeStatus; chars: number };
+		condense: { status: NodeStatus; words: number };
+		memory: { status: NodeStatus; detail: string };
+		time: number;
+	};
+	type MoodSnapshot = { turn: number; moods: Record<string, Record<string, number>> };
+	type NodeHealthReport = {
+		turns: NodeHealthTurn[];
+		issues: string[];
+		memorySummaries: { turn: number; summary: string }[];
+		guardOutputs: { turn: number; guidance: string }[];
+		moodSnapshots: MoodSnapshot[];
+		stats: {
+			avgResponseChars: number;
+			avgTime: number;
+			memoryPopulated: number;
+			memoryEmpty: number;
+			guardFired: number;
+			guardSkipped: number;
+			maxMemoryWords: number;
+		};
+	};
+	let nodeHealth = $state<NodeHealthReport | null>(null);
+
+	function analyzeNodeHealth() {
+		const healthTurns: NodeHealthTurn[] = [];
+		const issues: string[] = [];
+		const memorySummaries: { turn: number; summary: string }[] = [];
+		const moodSnapshots: MoodSnapshot[] = [];
+		const guardOutputs: { turn: number; guidance: string }[] = [];
+		let memoryPopulated = 0;
+		let memoryEmpty = 0;
+		let guardFired = 0;
+		let guardSkipped = 0;
+		let maxMemoryWords = 0;
+
+		for (const t of turns) {
+			// Guard status
+			let guard: { status: NodeStatus; detail: string };
+			if (t.turn <= 2 && !t.narrator_guidance) {
+				guard = { status: 'skipped', detail: 'Skipped (< 2 turns history)' };
+				guardSkipped++;
+			} else if (t.narrator_guidance) {
+				const lines = t.narrator_guidance.split('\n').filter(l => l.trim());
+				guard = { status: 'ok', detail: `${lines.length} direction${lines.length !== 1 ? 's' : ''}` };
+				guardFired++;
+				guardOutputs.push({ turn: t.turn, guidance: t.narrator_guidance });
+			} else {
+				guard = { status: 'skipped', detail: 'No output' };
+				guardSkipped++;
+			}
+
+			// Narrator status
+			const narrator = {
+				status: (t.response_length > 0 ? 'ok' : 'error') as NodeStatus,
+				chars: t.response_length,
+			};
+
+			// Condense / Memory status
+			const memWords = t.memory_summary ? t.memory_summary.split(/\s+/).length : 0;
+			if (memWords > maxMemoryWords) maxMemoryWords = memWords;
+
+			let condense: { status: NodeStatus; words: number };
+			let memory: { status: NodeStatus; detail: string };
+			if (t.memory_summary) {
+				condense = {
+					status: memWords > 120 ? 'warn' : 'ok',
+					words: memWords,
+				};
+				memory = { status: 'ok', detail: 'Stored' };
+				memoryPopulated++;
+				memorySummaries.push({ turn: t.turn, summary: t.memory_summary });
+				if (memWords > 120) {
+					issues.push(`Turn ${t.turn}: Memory summary at ${memWords} words — exceeds 100 word target`);
+				}
+			} else {
+				condense = { status: 'skipped', words: 0 };
+				memory = { status: 'skipped', detail: 'Empty' };
+				memoryEmpty++;
+			}
+
+			// Issue detection
+			if (t.response_length === 0) {
+				issues.push(`Turn ${t.turn}: Narrator returned empty response`);
+			}
+			if (t.response_length > 2000) {
+				issues.push(`Turn ${t.turn}: Response very long (${t.response_length} chars) — may need shorter prompt`);
+			}
+			if (t.turn > 2 && !t.narrator_guidance && t.turn > 3) {
+				// Guard should be firing after turn 2
+			}
+
+			// Check for duplicate guard output
+			if (guardOutputs.length >= 2) {
+				const prev = guardOutputs[guardOutputs.length - 2];
+				const curr = guardOutputs[guardOutputs.length - 1];
+				if (prev && curr && prev.guidance === curr.guidance) {
+					issues.push(`Turn ${t.turn}: Quality guard produced duplicate output (same as turn ${prev.turn})`);
+				}
+			}
+
+			// Mood snapshots
+			if (t.moods && Object.keys(t.moods).length > 0) {
+				moodSnapshots.push({ turn: t.turn, moods: t.moods });
+			}
+
+			healthTurns.push({ turn: t.turn, guard, narrator, condense, memory, time: t.time_seconds });
+		}
+
+		const totalChars = turns.reduce((a, t) => a + t.response_length, 0);
+		const totalTime = turns.reduce((a, t) => a + t.time_seconds, 0);
+
+		nodeHealth = {
+			turns: healthTurns,
+			issues,
+			memorySummaries,
+			guardOutputs,
+			moodSnapshots,
+			stats: {
+				avgResponseChars: turns.length > 0 ? Math.round(totalChars / turns.length) : 0,
+				avgTime: turns.length > 0 ? +(totalTime / turns.length).toFixed(1) : 0,
+				memoryPopulated,
+				memoryEmpty,
+				guardFired,
+				guardSkipped,
+				maxMemoryWords,
+			},
+		};
+	}
 
 	// Save script
 	let scriptName = $state('');
@@ -603,6 +738,113 @@
 		URL.revokeObjectURL(url);
 	}
 
+	function buildNodeHealthReport(): string {
+		if (!nodeHealth) return '';
+		const nh = nodeHealth;
+		let r = `# Node Health Report\n`;
+		r += `**Game:** ${gameTitle}\n`;
+		r += `**Subgraph:** ${subgraphName}\n`;
+		r += `**Turns:** ${turns.length}\n`;
+		r += `**Date:** ${new Date().toLocaleString()}\n\n`;
+
+		r += `## Stats\n`;
+		r += `- Avg Response Chars: ${nh.stats.avgResponseChars}\n`;
+		r += `- Avg Turn Time: ${nh.stats.avgTime}s\n`;
+		r += `- Guard Fired: ${nh.stats.guardFired}/${nh.stats.guardFired + nh.stats.guardSkipped}\n`;
+		r += `- Memory Populated: ${nh.stats.memoryPopulated}/${nh.stats.memoryPopulated + nh.stats.memoryEmpty}\n`;
+		r += `- Max Summary Words: ${nh.stats.maxMemoryWords}\n\n`;
+
+		if (nh.issues.length > 0) {
+			r += `## Issues Detected\n`;
+			for (const issue of nh.issues) r += `- ${issue}\n`;
+			r += `\n`;
+		}
+
+		r += `## Per-Turn Node Status\n`;
+		r += `| Turn | Guard | Narrator | Condense | Memory | Time |\n`;
+		r += `|------|-------|----------|----------|--------|------|\n`;
+		for (const t of nh.turns) {
+			r += `| ${t.turn} | ${t.guard.detail} | ${t.narrator.chars} chars | ${t.condense.words > 0 ? `${t.condense.words} words` : 'Empty'} | ${t.memory.detail} | ${t.time.toFixed(1)}s |\n`;
+		}
+		r += `\n`;
+
+		if (nh.memorySummaries.length > 0) {
+			r += `## Memory Summary Progression\n`;
+			for (const ms of nh.memorySummaries) {
+				r += `### Turn ${ms.turn} (${ms.summary.split(/\s+/).length} words)\n`;
+				r += `${ms.summary}\n\n`;
+			}
+		}
+
+		if (nh.moodSnapshots.length > 0) {
+			r += `## Mood Progression\n`;
+			r += `| Turn |`;
+			const firstSnap = nh.moodSnapshots[0];
+			const headers: string[] = [];
+			for (const [char, axes] of Object.entries(firstSnap.moods)) {
+				for (const axis of Object.keys(axes)) {
+					headers.push(`${char.replace(/_/g, ' ')} — ${axis}`);
+				}
+			}
+			r += headers.map(h => ` ${h} |`).join('') + `\n`;
+			r += `|------|` + headers.map(() => `------|`).join('') + `\n`;
+			for (const snap of nh.moodSnapshots) {
+				r += `| ${snap.turn} |`;
+				for (const axes of Object.values(snap.moods)) {
+					for (const val of Object.values(axes)) {
+						r += ` ${val}/10 |`;
+					}
+				}
+				r += `\n`;
+			}
+			r += `\n`;
+		}
+
+		if (nh.guardOutputs.length > 0) {
+			r += `## Quality Guard Outputs\n`;
+			for (const go of nh.guardOutputs) {
+				r += `### Turn ${go.turn}\n`;
+				r += `${go.guidance}\n\n`;
+			}
+		}
+
+		return r;
+	}
+
+	async function copyNodeHealthReport() {
+		const report = buildNodeHealthReport();
+		try {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(report);
+				toast('Node health report copied to clipboard', 'success');
+			} else {
+				const textarea = document.createElement('textarea');
+				textarea.value = report;
+				textarea.style.position = 'fixed';
+				textarea.style.opacity = '0';
+				document.body.appendChild(textarea);
+				textarea.select();
+				document.execCommand('copy');
+				document.body.removeChild(textarea);
+				toast('Node health report copied to clipboard', 'success');
+			}
+		} catch {
+			downloadNodeHealthReport();
+			toast('Copy failed — downloaded as file instead', 'warning');
+		}
+	}
+
+	function downloadNodeHealthReport() {
+		const report = buildNodeHealthReport();
+		const blob = new Blob([report], { type: 'text/markdown' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `node_health_${gameTitle.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}.md`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
 	function scoreColor(score: number): string {
 		if (score >= 8) return '#81c995';
 		if (score >= 6) return '#8ab4f8';
@@ -813,6 +1055,7 @@
 			<div class="tab-bar">
 				<button type="button" class="tab-btn" class:active={activeTab === 'playback'} onclick={() => activeTab = 'playback'}>Playback</button>
 				<button type="button" class="tab-btn" class:active={activeTab === 'evaluate'} onclick={() => activeTab = 'evaluate'}>Evaluate</button>
+				<button type="button" class="tab-btn" class:active={activeTab === 'node_health'} onclick={() => activeTab = 'node_health'}>Node Health</button>
 			</div>
 		{/if}
 
@@ -996,6 +1239,176 @@
 								</div>
 							</div>
 						{/if}
+					</div>
+				{/if}
+			</div>
+		{:else if activeTab === 'node_health' && turns.length > 0}
+			<!-- Node Health tab -->
+			<div class="eval-panel">
+				{#if !nodeHealth}
+					<div class="eval-start">
+						<h2>Node Health Analysis</h2>
+						<p>Analyze pipeline node behavior for this session. Checks quality guard output, memory/condense status, response sizes, and timing. No API call — runs locally.</p>
+						<button type="button" class="btn primary" onclick={analyzeNodeHealth}>
+							<Icon name="zap" size={14} /> Analyze Nodes
+						</button>
+					</div>
+				{:else}
+					<div class="eval-results" transition:fade={{ duration: 200 }}>
+						<!-- Stats overview -->
+						<div class="nh-stats">
+							<div class="nh-stat">
+								<span class="nh-stat-value">{nodeHealth.stats.avgResponseChars}</span>
+								<span class="nh-stat-label">Avg Response Chars</span>
+							</div>
+							<div class="nh-stat">
+								<span class="nh-stat-value">{nodeHealth.stats.avgTime}s</span>
+								<span class="nh-stat-label">Avg Turn Time</span>
+							</div>
+							<div class="nh-stat">
+								<span class="nh-stat-value">{nodeHealth.stats.guardFired}/{nodeHealth.stats.guardFired + nodeHealth.stats.guardSkipped}</span>
+								<span class="nh-stat-label">Guard Fired</span>
+							</div>
+							<div class="nh-stat">
+								<span class="nh-stat-value">{nodeHealth.stats.memoryPopulated}/{nodeHealth.stats.memoryPopulated + nodeHealth.stats.memoryEmpty}</span>
+								<span class="nh-stat-label">Memory Populated</span>
+							</div>
+							<div class="nh-stat">
+								<span class="nh-stat-value">{nodeHealth.stats.maxMemoryWords}</span>
+								<span class="nh-stat-label">Max Summary Words</span>
+							</div>
+						</div>
+
+						<!-- Issues -->
+						{#if nodeHealth.issues.length > 0}
+							<div class="eval-section">
+								<h3>Issues Detected</h3>
+								<ul class="nh-issues">
+									{#each nodeHealth.issues as issue}
+										<li class="nh-issue">{issue}</li>
+									{/each}
+								</ul>
+							</div>
+						{:else}
+							<div class="eval-section">
+								<h3>Issues Detected</h3>
+								<p class="nh-ok">No issues found.</p>
+							</div>
+						{/if}
+
+						<!-- Per-turn table -->
+						<div class="eval-section">
+							<h3>Per-Turn Node Status</h3>
+							<table class="score-table nh-table">
+								<thead>
+									<tr>
+										<th>Turn</th>
+										<th>Guard</th>
+										<th>Narrator</th>
+										<th>Condense</th>
+										<th>Memory</th>
+										<th>Time</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each nodeHealth.turns as t (t.turn)}
+										<tr>
+											<td>{t.turn}</td>
+											<td>
+												<span class="nh-badge nh-{t.guard.status}">{t.guard.detail}</span>
+											</td>
+											<td>
+												<span class="nh-badge nh-{t.narrator.status}">{t.narrator.chars} chars</span>
+											</td>
+											<td>
+												<span class="nh-badge nh-{t.condense.status}">{t.condense.words > 0 ? `${t.condense.words} words` : 'Empty'}</span>
+											</td>
+											<td>
+												<span class="nh-badge nh-{t.memory.status}">{t.memory.detail}</span>
+											</td>
+											<td>{t.time.toFixed(1)}s</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+
+						<!-- Memory progression -->
+						{#if nodeHealth.memorySummaries.length > 0}
+							<div class="eval-section">
+								<h3>Memory Summary Progression</h3>
+								{#each nodeHealth.memorySummaries as ms (ms.turn)}
+									<div class="nh-memory-entry">
+										<span class="nh-memory-turn">Turn {ms.turn}</span>
+										<span class="nh-memory-words">({ms.summary.split(/\s+/).length} words)</span>
+										<p class="nh-memory-text">{ms.summary}</p>
+									</div>
+								{/each}
+							</div>
+						{/if}
+
+						<!-- Mood progression -->
+						{#if nodeHealth.moodSnapshots.length > 0}
+							<div class="eval-section">
+								<h3>Mood Progression</h3>
+								<table class="score-table nh-table">
+									<thead>
+										<tr>
+											<th>Turn</th>
+											{#each Object.keys(nodeHealth.moodSnapshots[0]?.moods ?? {}) as char}
+												{#each Object.keys((nodeHealth.moodSnapshots[0]?.moods ?? {})[char] ?? {}) as axis}
+													<th>{char.replace(/_/g, ' ')} — {axis}</th>
+												{/each}
+											{/each}
+										</tr>
+									</thead>
+									<tbody>
+										{#each nodeHealth.moodSnapshots as snap (snap.turn)}
+											<tr>
+												<td>{snap.turn}</td>
+												{#each Object.entries(snap.moods) as [char, axes]}
+													{#each Object.entries(axes) as [axis, val]}
+														<td>
+															<span class="nh-badge" style="color:{val <= 3 ? '#f28b82' : val >= 7 ? '#81c995' : '#8ab4f8'}">{val}/10</span>
+														</td>
+													{/each}
+												{/each}
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						{/if}
+
+						<!-- Guard outputs -->
+						{#if nodeHealth.guardOutputs.length > 0}
+							<div class="eval-section">
+								<h3>Quality Guard Outputs</h3>
+								{#each nodeHealth.guardOutputs as go (go.turn)}
+									<div class="nh-guard-entry">
+										<span class="nh-guard-turn">Turn {go.turn}</span>
+										<pre class="nh-guard-text">{go.guidance}</pre>
+									</div>
+								{/each}
+							</div>
+						{/if}
+
+						<div class="eval-actions">
+							<button type="button" class="btn" onclick={() => { nodeHealth = null; }}>Reset</button>
+							<button type="button" class="btn" onclick={analyzeNodeHealth}>Re-analyze</button>
+						</div>
+
+						<div class="report-actions">
+							<h3>Export Report</h3>
+							<div class="report-buttons">
+								<button type="button" class="btn" onclick={copyNodeHealthReport}>
+									<Icon name="copy" size={14} /> Copy to Clipboard
+								</button>
+								<button type="button" class="btn" onclick={downloadNodeHealthReport}>
+									<Icon name="download" size={14} /> Download Markdown
+								</button>
+							</div>
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1254,4 +1667,27 @@
 	.suggestion-block strong { font-size: 0.88rem; display: block; margin-bottom: 0.25rem; }
 
 	@media (max-width: 800px) { .playback-layout { flex-direction: column; } .playback-sidebar { width: 100%; max-height: none; } }
+
+	/* Node Health tab */
+	.nh-stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+	.nh-stat { background: #1a1d23; border: 1px solid #2a2f38; border-radius: 8px; padding: 0.75rem 1rem; text-align: center; min-width: 7rem; }
+	.nh-stat-value { display: block; font-size: 1.4rem; font-weight: 700; color: #8ab4f8; }
+	.nh-stat-label { display: block; font-size: 0.75rem; color: #9aa0a6; margin-top: 0.2rem; }
+	.nh-issues { list-style: none; padding: 0; margin: 0; }
+	.nh-issue { padding: 0.35rem 0; color: #f28b82; font-size: 0.88rem; border-bottom: 1px solid #2a2f38; }
+	.nh-issue:last-child { border-bottom: none; }
+	.nh-ok { color: #81c995; font-size: 0.88rem; }
+	.nh-table td { font-size: 0.82rem; vertical-align: middle; }
+	.nh-badge { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.78rem; }
+	.nh-ok { background: #1a3a1a; color: #81c995; }
+	.nh-skipped { background: #2a2f38; color: #9aa0a6; }
+	.nh-warn { background: #3d2e00; color: #f6b93b; }
+	.nh-error { background: #3c1111; color: #f28b82; }
+	.nh-memory-entry { margin-bottom: 0.75rem; padding: 0.6rem 0.75rem; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 6px; }
+	.nh-memory-turn { font-weight: 600; color: #8ab4f8; font-size: 0.85rem; }
+	.nh-memory-words { font-size: 0.75rem; color: #9aa0a6; margin-left: 0.4rem; }
+	.nh-memory-text { margin: 0.3rem 0 0; font-size: 0.85rem; color: #e8eaed; line-height: 1.5; }
+	.nh-guard-entry { margin-bottom: 0.75rem; }
+	.nh-guard-turn { font-weight: 600; color: #c58af9; font-size: 0.85rem; display: block; margin-bottom: 0.25rem; }
+	.nh-guard-text { margin: 0; font-size: 0.82rem; color: #e8eaed; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 6px; padding: 0.5rem 0.75rem; white-space: pre-wrap; line-height: 1.5; }
 </style>

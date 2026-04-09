@@ -1,0 +1,19 @@
+{
+  "name": "guarded_narrator_npc_memory",
+  "description": "Quality guard + narrator + NPC dialogue + condense + memory. Characters speak in their own voice after the narrator sets the scene.",
+  "nodes": ["quality_guard", "narrator", "npc", "condense", "memory"],
+  "entry_point": {
+    "router": "route_graph_entry",
+    "mapping": {
+      "narrator": "quality_guard"
+    }
+  },
+  "edges": [
+    { "from": "quality_guard", "to": "narrator" },
+    { "from": "narrator", "to": "npc" },
+    { "from": "npc", "to": "condense" },
+    { "from": "condense", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ],
+  "conditional_edges": []
+}

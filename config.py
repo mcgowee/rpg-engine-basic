@@ -21,7 +21,7 @@ FLASK_DEBUG = get_env("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
 
 # --- LLM ---
 LLM_PROVIDER = get_env("LLM_PROVIDER", "ollama")
-DEFAULT_MODEL = get_env("DEFAULT_MODEL", "nchapman/mn-12b-mag-mell-r1:latest")
+DEFAULT_MODEL = get_env("DEFAULT_MODEL", "mistral-nemo:latest")
 OLLAMA_HOST = get_env("OLLAMA_HOST", "http://localhost:11434")
 
 # Azure

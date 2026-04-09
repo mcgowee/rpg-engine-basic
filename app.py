@@ -814,6 +814,9 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         "title": r["title"],
         "description": r["description"],
         "genre": r["genre"],
+        "tone": r["tone"] or "",
+        "nsfw_rating": r["nsfw_rating"] or "none",
+        "nsfw_tags": json.loads(r["nsfw_tags"] or "[]") if isinstance(r["nsfw_tags"], str) else (r["nsfw_tags"] or []),
         "subgraph_name": r["subgraph_name"],
         "main_graph_template_id": _row_main_graph_template_id(r),
         "notes": r["notes"] or "",
@@ -885,16 +888,23 @@ def create_story():
         tid, terr = _resolve_main_template_for_write(conn, g.user_id, data.get("main_graph_template_id"))
         if terr:
             return jsonify({"error": terr}), 400
+        nsfw_tags = data.get("nsfw_tags", [])
+        if not isinstance(nsfw_tags, list):
+            nsfw_tags = []
         cur = conn.execute(
-            """INSERT INTO stories (user_id, title, description, genre, opening,
+            """INSERT INTO stories (user_id, title, description, genre, tone,
+                  nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
                   subgraph_name, main_graph_template_id, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
                 data.get("description", ""),
                 data.get("genre", ""),
+                data.get("tone", ""),
+                data.get("nsfw_rating", "none"),
+                json.dumps(nsfw_tags),
                 data.get("opening", ""),
                 data.get("narrator_prompt", DEFAULT_NARRATOR_PROMPT),
                 data.get("narrator_model", "default"),
@@ -947,8 +957,16 @@ def update_story(story_id: int):
                 return jsonify({"error": terr}), 400
         else:
             tid = _row_main_graph_template_id(row)
+        update_nsfw_tags = data.get("nsfw_tags")
+        if update_nsfw_tags is not None:
+            if not isinstance(update_nsfw_tags, list):
+                update_nsfw_tags = []
+            nsfw_tags_json = json.dumps(update_nsfw_tags)
+        else:
+            nsfw_tags_json = row["nsfw_tags"] or "[]"
         conn.execute(
-            """UPDATE stories SET title = ?, description = ?, genre = ?, opening = ?,
+            """UPDATE stories SET title = ?, description = ?, genre = ?, tone = ?,
+                  nsfw_rating = ?, nsfw_tags = ?, opening = ?,
                   narrator_prompt = ?, narrator_model = ?, player_name = ?,
                   player_background = ?, subgraph_name = ?, main_graph_template_id = ?,
                   characters = ?, notes = ?, updated_at = datetime('now')
@@ -957,6 +975,9 @@ def update_story(story_id: int):
                 data.get("title", row["title"]),
                 data.get("description", row["description"]),
                 data.get("genre", row["genre"]),
+                data.get("tone", row["tone"] or ""),
+                data.get("nsfw_rating", row["nsfw_rating"] or "none"),
+                nsfw_tags_json,
                 data.get("opening", row["opening"]),
                 data.get("narrator_prompt", row["narrator_prompt"]),
                 data.get("narrator_model", row["narrator_model"]),
@@ -1025,15 +1046,19 @@ def copy_story(story_id: int):
             return jsonify({"error": "Not found"}), 404
         mtid = _row_main_graph_template_id(row)
         cur = conn.execute(
-            """INSERT INTO stories (user_id, title, description, genre, opening,
+            """INSERT INTO stories (user_id, title, description, genre, tone,
+                  nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
                   subgraph_name, main_graph_template_id, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 row["title"],
                 row["description"],
                 row["genre"],
+                row["tone"] or "",
+                row["nsfw_rating"] or "none",
+                row["nsfw_tags"] or "[]",
                 row["opening"],
                 row["narrator_prompt"],
                 row["narrator_model"],
@@ -1121,16 +1146,23 @@ def import_story():
             ).fetchone()
             if trow:
                 tid = trow["id"]
+        import_nsfw_tags = data.get("nsfw_tags", [])
+        if not isinstance(import_nsfw_tags, list):
+            import_nsfw_tags = []
         cur = conn.execute(
-            """INSERT INTO stories (user_id, title, description, genre, opening,
+            """INSERT INTO stories (user_id, title, description, genre, tone,
+                  nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
                   subgraph_name, main_graph_template_id, characters, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
                 data.get("description", ""),
                 data.get("genre", ""),
+                data.get("tone", ""),
+                data.get("nsfw_rating", "none"),
+                json.dumps(import_nsfw_tags),
                 data.get("opening", ""),
                 data.get("narrator_prompt", DEFAULT_NARRATOR_PROMPT),
                 data.get("narrator_model", "default"),
@@ -1175,6 +1207,11 @@ def _build_state_from_story(row) -> dict:
     model = (row["narrator_model"] or "default").strip()
     if model == "default":
         model = DEFAULT_MODEL
+    nsfw_tags = []
+    try:
+        nsfw_tags = json.loads(row["nsfw_tags"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        pass
     return {
         "message": "",
         "response": "",
@@ -1186,6 +1223,14 @@ def _build_state_from_story(row) -> dict:
             "background": row["player_background"] or "",
         },
         "characters": json.loads(row["characters"] or "{}"),
+        "story": {
+            "title": row["title"],
+            "genre": row["genre"] or "",
+            "tone": row["tone"] or "",
+            "setting": row["description"] or "",
+            "nsfw_rating": row["nsfw_rating"] or "none",
+            "nsfw_tags": nsfw_tags,
+        },
         "game_title": row["title"],
         "opening": row["opening"] or "",
         "paused": False,

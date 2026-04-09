@@ -20,6 +20,9 @@
 	let title = $state('');
 	let description = $state('');
 	let genre = $state('');
+	let tone = $state('');
+	let nsfwRating = $state('none');
+	let nsfwTags = $state<string[]>([]);
 	let opening = $state('');
 	let subgraphName = $state('conversation');
 	let notes = $state('');
@@ -169,7 +172,26 @@
 		return recs;
 	});
 
-	const GENRES = ['mystery', 'thriller', 'drama', 'comedy', 'sci-fi', 'horror', 'fantasy'];
+	const GENRES = [
+		'fantasy', 'sci-fi', 'horror', 'romance', 'mystery', 'thriller',
+		'slice-of-life', 'historical', 'supernatural', 'post-apocalyptic',
+		'urban-fantasy', 'erotica', 'drama', 'comedy',
+	];
+
+	const NSFW_RATINGS = [
+		{ value: 'none', label: 'None — clean, no sexual or graphic content' },
+		{ value: 'suggestive', label: 'Suggestive — flirting, innuendo, fade-to-black' },
+		{ value: 'mature', label: 'Mature — explicit scenes but not the focus' },
+		{ value: 'explicit', label: 'Explicit — sex and graphic content are central' },
+		{ value: 'extreme', label: 'Extreme — no limits' },
+	];
+
+	const NSFW_TAGS = [
+		'romance', 'gay/lesbian', 'bisexual', 'trans', 'oral', 'anal', 'solo',
+		'tentacle', 'furry', 'bondage/bdsm', 'group', 'exhibitionism', 'voyeurism',
+		'dom/sub', 'roleplay-within-roleplay', 'monster/creature', 'mind-control',
+		'size-difference', 'incest', 'non-con',
+	];
 
 	function subgraphDeprecatedNote(name: string): string {
 		return name === 'narrator_with_memory' ? ' — deprecated, use conversation' : '';
@@ -206,6 +228,9 @@
 					title = s.title ?? '';
 					description = s.description ?? '';
 					genre = s.genre ?? '';
+					tone = s.tone ?? '';
+					nsfwRating = s.nsfw_rating ?? 'none';
+					nsfwTags = Array.isArray(s.nsfw_tags) ? s.nsfw_tags : [];
 					opening = s.opening ?? '';
 					subgraphName = s.subgraph_name ?? 'conversation';
 					mainGraphTemplateId =
@@ -237,6 +262,9 @@
 				title: title.trim(),
 				description: description.trim(),
 				genre,
+				tone: tone.trim(),
+				nsfw_rating: nsfwRating,
+				nsfw_tags: nsfwTags,
 				opening: opening.trim(),
 				subgraph_name: subgraphName,
 				main_graph_template_id:
@@ -577,6 +605,43 @@
 				</select>
 			</label>
 
+			<label class="field">
+				<strong>Tone</strong>
+				<span class="hint">Comma-separated descriptors: e.g. "dark, romantic, tense" or "lighthearted, campy, humorous"</span>
+				<input type="text" bind:value={tone} placeholder="e.g. dark, romantic, tense" />
+			</label>
+
+			<label class="field">
+				<strong>NSFW Rating</strong>
+				<select bind:value={nsfwRating}>
+					{#each NSFW_RATINGS as r}<option value={r.value}>{r.label}</option>{/each}
+				</select>
+			</label>
+
+			{#if nsfwRating !== 'none'}
+				<div class="field">
+					<strong>NSFW Tags</strong>
+					<span class="hint">Select all that apply to this story.</span>
+					<div class="tag-grid">
+						{#each NSFW_TAGS as tag}
+							<label class="tag-check">
+								<input type="checkbox"
+									checked={nsfwTags.includes(tag)}
+									onchange={() => {
+										if (nsfwTags.includes(tag)) {
+											nsfwTags = nsfwTags.filter(t => t !== tag);
+										} else {
+											nsfwTags = [...nsfwTags, tag];
+										}
+									}}
+								/>
+								{tag}
+							</label>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			<div class="field">
 				<strong>Opening</strong>
 				<span class="hint">Second person, present tense. What the player reads first.</span>
@@ -829,4 +894,7 @@
 	.suggest-item:hover { background: #2a2f38; }
 	.axis-preview { font-weight: 600; margin-right: 0.35rem; }
 	.axis-range { color: #9aa0a6; font-size: 0.82rem; }
+	.tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.3rem 0.75rem; margin-top: 0.35rem; }
+	.tag-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; color: #e8eaed; cursor: pointer; }
+	.tag-check input[type="checkbox"] { accent-color: #1a73e8; }
 </style>
