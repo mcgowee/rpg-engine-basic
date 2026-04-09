@@ -20,12 +20,31 @@ def _load_settings() -> dict:
     return {}
 
 
+# Thread-local session override for A/B testing
+_session_override: dict[str, str] = {}
+
+
+def set_session_model_override(model: str):
+    """Set a temporary model override for all roles (used by A/B testing)."""
+    _session_override["model"] = model
+
+
+def clear_session_model_override():
+    """Clear the temporary override."""
+    _session_override.pop("model", None)
+
+
 def get_model_for_role(role: str, story_override: str = "", character_override: str = "") -> str:
     """Resolve a model for a given role using the cascade.
 
-    Priority: character_override → story_override → site role default → DEFAULT_MODEL
+    Priority: session_override → character_override → story_override → site role default → DEFAULT_MODEL
     """
     from config import DEFAULT_MODEL
+
+    # Session override (A/B testing)
+    session_model = _session_override.get("model", "")
+    if session_model:
+        return session_model
 
     # Per-character override
     if character_override and character_override != "default":

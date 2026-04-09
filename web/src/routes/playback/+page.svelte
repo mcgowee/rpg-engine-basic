@@ -24,10 +24,19 @@
 	let loadingStories = $state(true);
 
 	// Mode
-	type Mode = 'generate' | 'replay';
+	type Mode = 'generate' | 'replay' | 'compare';
 	let mode = $state<Mode>('generate');
 	let maxTurns = $state(5);
 	let delayBetweenTurns = $state(1);
+
+	// Compare mode
+	type ModelOption = { id: string; name: string; provider: string };
+	let availableModels = $state<ModelOption[]>([]);
+	let modelA = $state('');
+	let modelB = $state('');
+	let compareResults = $state<{ modelA: TurnResult[]; modelB: TurnResult[] } | null>(null);
+	let compareRunning = $state(false);
+	let comparePhase = $state<'idle' | 'running_a' | 'running_b' | 'done'>('idle');
 
 	// Replay mode
 	let replayMessages = $state<string[]>([]);
@@ -116,6 +125,27 @@
 			if (scriptsR.ok) {
 				savedScripts = await scriptsR.json();
 			}
+
+			// Load available models for compare mode
+			try {
+				const modelsR = await fetch('/api/models', { credentials: 'include' });
+				if (modelsR.ok) {
+					const modelsData = await modelsR.json();
+					const models: ModelOption[] = [];
+					for (const [provName, prov] of Object.entries(modelsData.providers ?? {})) {
+						const p = prov as { available: boolean; models: { id: string; name: string }[] };
+						if (!p.available) continue;
+						for (const m of p.models) {
+							models.push({ id: m.id, name: m.name, provider: provName });
+						}
+					}
+					availableModels = models;
+					if (models.length >= 2) {
+						modelA = models[0].id;
+						modelB = models[1].id;
+					}
+				}
+			} catch { /* ignore */ }
 		} catch { /* ignore */ }
 		loadingStories = false;
 	});
@@ -330,6 +360,80 @@
 		return '#81c995';
 	}
 
+	async function runCompare() {
+		if (!selectedStoryId || !modelA || !modelB || replayMessages.length === 0) return;
+		compareRunning = true;
+		compareResults = null;
+		comparePhase = 'running_a';
+
+		const runWithModel = async (model: string): Promise<TurnResult[]> => {
+			// Set model override
+			await apiCall('POST', '/settings/model-override', { model });
+			// Start fresh game
+			await apiCall('POST', '/play/start', { story_id: selectedStoryId });
+
+			const results: TurnResult[] = [];
+			for (let i = 0; i < replayMessages.length; i++) {
+				const msg = replayMessages[i];
+				const turnStart = performance.now();
+				const data = await apiCall('POST', '/play/chat', { story_id: selectedStoryId, message: msg });
+				const turnTime = (performance.now() - turnStart) / 1000;
+
+				if (data.error) break;
+
+				results.push({
+					turn: i + 1,
+					message: msg,
+					response: String(data.response ?? ''),
+					moods: parseMoods(data),
+					memory_summary: String(data.memory_summary ?? ''),
+					narrator_guidance: String(data.narrator_guidance ?? ''),
+					time_seconds: Math.round(turnTime * 100) / 100,
+					response_length: String(data.response ?? '').length,
+				});
+			}
+
+			// Clear override
+			await apiCall('POST', '/settings/model-override', { model: '' });
+			return results;
+		};
+
+		try {
+			const resultsA = await runWithModel(modelA);
+			comparePhase = 'running_b';
+			const resultsB = await runWithModel(modelB);
+			compareResults = { modelA: resultsA, modelB: resultsB };
+			comparePhase = 'done';
+		} catch {
+			error = 'Compare failed';
+		} finally {
+			compareRunning = false;
+			// Ensure override is cleared
+			await apiCall('POST', '/settings/model-override', { model: '' });
+		}
+	}
+
+	function downloadCompare() {
+		if (!compareResults) return;
+		const data = {
+			story_id: selectedStoryId,
+			game_title: gameTitle || 'Compare Test',
+			model_a: modelA,
+			model_b: modelB,
+			script: replayMessages,
+			results_a: compareResults.modelA,
+			results_b: compareResults.modelB,
+			timestamp: new Date().toISOString(),
+		};
+		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `compare_${modelA.replace(/[/:]/g, '_')}_vs_${modelB.replace(/[/:]/g, '_')}_${Date.now()}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
 	async function runEvaluation() {
 		evaluating = true;
 		evalError = '';
@@ -532,17 +636,22 @@
 			<!-- Mode selector -->
 			<div class="mode-toggle">
 				<button type="button" class="mode-btn" class:active={mode === 'generate'} onclick={() => mode = 'generate'}>
-					Generate Script
+					Generate
 				</button>
 				<button type="button" class="mode-btn" class:active={mode === 'replay'} onclick={() => mode = 'replay'}>
-					Replay Script
+					Replay
+				</button>
+				<button type="button" class="mode-btn" class:active={mode === 'compare'} onclick={() => mode = 'compare'}>
+					Compare
 				</button>
 			</div>
 
 			{#if mode === 'generate'}
 				<p class="mode-desc">The LLM plays as the character, generating natural responses to the narrator. The resulting messages are saved as a reusable test script.</p>
-			{:else}
+			{:else if mode === 'replay'}
 				<p class="mode-desc">Load a saved script and replay it against the current model/settings. Same messages every time for fair comparison.</p>
+			{:else}
+				<p class="mode-desc">Run the same script against two models side by side. Same messages, different models — compare quality and speed.</p>
 			{/if}
 
 			<div class="setup-row">
@@ -600,12 +709,103 @@
 				{/if}
 			{/if}
 
-			<button type="button" class="btn primary start-btn"
-				disabled={!selectedStoryId || (mode === 'replay' && replayMessages.length === 0)}
-				onclick={startPlayback}>
-				<Icon name="play" size={16} /> {mode === 'generate' ? 'Generate & Play' : 'Replay Script'}
-			</button>
+			{#if mode === 'compare'}
+				{#if savedScripts.length > 0}
+					<div class="scripts-list">
+						<strong>Select Script</strong>
+						{#each savedScripts as sc (sc.filename)}
+							<div class="script-row">
+								<button type="button" class="script-link" onclick={() => loadScript(sc.filename)}>
+									{sc.name}
+								</button>
+								<span class="script-meta">{sc.turns} turns · {sc.story_title}</span>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<p class="muted">No saved scripts. Generate one first.</p>
+				{/if}
+
+				{#if loadedScriptName}
+					<p class="muted">Script: <strong>{loadedScriptName}</strong> ({replayMessages.length} turns)</p>
+				{/if}
+
+				<div class="model-select-row">
+					<label class="field">
+						<strong>Model A</strong>
+						<select bind:value={modelA}>
+							{#each availableModels as m (m.id)}
+								<option value={m.id}>{m.name} ({m.provider})</option>
+							{/each}
+						</select>
+					</label>
+					<span class="vs-label">vs</span>
+					<label class="field">
+						<strong>Model B</strong>
+						<select bind:value={modelB}>
+							{#each availableModels as m (m.id)}
+								<option value={m.id}>{m.name} ({m.provider})</option>
+							{/each}
+						</select>
+					</label>
+				</div>
+			{/if}
+
+			{#if mode === 'compare'}
+				<button type="button" class="btn primary start-btn"
+					disabled={!selectedStoryId || replayMessages.length === 0 || !modelA || !modelB || modelA === modelB || compareRunning}
+					onclick={runCompare}>
+					<Icon name="play" size={16} /> {compareRunning ? (comparePhase === 'running_a' ? `Running Model A...` : `Running Model B...`) : 'Run Comparison'}
+				</button>
+			{:else}
+				<button type="button" class="btn primary start-btn"
+					disabled={!selectedStoryId || (mode === 'replay' && replayMessages.length === 0)}
+					onclick={startPlayback}>
+					<Icon name="play" size={16} /> {mode === 'generate' ? 'Generate & Play' : 'Replay Script'}
+				</button>
+			{/if}
 			{#if error}<p class="err">{error}</p>{/if}
+
+			{#if compareResults}
+				<div class="compare-results">
+					<h2>Comparison Results</h2>
+					<div class="compare-grid">
+						<div class="compare-col">
+							<h3>Model A: {modelA.split('/').pop()}</h3>
+							<div class="compare-stats">
+								<span>Avg time: {(compareResults.modelA.reduce((a, t) => a + t.time_seconds, 0) / compareResults.modelA.length).toFixed(1)}s</span>
+								<span>Avg length: {Math.round(compareResults.modelA.reduce((a, t) => a + t.response_length, 0) / compareResults.modelA.length)} chars</span>
+							</div>
+							{#each compareResults.modelA as turn (turn.turn)}
+								<div class="compare-turn">
+									<div class="compare-turn-header">Turn {turn.turn} · {turn.time_seconds}s</div>
+									<div class="compare-player">{turn.message}</div>
+									<div class="compare-response">{turn.response.slice(0, 300)}{turn.response.length > 300 ? '...' : ''}</div>
+								</div>
+							{/each}
+						</div>
+						<div class="compare-col">
+							<h3>Model B: {modelB.split('/').pop()}</h3>
+							<div class="compare-stats">
+								<span>Avg time: {(compareResults.modelB.reduce((a, t) => a + t.time_seconds, 0) / compareResults.modelB.length).toFixed(1)}s</span>
+								<span>Avg length: {Math.round(compareResults.modelB.reduce((a, t) => a + t.response_length, 0) / compareResults.modelB.length)} chars</span>
+							</div>
+							{#each compareResults.modelB as turn (turn.turn)}
+								<div class="compare-turn">
+									<div class="compare-turn-header">Turn {turn.turn} · {turn.time_seconds}s</div>
+									<div class="compare-player">{turn.message}</div>
+									<div class="compare-response">{turn.response.slice(0, 300)}{turn.response.length > 300 ? '...' : ''}</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+					<div class="compare-actions">
+						<button type="button" class="btn" onclick={downloadCompare}>
+							<Icon name="download" size={14} /> Download Comparison JSON
+						</button>
+					</div>
+				</div>
+			{/if}
 		</div>
 	{:else}
 		<!-- Tab bar -->
@@ -943,6 +1143,20 @@
 	.loaded-script { margin: 1rem 0; padding: 0.75rem; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 8px; }
 	.message-preview { margin: 0.5rem 0 0; padding-left: 1.25rem; font-size: 0.85rem; color: #bdc1c6; }
 	.message-preview li { margin-bottom: 0.2rem; }
+	.model-select-row { display: flex; gap: 1rem; align-items: end; flex-wrap: wrap; margin: 1rem 0; }
+	.model-select-row .field { flex: 1; min-width: 200px; }
+	.vs-label { font-size: 1.1rem; font-weight: 700; color: #5f6368; padding-bottom: 0.5rem; }
+	.compare-results { margin-top: 2rem; }
+	.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+	.compare-col { border: 1px solid #2a2f38; border-radius: 10px; padding: 0.75rem; background: #1a1d23; }
+	.compare-col h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+	.compare-stats { display: flex; gap: 1rem; font-size: 0.78rem; color: #9aa0a6; margin-bottom: 0.75rem; }
+	.compare-turn { margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid #2a2f38; }
+	.compare-turn:last-child { border-bottom: none; }
+	.compare-turn-header { font-size: 0.75rem; color: #8ab4f8; font-weight: 600; margin-bottom: 0.25rem; }
+	.compare-player { font-size: 0.82rem; color: #9aa0a6; margin-bottom: 0.25rem; }
+	.compare-response { font-size: 0.85rem; line-height: 1.5; color: #bdc1c6; }
+	.compare-actions { margin-top: 1rem; }
 	.start-btn { font-size: 1rem; padding: 0.6rem 1.5rem; margin-top: 1rem; }
 	.playback-layout { display: flex; gap: 1rem; }
 	.playback-main { flex: 1; min-width: 0; }

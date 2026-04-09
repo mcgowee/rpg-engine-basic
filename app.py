@@ -316,7 +316,21 @@ def list_models():
     })
 
 
-from model_resolver import get_model_for_role, load_role_settings, save_role_settings, VALID_ROLES
+from model_resolver import get_model_for_role, load_role_settings, save_role_settings, VALID_ROLES, set_session_model_override, clear_session_model_override
+
+
+@app.route("/settings/model-override", methods=["POST"])
+@login_required
+def set_model_override():
+    """Temporarily override all model selections (for A/B testing)."""
+    data = request.get_json(silent=True) or {}
+    model = (data.get("model") or "").strip()
+    if model:
+        set_session_model_override(model)
+        return jsonify({"ok": True, "model": model})
+    else:
+        clear_session_model_override()
+        return jsonify({"ok": True, "model": None})
 
 
 @app.route("/settings/models", methods=["GET"])
