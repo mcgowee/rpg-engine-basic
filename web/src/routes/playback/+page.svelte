@@ -293,11 +293,16 @@
 		return '#81c995';
 	}
 
-	function reset() {
+	async function reset() {
 		playState = 'idle';
 		turns = [];
 		generatedMessages = [];
 		error = '';
+		// Refresh saved scripts list
+		try {
+			const r = await fetch('/api/playback-scripts', { credentials: 'include' });
+			if (r.ok) savedScripts = await r.json();
+		} catch { /* ignore */ }
 	}
 </script>
 
