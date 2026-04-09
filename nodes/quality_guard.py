@@ -37,32 +37,33 @@ def quality_guard_node(state: dict) -> dict:
         logger.error(f"Quality guard: failed to get LLM: {e}")
         return {}
 
-    prompt = f"""You are a quality monitor for a text adventure game. Analyze the recent turns and identify problems.
+    prompt = f"""You are a strict quality enforcer for a text adventure game. Your job is to PREVENT the narrator from being boring or repetitive.
+
+Read the recent turns below. If you detect ANY of these problems, you MUST issue a forceful correction. Do NOT say "NONE" unless the story is genuinely fresh and engaging.
 
 Recent turns:
 {recent_text[:1500]}
 
-Player's current message: {message}
+Player's next message: {message}
 
-Story summary: {memory_summary[:300]}
+Story so far: {memory_summary[:300]}
 
-Check for these issues and respond with a SHORT list of narrator instructions (2-3 lines max).
-Only include instructions that are relevant — if everything is fine, say "NONE".
+Problems to detect (be aggressive — it's better to over-correct than let boredom slide):
 
-Issues to check:
-1. REPETITION: Are the narrator's descriptions repeating similar themes, settings, or phrases?
-2. PASSIVITY: Is the player just observing/looking without taking action? If so, force a consequence.
-3. STAGNATION: Has the story stopped progressing? No new events or complications in the last 3 turns?
-4. MONOTONE: Is every response the same tone/mood without variation?
-5. NO STAKES: Is there nothing at risk? No tension or urgency?
+1. REPETITION: Same descriptions, same emotions, same sentence patterns? FORCE a completely different approach.
+2. PASSIVITY: Player is just talking/looking/thinking? DEMAND that something unexpected HAPPENS — an interruption, a discovery, a threat.
+3. STAGNATION: No new plot development in 2+ turns? REQUIRE a twist, revelation, or complication RIGHT NOW.
+4. MONOTONE: Same emotional tone every turn? INSIST on a shift — if it's been tense, force a moment of dark humor. If romantic, introduce danger.
+5. DIALOGUE LOOPS: Characters saying similar things? MANDATE new topics, secrets revealed, or arguments.
 
-Format: One instruction per line, starting with a dash. Be specific.
+Write 1-3 FORCEFUL instructions. Start each with "YOU MUST" — these are not suggestions, they are requirements.
+
 Example:
-- Introduce an unexpected interruption or complication in this scene
-- The player has been passive — have something happen TO them, not just around them
-- Vary the tone — the last 3 turns were all tense, add a moment of humor or calm
+- YOU MUST introduce an unexpected interruption that changes the scene completely
+- YOU MUST have a character reveal a secret or lie about something
+- YOU MUST shift the emotional tone — break the pattern with surprise or humor
 
-Instructions for the narrator (or NONE):"""
+Instructions (or NONE only if truly engaging):"""
 
     try:
         raw = llm_result_to_text(llm.invoke(prompt)).strip()

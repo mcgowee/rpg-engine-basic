@@ -1367,6 +1367,7 @@ def play_chat():
             "memory_summary": result.get("memory_summary", ""),
             "player": result.get("player", {}),
             "subgraph_name": result.get("_subgraph_name", ""),
+            "narrator_guidance": result.get("_narrator_guidance", ""),
         })
     finally:
         adv_lock.release()
@@ -2292,12 +2293,30 @@ def ai_generate_player_action():
     bg_block = f"\nYour character: {player_background}" if player_background else ""
     title_block = f"\nStory: {game_title}" if game_title else ""
 
+    # Force variety based on turn number
+    variety_hints = [
+        "Take a bold physical action.",
+        "Say something provocative or unexpected to someone.",
+        "Investigate something specific you noticed.",
+        "Make a decision that changes the situation.",
+        "Confront someone or challenge something directly.",
+        "Try to leave, move, or change location.",
+        "Reveal something personal or take an emotional risk.",
+        "Do something sneaky, subtle, or clever.",
+        "React physically — grab, push, run, hide.",
+        "Ask a pointed question that demands an answer.",
+    ]
+    turn_idx = max(0, (turn_number - 1)) % len(variety_hints)
+    variety_hint = variety_hints[turn_idx]
+
     prompt = f"""What does {player_name} do next? ONE short sentence starting with "I".{title_block}{bg_block}
+
+Hint: {variety_hint}
 
 Scene: {scene[:400]}
 {prev_block}
 
-{player_name}'s action (one sentence only):"""
+{player_name}'s action (one sentence, must be DIFFERENT from all previous actions):"""
 
     try:
         llm = get_llm(get_model_for_role("tools"))

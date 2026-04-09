@@ -12,6 +12,7 @@
 		response: string;
 		moods: Record<string, Record<string, number>>;
 		memory_summary: string;
+		narrator_guidance: string;
 		time_seconds: number;
 		response_length: number;
 	};
@@ -260,6 +261,7 @@
 				response: String(data.response ?? ''),
 				moods: parseMoods(data),
 				memory_summary: String(data.memory_summary ?? ''),
+				narrator_guidance: String(data.narrator_guidance ?? ''),
 				time_seconds: Math.round(turnTime * 100) / 100,
 				response_length: String(data.response ?? '').length,
 			};
@@ -717,6 +719,11 @@
 										{/each}
 									</div>
 								{/if}
+								{#if turn.narrator_guidance}
+									<div class="entry-guidance">
+										<span class="guidance-label">Quality Guard:</span> {turn.narrator_guidance}
+									</div>
+								{/if}
 							</div>
 						{/each}
 						{#if playState === 'playing'}
@@ -827,6 +834,8 @@
 	.entry-label { font-size: 0.72rem; color: #9aa0a6; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
 	.entry-text { font-size: 0.92rem; line-height: 1.6; white-space: pre-wrap; }
 	.entry-moods { margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	.entry-guidance { margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 4px; font-size: 0.78rem; color: #c58af9; white-space: pre-wrap; }
+	.guidance-label { font-weight: 600; color: #8a6abf; }
 	.mood-chip { font-size: 0.78rem; color: #9aa0a6; }
 	.mood-val { margin-left: 0.2rem; font-weight: 600; }
 	.kv { margin: 0; display: grid; grid-template-columns: 5rem 1fr; gap: 0.2rem 0.5rem; font-size: 0.85rem; }
