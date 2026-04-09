@@ -383,6 +383,107 @@
 		return '#81c995';
 	}
 
+	function buildEvalReport(): string {
+		let report = `# Playback Evaluation Report\n`;
+		report += `**Game:** ${gameTitle}\n`;
+		report += `**Subgraph:** ${subgraphName}\n`;
+		report += `**Turns:** ${turns.length}\n`;
+		report += `**Date:** ${new Date().toLocaleString()}\n\n`;
+
+		if (evaluation) {
+			report += `## Evaluation\n\n`;
+			if (evaluation.overall_score) report += `**Overall Score: ${evaluation.overall_score}/10**\n\n`;
+			if (evaluation.summary) report += `${evaluation.summary}\n\n`;
+
+			if (evaluation.strengths?.length) {
+				report += `### Strengths\n`;
+				for (const s of evaluation.strengths) report += `- ${s}\n`;
+				report += `\n`;
+			}
+			if (evaluation.weaknesses?.length) {
+				report += `### Weaknesses\n`;
+				for (const w of evaluation.weaknesses) report += `- ${w}\n`;
+				report += `\n`;
+			}
+			if (evaluation.consistency) report += `### Consistency\n${evaluation.consistency}\n\n`;
+			if (evaluation.pacing) report += `### Pacing\n${evaluation.pacing}\n\n`;
+
+			if (evaluation.turn_scores?.length) {
+				report += `### Per-Turn Scores\n`;
+				report += `| Turn | Relevance | Prose | Engage | Note |\n`;
+				report += `|------|-----------|-------|--------|------|\n`;
+				for (const ts of evaluation.turn_scores) {
+					report += `| ${ts.turn} | ${ts.relevance} | ${ts.prose_quality} | ${ts.engagement} | ${ts.note} |\n`;
+				}
+				report += `\n`;
+			}
+			if (evaluation.suggestions?.length) {
+				report += `### Suggestions\n`;
+				for (const s of evaluation.suggestions) report += `- ${s}\n`;
+				report += `\n`;
+			}
+		}
+
+		if (analysis) {
+			report += `## Recommendations\n\n`;
+			if (analysis.analysis) {
+				report += `**Primary Issue:** ${analysis.analysis.primary_issue ?? 'N/A'}\n`;
+				report += `**Score Trend:** ${analysis.analysis.score_trend ?? 'N/A'}\n`;
+				report += `**Best Turn:** ${analysis.analysis.best_turn ?? 'N/A'} | **Worst Turn:** ${analysis.analysis.worst_turn ?? 'N/A'}\n\n`;
+			}
+			if (analysis.recommendations?.length) {
+				for (const rec of analysis.recommendations) {
+					report += `### [${rec.priority.toUpperCase()}] ${rec.title}\n`;
+					report += `**Category:** ${rec.category}\n\n`;
+					report += `${rec.description}\n\n`;
+					report += `**Implementation:**\n\`\`\`\n${rec.implementation}\n\`\`\`\n\n`;
+					report += `**Expected impact:** ${rec.expected_impact}\n\n`;
+				}
+			}
+			if (analysis.prompt_suggestions) {
+				report += `### Prompt Suggestions\n\n`;
+				if (analysis.prompt_suggestions.narrator_prompt_additions) {
+					report += `**Add to narrator prompt:**\n\`\`\`\n${analysis.prompt_suggestions.narrator_prompt_additions}\n\`\`\`\n\n`;
+				}
+				if (analysis.prompt_suggestions.player_generator_improvements) {
+					report += `**Player action generator:**\n\`\`\`\n${analysis.prompt_suggestions.player_generator_improvements}\n\`\`\`\n\n`;
+				}
+			}
+		}
+
+		// Include turn transcript
+		report += `## Turn Transcript\n\n`;
+		for (const t of turns) {
+			report += `### Turn ${t.turn}\n`;
+			report += `**Player:** ${t.message}\n\n`;
+			report += `**Response:** ${t.response.slice(0, 300)}${t.response.length > 300 ? '...' : ''}\n\n`;
+			if (t.narrator_guidance) report += `**Quality Guard:** ${t.narrator_guidance}\n\n`;
+		}
+
+		return report;
+	}
+
+	async function copyReport() {
+		const report = buildEvalReport();
+		try {
+			await navigator.clipboard.writeText(report);
+			toast('Report copied to clipboard', 'success');
+		} catch {
+			toast('Copy failed', 'error');
+		}
+	}
+
+	function downloadReport() {
+		const report = buildEvalReport();
+		const blob = new Blob([report], { type: 'text/markdown' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `eval_report_${gameTitle.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}.md`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
 	function scoreColor(score: number): string {
 		if (score >= 8) return '#81c995';
 		if (score >= 6) return '#8ab4f8';
@@ -588,6 +689,12 @@
 							</button>
 							<button type="button" class="btn primary" disabled={analyzing} onclick={runAnalysis}>
 								<Icon name="zap" size={14} /> {analyzing ? 'Analyzing...' : 'Get Recommendations'}
+							</button>
+							<button type="button" class="btn" onclick={copyReport}>
+								<Icon name="copy" size={14} /> Copy Report
+							</button>
+							<button type="button" class="btn" onclick={downloadReport}>
+								<Icon name="download" size={14} /> Download .md
 							</button>
 						</div>
 
