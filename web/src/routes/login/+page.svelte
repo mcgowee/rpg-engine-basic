@@ -4,8 +4,8 @@
 	import { fade } from 'svelte/transition';
 	import { checkAuth, authState } from '$lib/auth.svelte';
 
-	let uid = $state('');
-	let password = $state('');
+	let uid = $state('user1');
+	let password = $state('test');
 	let mode = $state<'login' | 'register'>('login');
 	let error = $state('');
 
