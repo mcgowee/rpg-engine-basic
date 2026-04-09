@@ -2111,41 +2111,38 @@ def ai_generate_player_action():
     bg_block = f"\nYour character: {player_background}" if player_background else ""
     title_block = f"\nStory: {game_title}" if game_title else ""
 
-    prompt = f"""You are role-playing as {player_name} in a text adventure.{title_block}{bg_block}
+    prompt = f"""What does {player_name} do next? ONE short sentence starting with "I".{title_block}{bg_block}
 
-This is turn {turn_number} of {total_turns}. Read what just happened and decide what {player_name} would do next.
-
-What just happened:
-{scene[:800]}
+Scene: {scene[:400]}
 {prev_block}
 
-Rules:
-- Write ONE action sentence in first person ("I ...")
-- Be SPECIFIC to what just happened — react to details in the scene
-- NEVER say "I look around" or any generic observation
-- Interact with characters if they're present
-- Advance the story — try something new each turn
-- Stay in character as {player_name}
-
-{player_name}'s next action:"""
+{player_name}'s action (one sentence only):"""
 
     try:
         llm = get_llm(get_model_for_role("tools"))
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw).strip()
-        # Clean up — take first line, strip quotes
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
-        text = lines[0] if lines else "I consider my next move."
-        for prefix in [f"{player_name}:", f"{player_name}'s next action:", "Action:", "Next action:"]:
+        # Take first sentence only — split on period, question mark, or exclamation
+        for end in ['. ', '? ', '! ']:
+            idx = text.find(end)
+            if idx > 0:
+                text = text[:idx + 1]
+                break
+        # Take first line only
+        text = text.split("\n")[0].strip()
+        # Strip quotes
+        if len(text) >= 2 and text[0] in "\"'" and text[-1] == text[0]:
+            text = text[1:-1]
+        # Strip common prefixes
+        for prefix in [f"{player_name}:", f"{player_name}'s action:", "Action:", "Next:", "I would "]:
             if text.lower().startswith(prefix.lower()):
                 text = text[len(prefix):].strip()
-        if text.startswith('"') and text.endswith('"'):
-            text = text[1:-1]
-        if text.startswith("'") and text.endswith("'"):
-            text = text[1:-1]
-        # Ensure it starts with "I"
-        if text and not text[0].isupper():
-            text = text[0].upper() + text[1:]
+        # Ensure starts with I
+        if text and not text.startswith("I "):
+            text = "I " + text[0].lower() + text[1:] if text else "I act."
+        # Hard cap at 120 chars
+        if len(text) > 120:
+            text = text[:117].rsplit(" ", 1)[0] + "..."
         logger.info("generate-player-action: turn=%s, action=%r", data.get("turn_number"), text[:100])
         return jsonify({"action": text})
     except Exception as e:
