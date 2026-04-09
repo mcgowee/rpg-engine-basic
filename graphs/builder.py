@@ -18,6 +18,7 @@ class State(TypedDict):
     game_title: str
     opening: str
     paused: bool
+    _narrator_guidance: str
     turn_count: int
 
 

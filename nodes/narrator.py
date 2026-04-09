@@ -100,12 +100,16 @@ def narrator_node(state: dict) -> dict:
                 "give them dialogue here; anonymous or environmental voices are fine if clearly not a cast member."
             )
 
+    # Quality guard guidance (injected by quality_guard node if it ran)
+    guidance = (state.get("_narrator_guidance") or "").strip()
+    guidance_block = f"\nIMPORTANT — quality notes for this turn:\n{guidance}\n" if guidance else ""
+
     prompt = f"""{narrator_prompt}
 
 Game: {state.get("game_title", "Untitled")}
 Player: {player.get("name", "Adventurer")} — {player.get("background", "")}
 {chars_line}
-{context_section}
+{context_section}{guidance_block}
 Player just said: {state.get("message", "")}
 
 {beat_instr}"""
