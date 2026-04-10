@@ -164,18 +164,18 @@
 		const recs: SubgraphRec[] = [];
 		if (charCount === 0) {
 			recs.push({
-				name: 'conversation',
+				name: 'narrator_chat_lite',
 				match: true,
-				reason: 'No characters — narrator + in-graph memory (no condense/NPC; use full_conversation for AI summary)',
+				reason: 'No characters — narrator + memory, fast turns',
 			});
-			recs.push({ name: 'full_conversation', match: true, reason: 'No characters — narrator + rolling memory summary for longer arcs' });
 		} else if (hasMoodAxes) {
-			recs.push({ name: 'full_story', match: true, reason: 'Characters with mood axes — mood shifts tracked each turn' });
-			recs.push({ name: 'smart_conversation', match: false, reason: 'Has characters but skips mood tracking' });
+			recs.push({ name: 'narrator_chat', match: true, reason: 'Characters with mood axes — full pipeline with mood tracking, memory, and condense' });
+			recs.push({ name: 'narrator_chat_lite', match: false, reason: 'Faster but skips mood tracking and memory compression' });
 		} else {
-			recs.push({ name: 'smart_conversation', match: true, reason: 'Characters without mood axes — NPCs respond, mood skipped; can skip NPC path when no characters' });
-			recs.push({ name: 'full_story', match: false, reason: 'Would track moods, but no axes defined yet' });
+			recs.push({ name: 'narrator_chat_lite', match: true, reason: 'Characters without mood axes — fast narrator + character dialogue' });
+			recs.push({ name: 'narrator_chat', match: false, reason: 'Full pipeline — would track moods, but no axes defined yet' });
 		}
+		recs.push({ name: 'chat_direct', match: false, reason: 'No narrator — pure character dialogue only' });
 		return recs;
 	});
 
