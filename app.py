@@ -1158,11 +1158,22 @@ def export_story(story_id: int):
         conn.close()
     if not row or (row["user_id"] != g.user_id and not row["is_public"]):
         return jsonify({"error": "Not found"}), 404
+    try:
+        nsfw_tags = json.loads(row["nsfw_tags"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        nsfw_tags = []
+    try:
+        scene_gallery = json.loads(row["scene_gallery"] or "[]") if "scene_gallery" in row.keys() else []
+    except (json.JSONDecodeError, TypeError):
+        scene_gallery = []
     export = {
-        "export_version": 1,
+        "export_version": 2,
         "title": row["title"],
         "description": row["description"],
         "genre": row["genre"],
+        "tone": row["tone"] or "",
+        "nsfw_rating": row["nsfw_rating"] or "none",
+        "nsfw_tags": nsfw_tags,
         "opening": row["opening"],
         "narrator_prompt": row["narrator_prompt"],
         "narrator_model": row["narrator_model"],
@@ -1171,6 +1182,7 @@ def export_story(story_id: int):
         "subgraph_name": row["subgraph_name"],
         "main_graph_template_name": tmpl_name,
         "characters": json.loads(row["characters"] or "{}"),
+        "scene_gallery": scene_gallery,
         "notes": row["notes"] or "",
         "cover_image": row["cover_image"] or "",
     }
@@ -1186,7 +1198,7 @@ def export_story(story_id: int):
 @login_required
 def import_story():
     data = request.get_json(silent=True) or {}
-    if data.get("export_version") != 1:
+    if data.get("export_version") not in (1, 2):
         return jsonify({"error": "Unsupported export version"}), 400
     title = (data.get("title") or "").strip()
     if not title:
@@ -1209,12 +1221,16 @@ def import_story():
         import_nsfw_tags = data.get("nsfw_tags", [])
         if not isinstance(import_nsfw_tags, list):
             import_nsfw_tags = []
+        import_scene_gallery = data.get("scene_gallery", [])
+        if not isinstance(import_scene_gallery, list):
+            import_scene_gallery = []
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, main_graph_template_id, characters, notes, cover_image)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, scene_gallery,
+                  notes, cover_image)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -1224,13 +1240,14 @@ def import_story():
                 data.get("nsfw_rating", "none"),
                 json.dumps(import_nsfw_tags),
                 data.get("opening", ""),
-                data.get("narrator_prompt", DEFAULT_NARRATOR_PROMPT),
+                data.get("narrator_prompt", ""),
                 data.get("narrator_model", "default"),
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
                 data.get("subgraph_name", "narrator_chat_lite"),
                 tid,
                 json.dumps(characters),
+                json.dumps(import_scene_gallery),
                 data.get("notes", ""),
                 (data.get("cover_image") or "").strip(),
             ),
