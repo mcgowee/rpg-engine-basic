@@ -2928,13 +2928,14 @@ def ai_build_scene_prompt():
     style_key = (data.get("style") or "cinematic").strip()
     style_suffix = SCENE_STYLES.get(style_key, SCENE_STYLES["cinematic"])
 
-    # Try to get story context for genre/tone
+    # Try to get story context for genre/tone and character gender
     story_context = ""
+    gender_hint = ""
     story_id = data.get("story_id")
     if story_id:
         try:
             conn = get_db()
-            row = conn.execute("SELECT genre, tone, description FROM stories WHERE id = ?", (int(story_id),)).fetchone()
+            row = conn.execute("SELECT genre, tone, description, characters, player_name FROM stories WHERE id = ?", (int(story_id),)).fetchone()
             conn.close()
             if row:
                 parts = []
@@ -2946,6 +2947,32 @@ def ai_build_scene_prompt():
                     parts.append(f"Story: {row['description'][:150]}")
                 if parts:
                     story_context = "\n".join(parts) + "\n"
+
+                # Detect character genders from prompts
+                male_keywords = {"man", "male", "he", "his", "him", "guy", "boy", "masculine", "gay man"}
+                female_keywords = {"woman", "female", "she", "her", "girl", "feminine"}
+                male_count = 0
+                female_count = 0
+                try:
+                    chars = json.loads(row["characters"] or "{}")
+                    for ck, cv in chars.items():
+                        if isinstance(cv, dict):
+                            prompt_lower = (cv.get("prompt") or "").lower()
+                            if any(kw in prompt_lower for kw in male_keywords):
+                                male_count += 1
+                            if any(kw in prompt_lower for kw in female_keywords):
+                                female_count += 1
+                except Exception:
+                    pass
+                # Player is typically male in these stories
+                player_name = row["player_name"] or ""
+                if player_name:
+                    male_count += 1  # assume player is male unless specified
+
+                if male_count > 0 and female_count == 0:
+                    gender_hint = "\nIMPORTANT: All characters in this story are MALE. Describe men only — no women."
+                elif male_count > female_count:
+                    gender_hint = f"\nNote: This story has {male_count} male and {female_count} female characters. Describe accordingly."
         except Exception:
             pass
 
@@ -2957,7 +2984,7 @@ def ai_build_scene_prompt():
         return jsonify({"error": f"LLM unavailable: {e}"}), 503
 
     llm_prompt = f"""Extract visual elements from this scene. ONLY use details explicitly mentioned in the text below — do NOT invent or assume anything.
-
+{gender_hint}
 {story_context}
 TEXT:
 {scene_text[:800]}
@@ -3047,9 +3074,20 @@ CRITICAL: Only extract what the text says. Do not add laptops if text says cards
 
         # Assemble into a clean image prompt
         parts = []
+
+        # Add gender tags at the front if all-male story
+        if gender_hint and "MALE" in gender_hint.upper():
+            parts.append("two men, male characters, no women")
+
         for key in ["SETTING", "PEOPLE", "POSE", "MOOD", "DETAILS", "LIGHTING"]:
             if tags.get(key):
-                parts.append(_clean_tags(tags[key]))
+                cleaned = _clean_tags(tags[key])
+                # Reinforce male if needed
+                if key == "PEOPLE" and gender_hint and "MALE" in gender_hint.upper():
+                    # Make sure "man" or "male" appears
+                    if "man" not in cleaned.lower() and "male" not in cleaned.lower():
+                        cleaned = "male, " + cleaned
+                parts.append(cleaned)
         parts.append(style_suffix)
 
         assembled = ", ".join(p for p in parts if p)
