@@ -8,7 +8,13 @@
 
 	const SAVE_SLOT_COUNT = 5;
 
-	type TranscriptEntry = { type: 'player' | 'narrator' | 'scene-image'; text: string };
+	type TranscriptEntry = {
+		type: 'player' | 'narrator' | 'character' | 'scene-image';
+		text: string;
+		name?: string;
+		action?: string;
+		portrait?: string;
+	};
 	type SaveRow = { slot: number; timestamp: string; turns: number };
 
 	let storyId = $state<number | null>(null);
@@ -267,9 +273,31 @@
 				return;
 			}
 			applyStatus(data);
-			const resp = String(data.response ?? '').trim();
-			if (resp) {
-				transcript = [...transcript, { type: 'narrator', text: resp }];
+			// Render bubbles if available, fallback to combined response
+			const bubbles = data.bubbles as { type: string; text?: string; name?: string; action?: string; portrait?: string }[] | undefined;
+			if (Array.isArray(bubbles) && bubbles.length > 0) {
+				const newEntries: TranscriptEntry[] = [];
+				for (const b of bubbles) {
+					if (b.type === 'narrator' && b.text) {
+						newEntries.push({ type: 'narrator', text: b.text });
+					} else if (b.type === 'character') {
+						newEntries.push({
+							type: 'character',
+							text: b.text ?? '',
+							name: b.name,
+							action: b.action,
+							portrait: b.portrait,
+						});
+					}
+				}
+				if (newEntries.length > 0) {
+					transcript = [...transcript, ...newEntries];
+				}
+			} else {
+				const resp = String(data.response ?? '').trim();
+				if (resp) {
+					transcript = [...transcript, { type: 'narrator', text: resp }];
+				}
 			}
 			await fetchSaves(sid);
 		} catch {
@@ -482,6 +510,14 @@
 							<div class="row player-row">
 								<div class="bubble player"><span class="prefix"><Icon name="user" size={12} /> You:</span>{entry.text}</div>
 							</div>
+						{:else if entry.type === 'character'}
+							<div class="row character-row">
+								<div class="bubble character">
+									<span class="prefix"><Icon name="message-circle" size={12} /> {entry.name ?? 'Character'}:</span>
+									{#if entry.action}<span class="char-action">*{entry.action}*</span>{/if}
+									{entry.text}
+								</div>
+							</div>
 						{:else if entry.type === 'scene-image'}
 							<div class="row scene-row">
 								{#if !isSceneBroken(entry.text)}
@@ -679,6 +715,9 @@
 	.prefix { display: block; font-weight: 700; font-size: 0.8rem; margin-bottom: 0.2rem; opacity: 0.7; }
 	.bubble.player { background: #1a1d23; border-left-color: #1a73e8; }
 	.bubble.narrator { background: #1a1d23; border-left-color: #81c995; }
+	.bubble.character { background: #1a1d23; border-left-color: #c58af9; }
+	.char-action { display: block; font-style: italic; color: #9aa0a6; font-size: 0.88rem; margin-bottom: 0.3rem; }
+	:global([data-theme="light"]) .bubble.character { border-left-color: #9c27b0; }
 	.scene-row { display: flex; justify-content: center; }
 	.scene-img {
 		width: min(100%, 760px);

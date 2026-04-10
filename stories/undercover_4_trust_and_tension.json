@@ -8,7 +8,7 @@
   "narrator_model": "default",
   "player_name": "Agent X",
   "player_background": "A veteran intelligence operative working deep cover. You speak three languages, can pick most locks, and have a talent for reading people. Tonight's mission could make or break your career.",
-  "subgraph_name": "full_memory",
+  "subgraph_name": "narrator_chat",
   "cover_image": "story_spy_rolling_memory.png",
   "notes": "Tutorial 4/5 — full_memory: mood node updates axes, then NPC. Watch sidebar numbers; try being reckless vs. professional. Compare to Tutorial 5 (narrator coda + conditional routing).",
   "characters": {
@@ -17,8 +17,18 @@
       "first_line": "Darling, you're late. The ambassador's already made his toast. We should mingle before the second course.",
       "model": "default",
       "moods": [
-        { "axis": "trust", "low": "suspicious", "high": "trusting", "value": 6 },
-        { "axis": "composure", "low": "rattled", "high": "ice-cold", "value": 8 }
+        {
+          "axis": "trust",
+          "low": "suspicious",
+          "high": "trusting",
+          "value": 6
+        },
+        {
+          "axis": "composure",
+          "low": "rattled",
+          "high": "ice-cold",
+          "value": 8
+        }
       ],
       "portrait": "seed_viper.png"
     }

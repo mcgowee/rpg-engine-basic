@@ -8,7 +8,7 @@
   "narrator_model": "default",
   "player_name": "Agent X",
   "player_background": "A veteran intelligence operative working deep cover. You speak three languages, can pick most locks, and have a talent for reading people. Tonight's mission could make or break your career.",
-  "subgraph_name": "full_story",
+  "subgraph_name": "narrator_chat",
   "cover_image": "story_spy_rolling_memory.png",
   "notes": "Tutorial 5/5 — full_story: mood → NPCs → narrator_coda → condense → memory. With no characters, routing jumps to condense. Two NPCs with distinct moods. This is the richest default pipeline.",
   "characters": {
@@ -17,8 +17,18 @@
       "first_line": "Darling, you're late. The ambassador's already made his toast — and I've spotted our friend by the east window. We need to talk.",
       "model": "default",
       "moods": [
-        { "axis": "trust", "low": "suspicious", "high": "trusting", "value": 6 },
-        { "axis": "composure", "low": "rattled", "high": "ice-cold", "value": 8 }
+        {
+          "axis": "trust",
+          "low": "suspicious",
+          "high": "trusting",
+          "value": 6
+        },
+        {
+          "axis": "composure",
+          "low": "rattled",
+          "high": "ice-cold",
+          "value": 8
+        }
       ],
       "portrait": "seed_viper.png"
     },
@@ -27,8 +37,18 @@
       "first_line": "Ah, a new face at the ambassador's little soirée. You have the look of someone who appreciates fine things. Or someone looking for something specific.",
       "model": "default",
       "moods": [
-        { "axis": "suspicion", "low": "relaxed", "high": "on guard", "value": 7 },
-        { "axis": "interest", "low": "dismissive", "high": "intrigued", "value": 5 }
+        {
+          "axis": "suspicion",
+          "low": "relaxed",
+          "high": "on guard",
+          "value": 7
+        },
+        {
+          "axis": "interest",
+          "low": "dismissive",
+          "high": "intrigued",
+          "value": 5
+        }
       ],
       "portrait": "seed_colonel_petrov.png"
     }

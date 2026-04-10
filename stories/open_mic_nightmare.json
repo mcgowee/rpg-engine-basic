@@ -8,6 +8,6 @@
   "narrator_model": "default",
   "player_name": "Casey",
   "player_background": "You signed up on a dare. You have no set list, one watery drink, and a growing certainty that the spotlight is hotter than physics should allow.",
-  "subgraph_name": "conversation",
+  "subgraph_name": "narrator_chat_lite",
   "notes": "Pure comedy seed (genre comedy). Uses conversation — narrator + in-graph memory — so callbacks land across turns without condense/NPC. Pair with Meet Cute for romance vs comedy browse variety."
 }

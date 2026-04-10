@@ -1,11 +1,14 @@
 # Node Roadmap
 
-## Core (every graph needs these)
+## Core (shared across pipelines)
 | Node | LLM? | What it does | Status |
 |------|------|-------------|--------|
 | **narrator** | Yes | Generates scene narration from player input | ✅ Done |
 | **memory** | No | Records turn in history list, increments turn_count | ✅ Done |
 | **condense** | Yes | Summarizes history into a rolling memory_summary so narrator has context | ✅ Done |
+| **scene** | Yes | Brief 1-2 sentence atmospheric scene-setting (environment, mood, sensory) | ✅ Done |
+| **character_chat** | Yes | Pure dialogue — one character talks directly to the player, no narration | ✅ Done |
+| **character_action** | Yes | Brief physical action for a character (body language, movement, gestures) | ✅ Done |
 
 ## Round 2: World interaction
 | Node | LLM? | What it does | Status |

@@ -8,7 +8,7 @@
   "narrator_model": "default",
   "player_name": "Sam",
   "player_background": "You finally said yes to a dating app. You're hopeful, a little skeptical, and trying not to overthink whether this counts as a 'meet cute' or a polite disaster.",
-  "subgraph_name": "smart_conversation",
+  "subgraph_name": "narrator_chat",
   "cover_image": "story_meet_cute.png",
   "notes": "Tutorial + fun: same smart_conversation pattern as The Last Train (two NPCs, conditional routing) but romance/comedy tone for Browse variety. Jamie is the date; Riley is the barista with deadpan commentary.",
   "characters": {

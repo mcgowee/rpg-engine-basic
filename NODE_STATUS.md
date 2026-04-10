@@ -4,6 +4,7 @@ Snapshot of **implemented nodes**, **builtin subgraphs**, and how they fit toget
 
 ## Nodes (implemented)
 
+### Narrator pipeline nodes
 | Node | File | LLM? | Purpose |
 |------|------|------|---------|
 | **narrator** | `nodes/narrator.py` | Yes (creative) | Core scene narration. Genre/tone/NSFW-aware. Can separate “scene only” vs NPC dialogue when the subgraph uses a dedicated `npc` node. |
@@ -12,6 +13,13 @@ Snapshot of **implemented nodes**, **builtin subgraphs**, and how they fit toget
 | **narrator_coda** | `nodes/narrator_coda.py` | Yes (creative) | Closing beat after NPC lines (e.g. prompt the player). Used in `smart_conversation` and `full_story`. |
 | **condense** | `nodes/condense.py` | Yes (summarization) | Compresses history into a rolling `memory_summary` for long-term context. |
 | **memory** | `nodes/memory.py` | No | Appends the turn to `history`, stores condense output, increments `turn_count`. |
+
+### Chat pipeline nodes
+| Node | File | LLM? | Purpose |
+|------|------|------|---------|
+| **scene** | `nodes/scene.py` | Yes (creative) | Brief 1-2 sentence atmospheric scene-setting. Describes environment, mood, sensory details. No plot, no dialogue. Writes to `_scene_text` which `character_chat` prepends to its response. Skips turn 1 (opening text handles it). |
+| **character_chat** | `nodes/character_chat.py` | Yes (dialogue) | Pure dialogue — one character talks directly to the player. No narration, no stage directions. Uses first character in story. Reads mood state, memory summary, last 6 conversation turns. Prepends scene text if available. |
+| **character_action** | `nodes/character_action.py` | Yes (creative) | Generates a brief physical action for the character (5-15 words). Body language, movement, gestures. Runs after `character_chat` and appends the action in `*italics*` format. |
 
 ## Routers
 
@@ -32,6 +40,11 @@ The Story Editor default for new stories is **`conversation`** (`web/src/lib/com
 | `smart_conversation` | narrator → (npc → coda or condense) → memory → end | Yes |
 | `full_memory` | narrator → mood → npc → condense → memory → end | No (fixed chain; does not skip when there are no characters) |
 | `full_story` | narrator → (mood → npc → coda or condense) → memory → end | Yes |
+| `chat_only` | character_chat → memory → end | No |
+| `chat_with_memory` | character_chat → mood → condense → memory → end | No |
+| `scene_chat` | scene → character_chat → memory → end | No |
+| `scene_chat_full` | scene → character_chat → mood → condense → memory → end | No |
+| `scene_chat_action` | scene → character_chat → character_action → mood → condense → memory → end | No |
 
 **Rename:** older stories may have had `conversation_with_mood`; migrations in `db.py` map that to **`full_story`**.
 

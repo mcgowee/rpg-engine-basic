@@ -1,0 +1,11 @@
+{
+  "name": "chat_direct",
+  "description": "No narrator — pure character dialogue with memory. Characters respond directly to the player.",
+  "nodes": ["character_agent", "response_builder", "memory"],
+  "edges": [
+    { "from": "__start__", "to": "character_agent" },
+    { "from": "character_agent", "to": "response_builder" },
+    { "from": "response_builder", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ]
+}

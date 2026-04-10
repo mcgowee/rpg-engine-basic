@@ -8,7 +8,7 @@
   "narrator_model": "default",
   "player_name": "Jordan",
   "player_background": "A talented but nervous software engineer interviewing for a senior position at Meridian Corp. You really need this job — your savings are running low and this is your third interview this month.",
-  "subgraph_name": "full_story",
+  "subgraph_name": "narrator_chat",
   "cover_image": "story_job_interview.png",
   "characters": {
     "ms_chen": {

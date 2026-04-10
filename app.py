@@ -46,13 +46,18 @@ from llm import get_llm
 from llm.text import llm_result_to_text
 from image_records import create_image_record, mark_image_failed, mark_image_ready
 from nodes import NODE_REGISTRY
-from nodes.narrator import DEFAULT_NARRATOR_PROMPT
+
+# Default narrator prompt — kept for backward compatibility with story CRUD
+DEFAULT_NARRATOR_PROMPT = (
+    "You are the narrator for a text adventure. Describe scenes in second person. "
+    "End each beat with: What do you do?"
+)
 from play_phases import (
     advance_phase_after_turn,
     apply_main_graph_to_new_state,
     hydrate_runtime_from_story_save,
 )
-from routers import ROUTER_REGISTRY, ROUTER_RETURNS
+# Routers no longer used — graphs use __start__/__end__ edges
 
 logger = logging.getLogger(__name__)
 
@@ -238,18 +243,7 @@ NODE_DESCRIPTIONS = {
     },
 }
 
-ROUTER_DESCRIPTIONS = {
-    "route_graph_entry": {
-        "summary": "Entry point — always routes to narrator",
-        "description": "The default entry router. Currently always returns 'narrator' since there's only one entry path. In the future, this could check for multiple locations and route to a movement node first.",
-        "returns": ROUTER_RETURNS.get("route_graph_entry", []),
-    },
-    "route_after_narrator": {
-        "summary": "After narrator — routes to NPC/mood or skips to condense",
-        "description": "Checks if characters exist in the story. If yes, routes to the NPC path (which may go through mood first depending on the graph's mapping). If no characters, skips directly to condense. This is a conditional edge — same graph handles stories with or without NPCs.",
-        "returns": ROUTER_RETURNS.get("route_after_narrator", []),
-    },
-}
+ROUTER_DESCRIPTIONS = {}  # Routers no longer used — graphs use __start__/__end__ edges
 
 
 @app.route("/models", methods=["GET"])
@@ -361,8 +355,8 @@ def graph_registry_keys():
     return jsonify({
         "nodes": sorted(NODE_REGISTRY.keys()),
         "node_descriptions": NODE_DESCRIPTIONS,
-        "routers": {name: ROUTER_RETURNS.get(name, []) for name in sorted(ROUTER_REGISTRY.keys())},
-        "router_descriptions": ROUTER_DESCRIPTIONS,
+        "routers": {},
+        "router_descriptions": {},
     })
 
 
@@ -567,8 +561,11 @@ def test_subgraph(subgraph_id: int):
         state = {
             "message": message,
             "response": "",
-            "narrator": {"prompt": DEFAULT_NARRATOR_PROMPT, "model": DEFAULT_MODEL},
-            "player": {"name": "Tester", "background": "A brave adventurer testing this subgraph.", },
+            "history": [],
+            "memory_summary": "",
+            "player": {"name": "Tester", "background": "A brave adventurer testing this subgraph."},
+            "characters": {},
+            "story": {},
             "game_title": "Subgraph Test",
             "opening": "",
             "paused": False,
@@ -1228,10 +1225,6 @@ def _play_session_key(story_id: int, user_id: int) -> str:
 
 
 def _build_state_from_story(row) -> dict:
-    narrator_prompt = (row["narrator_prompt"] or "").strip() or DEFAULT_NARRATOR_PROMPT
-    model = (row["narrator_model"] or "default").strip()
-    if model == "default":
-        model = DEFAULT_MODEL
     nsfw_tags = []
     try:
         nsfw_tags = json.loads(row["nsfw_tags"] or "[]")
@@ -1242,7 +1235,6 @@ def _build_state_from_story(row) -> dict:
         "response": "",
         "history": [],
         "memory_summary": "",
-        "narrator": {"prompt": narrator_prompt, "model": model},
         "player": {
             "name": row["player_name"] or "Adventurer",
             "background": row["player_background"] or "",
@@ -1420,10 +1412,26 @@ def play_chat():
             result = dict(state)
 
         # Ensure history is recorded even if subgraph has no memory node
-        response_text = result.get("response", "")
         history = list(result.get("history") or state.get("history") or [])
-        turn_entry = f"Player: {message}\n{response_text}"
-        if not history or history[-1] != turn_entry:
+        # Check if memory node already recorded this turn (structured dict)
+        last_is_current = (
+            history
+            and isinstance(history[-1], dict)
+            and history[-1].get("player") == message
+        )
+        if not last_is_current:
+            # Fallback: record as structured turn
+            char_responses = result.get("_character_responses") or {}
+            turn_entry = {
+                "player": message,
+                "narrator": (result.get("_narrator_text") or "").strip(),
+                "characters": {
+                    k: {"dialogue": v.get("dialogue", ""), "action": v.get("action", "")}
+                    for k, v in char_responses.items()
+                    if isinstance(v, dict)
+                },
+                "mood": {},
+            }
             history.append(turn_entry)
             result["history"] = history
         if "turn_count" not in result or result["turn_count"] == state.get("turn_count", 0):
@@ -1444,6 +1452,9 @@ def play_chat():
 
         return jsonify({
             "response": result.get("response", ""),
+            "bubbles": result.get("_bubbles", []),
+            "narrator_text": result.get("_narrator_text", ""),
+            "character_responses": result.get("_character_responses", {}),
             "game_title": result.get("game_title", ""),
             "turn_count": result.get("turn_count", 0),
             "paused": result.get("paused", False),
@@ -1451,7 +1462,6 @@ def play_chat():
             "memory_summary": result.get("memory_summary", ""),
             "player": result.get("player", {}),
             "subgraph_name": result.get("_subgraph_name", ""),
-            "narrator_guidance": result.get("_narrator_guidance", ""),
         })
     finally:
         adv_lock.release()
@@ -2530,8 +2540,11 @@ def ai_generate_cover():
         genre = row["genre"] or "fantasy"
         description = row["description"] or ""
         opening = (row["opening"] or "")[:200]
+        nsfw_rating = row["nsfw_rating"] or "none"
 
         prompt = f"{genre} scene, {title}, {description}. {opening}. RPG concept art, atmospheric, cinematic lighting, detailed, moody"
+        ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
+        ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(
             conn,
             kind="cover",
@@ -2540,8 +2553,8 @@ def ai_generate_cover():
             owner_id=story_id,
             owner_key=None,
             prompt=prompt,
-            workflow_name="FluxForRPG",
-            model_name="flux1-dev-fp8.safetensors",
+            workflow_name="PonyForRPG" if ckpt_key == "pony" else "FluxForRPG",
+            model_name=ckpt_name,
             width=800,
             height=500,
         )
@@ -2549,7 +2562,7 @@ def ai_generate_cover():
 
         # Generate via ComfyUI
         prefix = f"cover_{story_id}"
-        comfyui_filename = comfyui_client.generate_image(prompt, width=800, height=500, prefix=prefix)
+        comfyui_filename = comfyui_client.generate_image(prompt, width=800, height=500, prefix=prefix, nsfw_rating=nsfw_rating)
         if not comfyui_filename:
             if image_id is not None:
                 mark_image_failed(conn, image_id, "Image generation failed")
@@ -2608,9 +2621,12 @@ def ai_generate_scene():
     # Build a visual prompt from the scene text
     scene_excerpt = scene_text[:500]
     prompt = f"{scene_excerpt}, RPG scene illustration, atmospheric, cinematic lighting, detailed environment, moody"
+    nsfw_rating = (data.get("nsfw_rating") or "none").strip()
     image_id: int | None = None
     conn = get_db()
     try:
+        ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
+        ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(
             conn,
             kind="scene",
@@ -2619,8 +2635,8 @@ def ai_generate_scene():
             owner_id=story_id,
             owner_key=None,
             prompt=prompt,
-            workflow_name="FluxForRPG",
-            model_name="flux1-dev-fp8.safetensors",
+            workflow_name="PonyForRPG" if ckpt_key == "pony" else "FluxForRPG",
+            model_name=ckpt_name,
             width=1024,
             height=576,
         )
@@ -2636,7 +2652,7 @@ def ai_generate_scene():
     prefix = f"scene_{story_id}_{timestamp}"
     local_filename = f"{prefix}.png"
 
-    comfyui_filename = comfyui_client.generate_image(prompt, width=1024, height=576, prefix=prefix)
+    comfyui_filename = comfyui_client.generate_image(prompt, width=1024, height=576, prefix=prefix, nsfw_rating=nsfw_rating)
     if not comfyui_filename:
         if image_id is not None:
             conn = get_db()
@@ -2717,6 +2733,7 @@ def ai_generate_story_image():
         genre = row["genre"] or "fantasy"
         description = row["description"] or ""
         opening = (row["opening"] or "")[:220]
+        nsfw_rating = row["nsfw_rating"] or "none"
         prompt = prompt_input
         if not prompt:
             prompt = (
@@ -2725,6 +2742,8 @@ def ai_generate_story_image():
                 "Anime RPG style, vibrant colors, cinematic composition, detailed background"
             )
 
+        ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
+        ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(
             conn,
             kind="story_image",
@@ -2733,8 +2752,8 @@ def ai_generate_story_image():
             owner_id=story_id,
             owner_key=None,
             prompt=prompt,
-            workflow_name="FluxForRPG",
-            model_name="flux1-dev-fp8.safetensors",
+            workflow_name="PonyForRPG" if ckpt_key == "pony" else "FluxForRPG",
+            model_name=ckpt_name,
             width=1024,
             height=640,
         )
@@ -2752,6 +2771,7 @@ def ai_generate_story_image():
             width=1024,
             height=640,
             prefix=f"storyimg_{story_id}",
+            nsfw_rating=nsfw_rating,
         )
         if not comfyui_filename:
             if image_id is not None:
@@ -2908,7 +2928,10 @@ Physical appearance:"""
             )
 
         # Step 2: Generate portrait via ComfyUI
+        nsfw_rating = row["nsfw_rating"] or "none"
         comfyui_prompt = f"{visual_desc}, {style_suffix}"
+        ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
+        ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(
             conn,
             kind="portrait",
@@ -2917,8 +2940,8 @@ Physical appearance:"""
             owner_id=story_id,
             owner_key=character_key,
             prompt=comfyui_prompt,
-            workflow_name="FluxForRPG",
-            model_name="flux1-dev-fp8.safetensors",
+            workflow_name="PonyForRPG" if ckpt_key == "pony" else "FluxForRPG",
+            model_name=ckpt_name,
             width=512,
             height=768,
         )
@@ -2928,7 +2951,7 @@ Physical appearance:"""
         os.makedirs(portraits_dir, exist_ok=True)
 
         prefix = f"portrait_{story_id}_{character_key}"
-        comfyui_filename = comfyui_client.generate_image(comfyui_prompt, width=512, height=768, prefix=prefix)
+        comfyui_filename = comfyui_client.generate_image(comfyui_prompt, width=512, height=768, prefix=prefix, nsfw_rating=nsfw_rating)
         if not comfyui_filename:
             if image_id is not None:
                 mark_image_failed(conn, image_id, "Portrait generation failed")

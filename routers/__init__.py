@@ -1,13 +1,7 @@
-"""Router registry — maps router names to functions."""
+"""Router registry — kept for backward compatibility but no longer used.
 
-from routers.routing import route_graph_entry, route_after_narrator
+The new graph builder uses __start__/__end__ edges instead of routers.
+"""
 
-ROUTER_REGISTRY = {
-    "route_graph_entry": route_graph_entry,
-    "route_after_narrator": route_after_narrator,
-}
-
-ROUTER_RETURNS = {
-    "route_graph_entry": ["narrator"],
-    "route_after_narrator": ["npc", "condense"],
-}
+ROUTER_REGISTRY = {}
+ROUTER_RETURNS = {}

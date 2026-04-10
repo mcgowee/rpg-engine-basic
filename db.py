@@ -154,37 +154,33 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE stories ADD COLUMN story_images TEXT DEFAULT '[]'")
         conn.commit()
 
-    # Retire removed quality_guard/legacy subgraphs — point stories at current builtins.
+    # Migrate all old subgraphs to narrator_chat architecture.
+    old_subgraphs = [
+        'basic_narrator', 'conversation', 'full_conversation',
+        'smart_conversation', 'full_memory', 'full_story',
+        'guarded_story', 'guarded_full_memory', 'guarded_narrator',
+        'guarded_narrator_with_memory', 'guarded_narrator_npc_memory',
+        'narrator_with_npc', 'narrator_with_mood', 'narrator_with_memory',
+        'conversation_with_npc', 'conversation_with_mood',
+        'chat_only', 'chat_with_memory', 'scene_chat',
+        'scene_chat_full', 'scene_chat_action',
+    ]
+    placeholders = ",".join("?" * len(old_subgraphs))
+    # Stories with characters get narrator_chat (full pipeline)
     conn.execute(
-        """UPDATE stories SET subgraph_name = 'full_story'
-           WHERE subgraph_name IN (
-             'guarded_story',
-             'guarded_full_memory',
-             'guarded_narrator',
-             'guarded_narrator_with_memory',
-             'guarded_narrator_npc_memory',
-             'narrator_with_npc'
-           )"""
+        f"""UPDATE stories SET subgraph_name = 'narrator_chat'
+           WHERE subgraph_name IN ({placeholders})
+           AND characters != '{{}}'
+           AND characters != ''
+           AND characters IS NOT NULL""",
+        old_subgraphs,
     )
     conn.commit()
+    # Stories without characters get narrator_chat_lite
     conn.execute(
-        """UPDATE stories SET subgraph_name = 'full_memory'
-           WHERE subgraph_name = 'narrator_with_mood'"""
-    )
-    conn.commit()
-    conn.execute(
-        """UPDATE stories SET subgraph_name = 'full_conversation'
-           WHERE subgraph_name = 'narrator_with_memory'"""
-    )
-    conn.commit()
-    conn.execute(
-        """UPDATE stories SET subgraph_name = 'smart_conversation'
-           WHERE subgraph_name = 'conversation_with_npc'"""
-    )
-    conn.commit()
-    conn.execute(
-        """UPDATE stories SET subgraph_name = 'full_story'
-           WHERE subgraph_name = 'conversation_with_mood'"""
+        f"""UPDATE stories SET subgraph_name = 'narrator_chat_lite'
+           WHERE subgraph_name IN ({placeholders})""",
+        old_subgraphs,
     )
     conn.commit()
 

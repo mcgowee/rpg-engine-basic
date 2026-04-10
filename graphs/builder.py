@@ -1,33 +1,47 @@
 """Graph builder — constructs LangGraph from JSON definitions."""
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from typing import TypedDict
 
 from nodes import NODE_REGISTRY
-from routers import ROUTER_REGISTRY
 
 
 class State(TypedDict):
+    # Player input / output
     message: str
     response: str
+
+    # Structured turn history — list of dicts, each with:
+    #   player, narrator, characters: {key: {dialogue, action}}, mood
     history: list
+
+    # Rolling compressed summary (60-80 words)
     memory_summary: str
-    narrator: dict
-    player: dict
+
+    # Story data
     characters: dict
+    story: dict
+    player: dict
     game_title: str
     opening: str
     paused: bool
-    _narrator_guidance: str
     turn_count: int
 
+    # Internal node communication
+    _narrator_text: str
+    _character_responses: dict
+    _bubbles: list
+    _subgraph_name: str
+    _story_id: int
 
-def _normalize_end(value):
-    return END if value == "__end__" else value
 
-
-def _normalize_mapping(mapping: dict) -> dict:
-    return {_normalize_end(k): _normalize_end(v) for k, v in mapping.items()}
+def _normalize_node(value: str):
+    """Map __start__ and __end__ to LangGraph constants."""
+    if value == "__start__":
+        return START
+    if value == "__end__":
+        return END
+    return value
 
 
 def build_graph_from_json(definition: dict):
@@ -38,16 +52,8 @@ def build_graph_from_json(definition: dict):
         fn = NODE_REGISTRY[node_name]
         g.add_node(node_name, fn)
 
-    entry = definition["entry_point"]
-    router_fn = ROUTER_REGISTRY[entry["router"]]
-    g.set_conditional_entry_point(router_fn, _normalize_mapping(entry["mapping"]))
-
     for edge in definition.get("edges", []):
-        g.add_edge(edge["from"], _normalize_end(edge["to"]))
-
-    for ce in definition.get("conditional_edges", []):
-        router_fn = ROUTER_REGISTRY[ce["router"]]
-        g.add_conditional_edges(ce["from"], router_fn, _normalize_mapping(ce["mapping"]))
+        g.add_edge(_normalize_node(edge["from"]), _normalize_node(edge["to"]))
 
     return g.compile()
 
@@ -70,30 +76,25 @@ def validate_graph_definition(definition: dict) -> list[str]:
 
     node_set = set(nodes or [])
 
-    entry = definition.get("entry_point")
-    if not isinstance(entry, dict):
-        errors.append("entry_point must be an object")
-    else:
-        router = entry.get("router")
-        if router not in ROUTER_REGISTRY:
-            errors.append(f"unknown entry router: {router}")
-        mapping = entry.get("mapping")
-        if not isinstance(mapping, dict):
-            errors.append("entry_point.mapping must be an object")
-
-    for edge in definition.get("edges", []):
-        if edge.get("from") not in node_set:
-            errors.append(f"edge from unknown node: {edge.get('from')}")
-        to = edge.get("to")
-        if to != "__end__" and to not in node_set:
+    edges = definition.get("edges", [])
+    has_start = False
+    has_end = False
+    for edge in edges:
+        frm = edge.get("from", "")
+        to = edge.get("to", "")
+        if frm == "__start__":
+            has_start = True
+        elif frm not in node_set:
+            errors.append(f"edge from unknown node: {frm}")
+        if to == "__end__":
+            has_end = True
+        elif to not in node_set:
             errors.append(f"edge to unknown node: {to}")
 
-    for ce in definition.get("conditional_edges", []):
-        if ce.get("from") not in node_set:
-            errors.append(f"conditional edge from unknown node: {ce.get('from')}")
-        router = ce.get("router")
-        if router not in ROUTER_REGISTRY:
-            errors.append(f"unknown conditional router: {router}")
+    if not has_start:
+        errors.append("no edge from __start__ — graph has no entry point")
+    if not has_end:
+        errors.append("no edge to __end__ — graph has no exit")
 
     if not errors:
         try:

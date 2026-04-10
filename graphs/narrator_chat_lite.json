@@ -1,0 +1,12 @@
+{
+  "name": "narrator_chat_lite",
+  "description": "Lightweight: narrator + character agents + memory. No mood tracking or condense — fast turns.",
+  "nodes": ["narrator", "character_agent", "response_builder", "memory"],
+  "edges": [
+    { "from": "__start__", "to": "narrator" },
+    { "from": "narrator", "to": "character_agent" },
+    { "from": "character_agent", "to": "response_builder" },
+    { "from": "response_builder", "to": "memory" },
+    { "from": "memory", "to": "__end__" }
+  ]
+}

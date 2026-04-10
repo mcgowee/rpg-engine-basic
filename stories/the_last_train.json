@@ -8,7 +8,7 @@
   "narrator_model": "default",
   "player_name": "Alex",
   "player_background": "An off-duty detective heading home after a long shift. You have a habit of reading people — body language, micro-expressions, the things they try to hide.",
-  "subgraph_name": "smart_conversation",
+  "subgraph_name": "narrator_chat",
   "notes": "Demonstrates multiple NPCs with distinct personalities. Two characters respond each turn — Diana (calm, evasive) and Gerald (nervous, paranoid). Uses conditional edge routing.",
   "characters": {
     "red_coat_woman": {

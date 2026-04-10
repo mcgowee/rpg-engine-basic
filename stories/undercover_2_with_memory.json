@@ -8,7 +8,7 @@
   "narrator_model": "default",
   "player_name": "Agent X",
   "player_background": "A veteran intelligence operative working deep cover. You speak three languages, can pick most locks, and have a talent for reading people. Tonight's mission could make or break your career.",
-  "subgraph_name": "full_conversation",
+  "subgraph_name": "narrator_chat_lite",
   "cover_image": "story_spy_rolling_memory.png",
   "notes": "Tutorial 2/5 — full_conversation: narrator + condense + memory. Reference something from a prior turn — the narrator should follow up. Check Memory (AI summary) in the sidebar.",
   "characters": {}
