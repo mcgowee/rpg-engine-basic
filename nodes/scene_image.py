@@ -93,9 +93,14 @@ def scene_image_node(state: dict) -> dict:
             char_text += " " + (char_resp.get("dialogue") or "").lower()
             char_text += " " + (char_resp.get("action") or "").lower()
 
+        logger.info("Portrait check %s: moods=%s, rules=%d, portraits=%s",
+                    char_key, moods, len(rules), list(portraits.keys()))
         best_portrait = _pick_portrait(portraits, rules, moods, char_text)
         if best_portrait:
             portrait_updates[char_key] = best_portrait
+            logger.info("Portrait match %s → %s", char_key, best_portrait)
+        else:
+            logger.info("Portrait no match for %s", char_key)
 
     if portrait_updates:
         results["_active_portraits"] = portrait_updates
