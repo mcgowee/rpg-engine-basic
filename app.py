@@ -2955,35 +2955,49 @@ def ai_build_scene_prompt():
     except Exception as e:
         return jsonify({"error": f"LLM unavailable: {e}"}), 503
 
-    llm_prompt = f"""You are creating an image generation prompt. Read the scene below and describe EXACTLY what a camera would capture in this moment.
+    llm_prompt = f"""Extract visual elements from this scene for an image generator.
 
 {story_context}
-What is happening right now:
+Scene:
 {scene_text[:800]}
 
-Visual style to use: {style_suffix}
+Reply with EXACTLY these 6 lines, short comma-separated tags for each:
 
-Write a detailed image prompt (50-80 words). Rules:
-- Describe the SPECIFIC scene happening — who is where, doing what, body positions
-- Include: setting (room, outdoor, time of day), lighting (warm, dim, neon), camera angle
-- Describe people by appearance (hair, build, clothing) NOT by name
-- Include emotional atmosphere (tense, intimate, playful, dangerous)
-- Include small visual details (objects on table, rain on window, steam from cup)
-- End with: {style_suffix}
-- Return ONLY the prompt, no labels
+SETTING: (location, time of day, e.g. "dimly lit bedroom, night, rain on window")
+PEOPLE: (describe by appearance ONLY, e.g. "tall dark-haired man, shorter lean man, faces close")
+POSE: (body positions/actions, e.g. "standing face to face, hand on cheek")
+MOOD: (emotional atmosphere, e.g. "intimate, tense, anticipation")
+DETAILS: (small objects/textures, e.g. "coffee cup on nightstand, rumpled sheets")
+LIGHTING: (light source and quality, e.g. "warm bedside lamp, soft shadows")
 
-Prompt:"""
+Keep each line under 15 words. No sentences, just tags."""
 
     try:
-        raw = llm_result_to_text(llm.invoke(llm_prompt)).strip()
-        for prefix in ["Prompt:", "prompt:", "Image prompt:"]:
-            if raw.startswith(prefix):
-                raw = raw[len(prefix):].strip()
-        if raw.startswith('"') and raw.endswith('"'):
-            raw = raw[1:-1].strip()
-        if style_suffix.split(",")[0].lower() not in raw.lower():
-            raw = f"{raw}, {style_suffix}"
-        return jsonify({"prompt": raw, "style": style_key})
+        raw_response = llm_result_to_text(llm.invoke(llm_prompt)).strip()
+
+        # Parse the structured response into tags
+        tags = {}
+        for line in raw_response.split("\n"):
+            line = line.strip()
+            for key in ["SETTING:", "PEOPLE:", "POSE:", "MOOD:", "DETAILS:", "LIGHTING:"]:
+                if line.upper().startswith(key):
+                    tags[key.rstrip(":")] = line[len(key):].strip().strip('"')
+                    break
+
+        # Assemble into a clean image prompt
+        parts = []
+        for key in ["SETTING", "PEOPLE", "POSE", "MOOD", "DETAILS", "LIGHTING"]:
+            if tags.get(key):
+                parts.append(tags[key])
+        parts.append(style_suffix)
+
+        assembled = ", ".join(parts)
+
+        return jsonify({
+            "prompt": assembled,
+            "tags": tags,
+            "style": style_key,
+        })
     except Exception as e:
         return jsonify({"error": f"Prompt generation failed: {e}"}), 500
 
