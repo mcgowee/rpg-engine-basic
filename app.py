@@ -2508,6 +2508,116 @@ def get_playback_script(filename: str):
         return jsonify(json.load(f))
 
 
+COVER_STYLES = {
+    "cinematic": "cinematic film still, dramatic lighting, shallow depth of field, moody atmosphere",
+    "anime": "anime key visual, vibrant colors, cel-shaded, detailed background, studio quality",
+    "painterly": "digital painting, oil paint texture, rich colors, impressionistic, concept art",
+    "noir": "film noir, high contrast black and white with selective color, dramatic shadows, moody",
+    "watercolor": "watercolor illustration, soft edges, delicate colors, artistic, storybook quality",
+    "comic": "graphic novel panel, bold lines, dynamic composition, ink and color, sequential art style",
+    "photorealistic": "photorealistic, professional photography, natural lighting, high detail, 8k",
+    "retro": "retro 80s aesthetic, synthwave colors, neon glow, vintage poster style",
+    "fantasy-art": "fantasy illustration, epic composition, magical lighting, detailed, artstation quality",
+    "minimalist": "minimalist design, simple shapes, limited palette, clean composition, modern art",
+}
+
+
+@app.route("/ai/cover-styles", methods=["GET"])
+def list_cover_styles():
+    """Return available cover image styles."""
+    return jsonify({
+        "styles": [
+            {"key": k, "description": v}
+            for k, v in COVER_STYLES.items()
+        ]
+    })
+
+
+# Cover prompt builder
+# ---------------------------------------------------------------------------
+
+@app.route("/ai/build-cover-prompt", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_build_cover_prompt():
+    """Use LLM to build a detailed image prompt from story data + style."""
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+
+    style_key = (data.get("style") or "cinematic").strip()
+    style_suffix = COVER_STYLES.get(style_key, COVER_STYLES["cinematic"])
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Story not found"}), 404
+
+    title = row["title"] or "Untitled"
+    genre_val = row["genre"] or "fantasy"
+    description = row["description"] or ""
+    opening = (row["opening"] or "")[:300]
+    tone = row["tone"] or ""
+    characters_raw = row["characters"] or "{}"
+    try:
+        chars = json.loads(characters_raw)
+        char_names = list(chars.keys())
+    except (json.JSONDecodeError, TypeError):
+        char_names = []
+
+    char_line = f"Characters: {', '.join(c.replace('_', ' ').title() for c in char_names)}" if char_names else ""
+
+    from model_resolver import get_model_for_role
+    model = get_model_for_role("creative")
+    try:
+        llm = get_llm(model)
+    except Exception as e:
+        return jsonify({"error": f"LLM unavailable: {e}"}), 503
+
+    llm_prompt = f"""Write a detailed image generation prompt for a story cover image.
+
+Story title: {title}
+Genre: {genre_val}
+Tone: {tone}
+Description: {description}
+Opening: {opening}
+{char_line}
+
+Visual style: {style_suffix}
+
+Write a single paragraph image prompt (50-80 words) that captures the story's mood and setting.
+Rules:
+- Describe a visual scene, not a plot summary
+- Include composition details (foreground, background, lighting, color palette)
+- Do NOT include character names — describe figures by appearance
+- End with the style: {style_suffix}
+- Return ONLY the prompt text, no labels or commentary
+
+Prompt:"""
+
+    try:
+        raw = llm_result_to_text(llm.invoke(llm_prompt)).strip()
+        # Clean up
+        for prefix in ["Prompt:", "prompt:", "Image prompt:", "Cover prompt:"]:
+            if raw.startswith(prefix):
+                raw = raw[len(prefix):].strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            raw = raw[1:-1].strip()
+        # Ensure style suffix is appended if model didn't include it
+        if style_key not in raw.lower() and style_suffix.split(",")[0].lower() not in raw.lower():
+            raw = f"{raw}, {style_suffix}"
+        return jsonify({"prompt": raw, "style": style_key})
+    except Exception as e:
+        return jsonify({"error": f"Prompt generation failed: {e}"}), 500
+
+
 # Cover image generation
 # ---------------------------------------------------------------------------
 
@@ -2535,14 +2645,18 @@ def ai_generate_cover():
         if not row:
             return jsonify({"error": "Story not found"}), 404
 
-        # Build a prompt from story data
+        # Use custom prompt if provided, otherwise build from story data
         title = row["title"] or "Untitled"
         genre = row["genre"] or "fantasy"
         description = row["description"] or ""
         opening = (row["opening"] or "")[:200]
         nsfw_rating = row["nsfw_rating"] or "none"
 
-        prompt = f"{genre} scene, {title}, {description}. {opening}. RPG concept art, atmospheric, cinematic lighting, detailed, moody"
+        custom_prompt = (data.get("prompt") or "").strip()
+        if custom_prompt:
+            prompt = custom_prompt
+        else:
+            prompt = f"{genre} scene, {title}, {description}. {opening}. RPG concept art, atmospheric, cinematic lighting, detailed, moody"
         ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
         ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(
@@ -2600,6 +2714,163 @@ def ai_generate_cover():
     })
 
 
+SCENE_STYLES = {
+    "cinematic": "cinematic film still, dramatic lighting, wide angle, moody atmosphere",
+    "anime": "anime background art, vibrant colors, detailed scenery, studio ghibli inspired",
+    "painterly": "digital painting, oil paint texture, rich colors, concept art",
+    "noir": "film noir, high contrast shadows, rain-slicked streets, monochrome with accent color",
+    "watercolor": "watercolor illustration, soft edges, delicate washes, storybook quality",
+    "photorealistic": "photorealistic, natural lighting, high detail, professional photography",
+}
+
+PORTRAIT_STYLES = {
+    "anime": "anime character portrait, cel-shaded, expressive eyes, clean lines, vibrant",
+    "realistic": "photorealistic portrait, studio lighting, high detail, sharp focus",
+    "painterly": "digital painting portrait, oil paint texture, dramatic lighting, concept art",
+    "comic": "graphic novel character, bold lines, dynamic shading, ink and color",
+    "watercolor": "watercolor portrait, soft edges, delicate features, artistic",
+    "fantasy-art": "fantasy character portrait, epic lighting, detailed armor/clothing, artstation",
+}
+
+
+@app.route("/ai/build-scene-prompt", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_build_scene_prompt():
+    """Use LLM to build a scene image prompt from narrator text + style."""
+    data = request.get_json(silent=True) or {}
+    scene_text = (data.get("scene_text") or "").strip()
+    if not scene_text:
+        return jsonify({"error": "scene_text is required"}), 400
+
+    style_key = (data.get("style") or "cinematic").strip()
+    style_suffix = SCENE_STYLES.get(style_key, SCENE_STYLES["cinematic"])
+
+    from model_resolver import get_model_for_role
+    model = get_model_for_role("creative")
+    try:
+        llm = get_llm(model)
+    except Exception as e:
+        return jsonify({"error": f"LLM unavailable: {e}"}), 503
+
+    llm_prompt = f"""Write a detailed image generation prompt for a scene illustration.
+
+Scene description: {scene_text[:500]}
+
+Visual style: {style_suffix}
+
+Write a single paragraph image prompt (40-60 words) that captures this scene visually.
+Rules:
+- Describe what the viewer SEES — composition, lighting, colors, environment
+- Do NOT include character names — describe figures by appearance
+- Focus on atmosphere and mood
+- End with the style: {style_suffix}
+- Return ONLY the prompt text
+
+Prompt:"""
+
+    try:
+        raw = llm_result_to_text(llm.invoke(llm_prompt)).strip()
+        for prefix in ["Prompt:", "prompt:", "Image prompt:"]:
+            if raw.startswith(prefix):
+                raw = raw[len(prefix):].strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            raw = raw[1:-1].strip()
+        if style_suffix.split(",")[0].lower() not in raw.lower():
+            raw = f"{raw}, {style_suffix}"
+        return jsonify({"prompt": raw, "style": style_key})
+    except Exception as e:
+        return jsonify({"error": f"Prompt generation failed: {e}"}), 500
+
+
+@app.route("/ai/build-portrait-prompt", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_build_portrait_prompt():
+    """Use LLM to build a portrait prompt from character data + style."""
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    character_key = (data.get("character_key") or "").strip()
+    if not character_key:
+        return jsonify({"error": "character_key is required"}), 400
+
+    style_key = (data.get("style") or "anime").strip()
+    style_suffix = PORTRAIT_STYLES.get(style_key, PORTRAIT_STYLES["anime"])
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Story not found"}), 404
+
+    try:
+        chars = json.loads(row["characters"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        chars = {}
+    char_data = chars.get(character_key)
+    if not char_data or not isinstance(char_data, dict):
+        return jsonify({"error": f"Character '{character_key}' not found"}), 404
+
+    char_prompt = char_data.get("prompt", "")
+    genre_val = row["genre"] or "fantasy"
+
+    from model_resolver import get_model_for_role
+    model = get_model_for_role("creative")
+    try:
+        llm = get_llm(model)
+    except Exception as e:
+        return jsonify({"error": f"LLM unavailable: {e}"}), 503
+
+    label = character_key.replace("_", " ").title()
+    llm_prompt = f"""Write a detailed image generation prompt for a character portrait.
+
+Character name: {label}
+Character description: {char_prompt}
+Story genre: {genre_val}
+
+Visual style: {style_suffix}
+
+Write a single paragraph image prompt (40-60 words) describing this character's appearance.
+Rules:
+- Describe physical appearance: face, hair, build, clothing, expression
+- Include lighting and background appropriate to the genre
+- Do NOT use the character's name — describe them visually
+- End with the style: {style_suffix}
+- Return ONLY the prompt text
+
+Prompt:"""
+
+    try:
+        raw = llm_result_to_text(llm.invoke(llm_prompt)).strip()
+        for prefix in ["Prompt:", "prompt:", "Image prompt:", "Portrait prompt:"]:
+            if raw.startswith(prefix):
+                raw = raw[len(prefix):].strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            raw = raw[1:-1].strip()
+        if style_suffix.split(",")[0].lower() not in raw.lower():
+            raw = f"{raw}, {style_suffix}"
+        return jsonify({"prompt": raw, "style": style_key})
+    except Exception as e:
+        return jsonify({"error": f"Prompt generation failed: {e}"}), 500
+
+
+@app.route("/ai/scene-styles", methods=["GET"])
+def list_scene_styles():
+    return jsonify({"styles": [{"key": k, "description": v} for k, v in SCENE_STYLES.items()]})
+
+
+@app.route("/ai/portrait-styles", methods=["GET"])
+def list_portrait_styles():
+    return jsonify({"styles": [{"key": k, "description": v} for k, v in PORTRAIT_STYLES.items()]})
+
+
 @app.route("/ai/generate-scene", methods=["POST"])
 @optional_rate_limit(RATE_LIMIT_AI)
 @login_required
@@ -2618,9 +2889,13 @@ def ai_generate_scene():
     if not comfyui_client.is_available():
         return jsonify({"error": "Image generation not available (ComfyUI not running)"}), 503
 
-    # Build a visual prompt from the scene text
-    scene_excerpt = scene_text[:500]
-    prompt = f"{scene_excerpt}, RPG scene illustration, atmospheric, cinematic lighting, detailed environment, moody"
+    # Use custom prompt if provided, otherwise build from scene text
+    custom_prompt = (data.get("prompt") or "").strip()
+    if custom_prompt:
+        prompt = custom_prompt
+    else:
+        scene_excerpt = scene_text[:500]
+        prompt = f"{scene_excerpt}, RPG scene illustration, atmospheric, cinematic lighting, detailed environment, moody"
     nsfw_rating = (data.get("nsfw_rating") or "none").strip()
     image_id: int | None = None
     conn = get_db()
@@ -2929,7 +3204,8 @@ Physical appearance:"""
 
         # Step 2: Generate portrait via ComfyUI
         nsfw_rating = row["nsfw_rating"] or "none"
-        comfyui_prompt = f"{visual_desc}, {style_suffix}"
+        custom_prompt = (data.get("prompt") or "").strip()
+        comfyui_prompt = custom_prompt if custom_prompt else f"{visual_desc}, {style_suffix}"
         ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
         ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(

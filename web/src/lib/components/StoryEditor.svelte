@@ -32,6 +32,10 @@
 	let coverCacheBust = $state('');
 	let generatingCover = $state(false);
 	let coverError = $state('');
+	let coverStyle = $state('cinematic');
+	let coverPrompt = $state('');
+	let buildingCoverPrompt = $state(false);
+	let coverStyles = $state<{ key: string; description: string }[]>([]);
 	let coverLoadFailed = $state(false);
 	let genreCoverLoadFailed = $state(false);
 	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
@@ -318,6 +322,7 @@
 	const NSFW_TAGS = ['romance', 'gay/lesbian', 'explicit'];
 
 	onMount(async () => {
+		loadCoverStyles();
 		try {
 			const r = await fetch('/api/subgraphs', { credentials: 'include' });
 			if (r.ok) {
@@ -448,15 +453,52 @@
 		}
 	}
 
+	async function loadCoverStyles() {
+		try {
+			const r = await fetch('/api/ai/cover-styles', { credentials: 'include' });
+			if (r.ok) {
+				const j = await r.json();
+				if (Array.isArray(j.styles)) coverStyles = j.styles;
+			}
+		} catch { /* ignore */ }
+	}
+
+	async function buildCoverPrompt() {
+		if (!storyId || buildingCoverPrompt) return;
+		buildingCoverPrompt = true;
+		coverError = '';
+		try {
+			const r = await fetch('/api/ai/build-cover-prompt', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ story_id: storyId, style: coverStyle }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.prompt) {
+				coverPrompt = j.prompt;
+			} else {
+				coverError = j.error ?? 'Prompt generation failed';
+			}
+		} catch {
+			coverError = 'Network error';
+		} finally {
+			buildingCoverPrompt = false;
+		}
+	}
+
 	async function generateCover() {
 		if (!storyId || generatingCover) return;
 		generatingCover = true;
 		coverError = '';
 		try {
+			const body: Record<string, unknown> = { story_id: storyId };
+			if (coverPrompt.trim()) {
+				body.prompt = coverPrompt.trim();
+			}
 			const r = await fetch('/api/ai/generate-cover', {
 				method: 'POST', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ story_id: storyId }),
+				body: JSON.stringify(body),
 			});
 			const j = await r.json().catch(() => ({}));
 			if (r.ok && j.cover_image) {
@@ -721,11 +763,34 @@
 					{:else}
 						<p class="muted" style="font-size:0.85rem">No cover image yet.</p>
 					{/if}
-					<button type="button" class="btn sm" disabled={generatingCover}
-						title="Generate a cover image using AI (requires ComfyUI running locally)"
-						onclick={() => generateCover()}>
-						{#if generatingCover}<span class="spinner"></span> Generating...{:else}🎨 Generate Cover{/if}
-					</button>
+					<div class="cover-controls">
+						<label class="field" style="margin-bottom:0.5rem">
+							<strong style="font-size:0.85rem">Style</strong>
+							<select bind:value={coverStyle} style="font-size:0.85rem">
+								{#each coverStyles as s (s.key)}
+									<option value={s.key}>{s.key}</option>
+								{/each}
+								{#if coverStyles.length === 0}
+									<option value="cinematic">cinematic</option>
+								{/if}
+							</select>
+						</label>
+						<div class="cover-btn-row">
+							<button type="button" class="btn sm" disabled={buildingCoverPrompt || !storyId}
+								onclick={() => buildCoverPrompt()}>
+								{#if buildingCoverPrompt}<span class="spinner"></span> Building...{:else}Build Prompt{/if}
+							</button>
+							<button type="button" class="btn sm primary" disabled={generatingCover || !storyId}
+								title="Generate cover image (requires ComfyUI)"
+								onclick={() => generateCover()}>
+								{#if generatingCover}<span class="spinner"></span> Generating...{:else}🎨 Generate Cover{/if}
+							</button>
+						</div>
+						{#if coverPrompt}
+							<textarea rows="3" bind:value={coverPrompt} style="font-size:0.82rem; margin-top:0.4rem"
+								placeholder="Edit the prompt before generating..."></textarea>
+						{/if}
+					</div>
 					{#if coverError}<p class="err" style="font-size:0.85rem">{coverError}</p>{/if}
 				</div>
 
@@ -1087,6 +1152,8 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
+	.cover-controls { margin-top: 0.5rem; }
+	.cover-btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 	.cover-preview {
 		margin: 0.5rem 0;
 		width: min(100%, 460px);

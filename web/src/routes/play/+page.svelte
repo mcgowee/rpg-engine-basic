@@ -40,6 +40,12 @@
 	let logEl = $state<HTMLDivElement | undefined>(undefined);
 	let sidebarOpen = $state(true);
 	let generatingScene = $state(false);
+	let sceneStyle = $state('cinematic');
+	let scenePrompt = $state('');
+	let buildingScenePrompt = $state(false);
+	let showScenePromptEditor = $state(false);
+	let sceneStyles = $state<{ key: string; description: string }[]>([]);
+	let portraitStyles = $state<{ key: string; description: string }[]>([]);
 	let brokenPortraitImages = new SvelteSet<string>();
 	let brokenSceneImages = new SvelteSet<string>();
 	let brokenStoryImages = new SvelteSet<string>();
@@ -245,7 +251,14 @@
 		booting = false;
 	}
 
-	onMount(() => { void boot(); });
+	onMount(() => {
+		void boot();
+		// Load image styles
+		fetch('/api/ai/scene-styles', { credentials: 'include' })
+			.then(r => r.json()).then(j => { if (Array.isArray(j.styles)) sceneStyles = j.styles; }).catch(() => {});
+		fetch('/api/ai/portrait-styles', { credentials: 'include' })
+			.then(r => r.json()).then(j => { if (Array.isArray(j.styles)) portraitStyles = j.styles; }).catch(() => {});
+	});
 
 	async function send() {
 		const sid = storyId;
@@ -313,28 +326,59 @@
 		}
 	}
 
+	function getLastNarration(): string {
+		for (let i = transcript.length - 1; i >= 0; i--) {
+			if (transcript[i].type === 'narrator') return transcript[i].text;
+		}
+		return '';
+	}
+
+	async function buildScenePrompt() {
+		const narration = getLastNarration();
+		if (!narration || buildingScenePrompt) return;
+		buildingScenePrompt = true;
+		try {
+			const r = await fetch('/api/ai/build-scene-prompt', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ scene_text: narration, style: sceneStyle }),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.prompt) {
+				scenePrompt = j.prompt;
+				showScenePromptEditor = true;
+			} else {
+				globalToast(j.error ?? 'Prompt build failed', 'error');
+			}
+		} catch {
+			globalToast('Network error', 'error');
+		} finally {
+			buildingScenePrompt = false;
+		}
+	}
+
 	async function generateScene() {
 		if (generatingScene || !storyId) return;
-		// Find the last narrator text
-		let lastNarration = '';
-		for (let i = transcript.length - 1; i >= 0; i--) {
-			if (transcript[i].type === 'narrator') {
-				lastNarration = transcript[i].text;
-				break;
-			}
-		}
-		if (!lastNarration) return;
+		const lastNarration = getLastNarration();
+		if (!lastNarration && !scenePrompt) return;
 
 		generatingScene = true;
 		try {
+			const body: Record<string, unknown> = {
+				story_id: storyId,
+				scene_text: lastNarration,
+			};
+			if (scenePrompt.trim()) body.prompt = scenePrompt.trim();
 			const r = await fetch('/api/ai/generate-scene', {
 				method: 'POST', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ story_id: storyId, scene_text: lastNarration }),
+				body: JSON.stringify(body),
 			});
 			const j = await r.json().catch(() => ({}));
 			if (r.ok && j.url) {
 				transcript = [...transcript, { type: 'scene-image', text: `${j.url}?t=${Date.now()}` }];
+				showScenePromptEditor = false;
+				scenePrompt = '';
 				await scrollLog();
 			} else {
 				globalToast(j.error ?? 'Scene generation failed', 'error');
@@ -560,12 +604,33 @@
 					</button>
 				</div>
 				<div class="input-actions">
-					<button type="button" class="btn sm"
-						disabled={generatingScene || transcript.length === 0}
-						title="Generate an image of the current scene (requires ComfyUI)"
-						onclick={() => generateScene()}>
-						{#if generatingScene}<span class="spinner"></span> Generating...{:else}🎨 Scene{/if}
-					</button>
+					<div class="scene-controls">
+						<select class="inp sm" bind:value={sceneStyle} style="width:auto; font-size:0.8rem">
+							{#each sceneStyles as s (s.key)}
+								<option value={s.key}>{s.key}</option>
+							{/each}
+							{#if sceneStyles.length === 0}
+								<option value="cinematic">cinematic</option>
+							{/if}
+						</select>
+						<button type="button" class="btn sm"
+							disabled={buildingScenePrompt || !getLastNarration()}
+							onclick={() => buildScenePrompt()}>
+							{#if buildingScenePrompt}<span class="spinner"></span>{:else}Build Prompt{/if}
+						</button>
+						<button type="button" class="btn sm"
+							disabled={generatingScene || transcript.length === 0}
+							title="Generate scene image (requires ComfyUI)"
+							onclick={() => generateScene()}>
+							{#if generatingScene}<span class="spinner"></span> Generating...{:else}🎨 Scene{/if}
+						</button>
+					</div>
+					{#if showScenePromptEditor && scenePrompt}
+						<div class="scene-prompt-editor">
+							<textarea rows="2" bind:value={scenePrompt} style="font-size:0.8rem; width:100%"></textarea>
+							<button type="button" class="btn sm" onclick={() => { showScenePromptEditor = false; scenePrompt = ''; }}>Clear</button>
+						</div>
+					{/if}
 					<button type="button" class="btn sm"
 						title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
 						onclick={() => sidebarOpen = !sidebarOpen}>
@@ -741,7 +806,10 @@
 		color: #7f8896;
 		font-size: 0.8rem;
 	}
-	.input-actions { display: flex; gap: 0.35rem; margin-top: 0.4rem; }
+	.input-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; align-items: flex-start; }
+	.scene-controls { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+	.scene-prompt-editor { display: flex; gap: 0.35rem; align-items: flex-start; width: 100%; }
+	.scene-prompt-editor textarea { flex: 1; }
 	.input-area { border-top: 1px solid #2a2f38; padding-top: 0.75rem; }
 	.paused-note { margin: 0 0 0.5rem; color: #f6b93b; font-weight: 600; border: 1px solid #624800; border-radius: 8px; padding: 0.4rem 0.55rem; background: #201a09; }
 	.input-row { display: flex; gap: 0.5rem; align-items: flex-end; }
