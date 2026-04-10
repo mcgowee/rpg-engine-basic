@@ -211,16 +211,43 @@
 				const hist = data.history;
 				if (Array.isArray(hist) && hist.length > 0) {
 					for (const h of hist) {
-						const s = String(h);
-						if (s.startsWith('[SCENE_IMAGE:') && s.endsWith(']')) {
-							entries.push({ type: 'scene-image', text: s.slice(13, -1) });
+						if (h && typeof h === 'object' && !Array.isArray(h)) {
+							// Structured turn: {player, narrator, characters: {key: {dialogue, action}}}
+							const turn = h as Record<string, unknown>;
+							if (turn.player) {
+								entries.push({ type: 'player', text: String(turn.player) });
+							}
+							if (turn.narrator) {
+								entries.push({ type: 'narrator', text: String(turn.narrator) });
+							}
+							const chars = turn.characters;
+							if (chars && typeof chars === 'object') {
+								for (const [key, resp] of Object.entries(chars as Record<string, unknown>)) {
+									if (resp && typeof resp === 'object') {
+										const r = resp as Record<string, unknown>;
+										const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+										entries.push({
+											type: 'character',
+											text: String(r.dialogue ?? ''),
+											name: label,
+											action: r.action ? String(r.action) : undefined,
+										});
+									}
+								}
+							}
 						} else {
-							const nl = s.indexOf('\n');
-							if (nl > 0 && s.startsWith('Player: ')) {
-								entries.push({ type: 'player', text: s.slice(8, nl).trim() });
-								entries.push({ type: 'narrator', text: s.slice(nl + 1).trim() });
+							// Legacy flat string
+							const s = String(h);
+							if (s.startsWith('[SCENE_IMAGE:') && s.endsWith(']')) {
+								entries.push({ type: 'scene-image', text: s.slice(13, -1) });
 							} else {
-								entries.push({ type: 'narrator', text: s });
+								const nl = s.indexOf('\n');
+								if (nl > 0 && s.startsWith('Player: ')) {
+									entries.push({ type: 'player', text: s.slice(8, nl).trim() });
+									entries.push({ type: 'narrator', text: s.slice(nl + 1).trim() });
+								} else {
+									entries.push({ type: 'narrator', text: s });
+								}
 							}
 						}
 					}
