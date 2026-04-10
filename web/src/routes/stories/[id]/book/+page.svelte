@@ -21,11 +21,14 @@
 	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
 	let storyImages = $state<StoryImage[]>([]);
 	let playerName = $state('');
+	let tone = $state('');
 	let characters = $state<Record<string, Record<string, unknown>>>({});
-	let history = $state<string[]>([]);
+	let history = $state<unknown[]>([]);
 
 	// Book state
 	let prose = $state('');
+	type SceneMeta = { turn: number; scene_image?: string; active_portraits?: Record<string, string>; portraits?: Record<string, string> };
+	let sceneMeta = $state<SceneMeta[]>([]);
 	let bookId = $state<number | null>(null);
 	let bookTitle = $state('');
 	let loading = $state(true);
@@ -95,6 +98,7 @@
 			const data = await storyR.json();
 			title = data.title ?? '';
 			genre = data.genre ?? '';
+			tone = data.tone ?? '';
 			opening = data.opening ?? '';
 			coverImage = data.cover_image ?? '';
 			storyImages = normalizeStoryImages(data.story_images);
@@ -128,11 +132,12 @@
 			const r = await fetch('/api/ai/generate-book', {
 				method: 'POST', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ history, opening, title, player_name: playerName, characters }),
+				body: JSON.stringify({ history, opening, title, player_name: playerName, characters, genre, tone }),
 			});
 			const j = await r.json().catch(() => ({}));
 			if (r.ok && j.prose) {
 				prose = j.prose;
+				sceneMeta = Array.isArray(j.scenes) ? j.scenes : [];
 				bookId = null; // New unsaved prose
 			} else {
 				error = j.error ?? 'Generation failed';
@@ -484,40 +489,47 @@
 			</button>
 		</div>
 
-		{#if sceneImages.length > 0}
-			<div class="book-scenes-note">
-				<p class="hint">This story includes {sceneImages.length} scene illustration{sceneImages.length === 1 ? '' : 's'} generated during play.</p>
-			</div>
-		{/if}
-
 		<div class="book-prose" transition:fade={{ duration: 300 }}>
 			{#each sections as section, i (i)}
-				{#if sceneImages[i]}
-					<div class="book-scene">
-						{#if !isSceneBroken(sceneImages[i])}
+				{@const meta = sceneMeta[i]}
+				<div class="book-scene-block">
+					{#if meta?.scene_image}
+						<div class="book-scene-img">
 							<img
-								src={sceneImages[i]}
-								alt="Scene illustration"
+								src={meta.scene_image.startsWith('/') ? meta.scene_image : `/images/scenes/${meta.scene_image}`}
+								alt="Scene {i + 1}"
 								loading="lazy"
 								decoding="async"
-								onerror={() => markSceneBroken(sceneImages[i])}
-								onload={() => clearSceneBroken(sceneImages[i])}
 							/>
-						{:else}
-							<div class="image-placeholder scene-placeholder">
-								<Icon name="image" size={20} />
-								<span>Scene image unavailable</span>
+						</div>
+					{/if}
+
+					<div class="book-section">
+						{#if meta?.portraits || meta?.active_portraits}
+							<div class="book-scene-portraits">
+								{#each Object.entries(meta.active_portraits ?? meta.portraits ?? {}) as [name, portrait]}
+									<div class="book-scene-char">
+										<img
+											src={`/images/portraits/${portrait}`}
+											alt={name}
+											loading="lazy"
+											decoding="async"
+											class="book-char-portrait"
+										/>
+										<span class="book-char-label">{name}</span>
+									</div>
+								{/each}
 							</div>
 						{/if}
+
+						{#each section.split('\n') as para}
+							{#if para.trim()}
+								<p>{para.trim()}</p>
+							{/if}
+						{/each}
 					</div>
-				{/if}
-				<div class="book-section">
-					{#each section.split('\n') as para}
-						{#if para.trim()}
-							<p>{para.trim()}</p>
-						{/if}
-					{/each}
 				</div>
+
 				{#if i < sections.length - 1}
 					<hr class="section-divider" />
 				{/if}
@@ -564,9 +576,13 @@
 	.book-char { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
 	.book-char img { width: 80px; aspect-ratio: 2 / 3; height: auto; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; display: block; }
 	.book-char-name { font-size: 0.78rem; color: #bdc1c6; }
-	.book-scenes-note { text-align: center; margin-bottom: 1rem; }
-	.book-scene { margin: 1.5rem -1rem; }
-	.book-scene img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; height: auto; border-radius: 8px; display: block; border: 1px solid #2a2f38; }
+	.book-scene-block { margin-bottom: 0.5rem; }
+	.book-scene-img { margin: 1.5rem -1rem 1rem; }
+	.book-scene-img img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; height: auto; border-radius: 8px; display: block; border: 1px solid #2a2f38; }
+	.book-scene-portraits { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+	.book-scene-char { display: flex; align-items: center; gap: 0.4rem; }
+	.book-char-portrait { width: 36px; height: 54px; object-fit: cover; border-radius: 4px; border: 1px solid #2a2f38; }
+	.book-char-label { font-size: 0.75rem; color: #9aa0a6; font-style: italic; }
 	.image-placeholder {
 		width: 100%;
 		height: 100%;
@@ -585,13 +601,6 @@
 		border-radius: 8px;
 		border: 1px solid #2a2f38;
 		font-size: 0.7rem;
-	}
-	.scene-placeholder {
-		width: 100%;
-		aspect-ratio: 16 / 9;
-		border-radius: 8px;
-		border: 1px solid #2a2f38;
-		font-size: 0.82rem;
 	}
 	.book-toolbar { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #2a2f38; }
 	.book-prose { font-size: 1.05rem; line-height: 1.75; color: #e8eaed; }

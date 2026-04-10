@@ -1997,6 +1997,7 @@ def story_book_data(story_id: int):
         "title": story_row["title"],
         "description": story_row["description"],
         "genre": story_row["genre"],
+        "tone": story_row["tone"] or "",
         "opening": story_row["opening"],
         "cover_image": story_row["cover_image"] or "",
         "player_name": story_row["player_name"],
@@ -2010,49 +2011,99 @@ def story_book_data(story_id: int):
 @optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_generate_book():
-    """Rewrite play history into polished prose."""
+    """Rewrite play history into polished prose, scene by scene."""
     data = request.get_json(silent=True) or {}
     history = data.get("history", [])
     opening = (data.get("opening") or "").strip()
     title = (data.get("title") or "Untitled").strip()
     player_name = (data.get("player_name") or "the adventurer").strip()
     characters = data.get("characters", {})
+    genre = (data.get("genre") or "").strip()
+    tone = (data.get("tone") or "").strip()
 
     if not history:
         return jsonify({"error": "No play history to convert"}), 400
-
-    # Build the raw transcript
-    transcript_lines = []
-    if opening:
-        transcript_lines.append(f"[Opening]\n{opening}")
-    for entry in history:
-        transcript_lines.append(str(entry))
-
-    transcript = "\n\n---\n\n".join(transcript_lines)
 
     # Build character list
     char_names = []
     for key, val in characters.items():
         if isinstance(val, dict):
-            label = key.replace("_", " ").title()
-            char_names.append(label)
+            char_names.append(key.replace("_", " ").title())
 
     char_block = f"\nCharacters: {', '.join(char_names)}" if char_names else ""
+    genre_block = f"\nGenre: {genre}" if genre else ""
+    tone_block = f"\nTone: {tone}" if tone else ""
+
+    # Build structured transcript — one scene per turn
+    scenes = []
+    if opening:
+        scenes.append({"type": "opening", "text": opening})
+
+    for i, entry in enumerate(history):
+        scene = {"turn": i + 1, "type": "turn"}
+
+        if isinstance(entry, dict):
+            # New structured format
+            scene["player"] = entry.get("player", "")
+            scene["narrator"] = entry.get("narrator", "")
+            scene["characters"] = {}
+            for ck, cv in (entry.get("characters") or {}).items():
+                if isinstance(cv, dict):
+                    label = ck.replace("_", " ").title()
+                    scene["characters"][label] = {
+                        "dialogue": cv.get("dialogue", ""),
+                        "action": cv.get("action", ""),
+                    }
+            # Include scene image and portrait info if available
+            if entry.get("scene_image"):
+                si = entry["scene_image"]
+                scene["scene_image"] = si.get("url", "") if isinstance(si, dict) else ""
+            if entry.get("active_portraits"):
+                scene["active_portraits"] = entry["active_portraits"]
+        elif isinstance(entry, str):
+            # Legacy flat format
+            scene["text"] = entry
+        else:
+            scene["text"] = str(entry)
+
+        scenes.append(scene)
+
+    # Build the transcript for the LLM
+    transcript_parts = []
+    for scene in scenes:
+        if scene.get("type") == "opening":
+            transcript_parts.append(f"[Opening]\n{scene['text']}")
+        elif scene.get("narrator") or scene.get("characters"):
+            part = f"[Turn {scene.get('turn', '?')}]\n"
+            if scene.get("player"):
+                part += f"Player: {scene['player']}\n"
+            if scene.get("narrator"):
+                part += f"Narrator: {scene['narrator']}\n"
+            for label, resp in scene.get("characters", {}).items():
+                if resp.get("action"):
+                    part += f"*{label} {resp['action']}*\n"
+                if resp.get("dialogue"):
+                    part += f'{label}: "{resp["dialogue"]}"\n'
+            transcript_parts.append(part.strip())
+        elif scene.get("text"):
+            transcript_parts.append(f"[Turn {scene.get('turn', '?')}]\n{scene['text']}")
+
+    transcript = "\n\n---\n\n".join(transcript_parts)
 
     prompt = f"""You are a skilled fiction writer. Rewrite the following text RPG play session into a polished short story.
 
 Title: {title}
-Player character: {player_name}{char_block}
+Player character: {player_name}{char_block}{genre_block}{tone_block}
 
 Rules:
 - Write in third person past tense
+- Each [Turn] becomes one scene/section, separated by "---"
 - Replace "Player:" actions with narrative prose about {player_name}
-- Keep all key events, dialogue, and character interactions
-- NPC dialogue should be in quotes with attribution
-- Add scene-setting descriptions and transitions between sections
-- Divide the story into short sections with "---" between them
+- Weave narrator descriptions into scene-setting prose
+- Character dialogue should be in quotes with attribution and action woven in
 - Keep the tone and atmosphere of the original
 - Do NOT add events that didn't happen in the play session
+- Each section should be 2-4 short paragraphs
 - Output ONLY the story prose, no title, no commentary
 
 Play session transcript:
@@ -2065,8 +2116,30 @@ Rewritten story:"""
     try:
         llm = get_llm(get_model_for_role("creative"))
         raw = llm.invoke(prompt)
-        text = llm_result_to_text(raw).strip()
-        return jsonify({"prose": text})
+        prose_text = llm_result_to_text(raw).strip()
+
+        # Build scene metadata for the frontend
+        scene_metadata = []
+        for scene in scenes:
+            meta = {"turn": scene.get("turn", 0)}
+            if scene.get("scene_image"):
+                meta["scene_image"] = scene["scene_image"]
+            if scene.get("active_portraits"):
+                meta["active_portraits"] = scene["active_portraits"]
+            # Include character portraits from story data
+            char_portraits = {}
+            for ck, cv in characters.items():
+                if isinstance(cv, dict) and cv.get("portrait"):
+                    label = ck.replace("_", " ").title()
+                    char_portraits[label] = cv["portrait"]
+            if char_portraits:
+                meta["portraits"] = char_portraits
+            scene_metadata.append(meta)
+
+        return jsonify({
+            "prose": prose_text,
+            "scenes": scene_metadata,
+        })
     except Exception as e:
         logger.exception("ai/generate-book failed")
         return jsonify({"error": "The AI request failed. Try again later."}), 500
