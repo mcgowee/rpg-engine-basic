@@ -44,6 +44,20 @@
 	let generatingStoryImage = $state(false);
 	let storyImageError = $state('');
 	let storyImageOk = $state('');
+
+	// Scene gallery
+	type SceneGalleryItem = {
+		id: string;
+		url: string;
+		tags: string[];
+		trigger: string;
+		priority: number;
+		one_time: boolean;
+		caption: string;
+		style: string;
+		prompt: string;
+	};
+	let sceneGallery = $state<SceneGalleryItem[]>([]);
 	let brokenStoryImages = new SvelteSet<string>();
 	let generatingPortrait = $state('');
 	let portraitError = $state('');
@@ -57,7 +71,13 @@
 
 	// Characters
 	type MoodAxis = { axis: string; low: string; high: string; value: number };
-	type CharEntry = { key: string; prompt: string; first_line: string; model: string; moods: MoodAxis[]; portrait?: string };
+	type PortraitRule = { mood?: Record<string, [number, number]>; tags?: string[]; use: string; priority?: number };
+	type CharEntry = {
+		key: string; prompt: string; first_line: string; model: string;
+		moods: MoodAxis[]; portrait?: string;
+		portraits?: Record<string, string>;
+		portrait_rules?: PortraitRule[];
+	};
 	let characterEntries = $state<CharEntry[]>([]);
 
 	function addCharacter() {
@@ -76,6 +96,8 @@
 			const entry: Record<string, unknown> = { prompt: c.prompt, first_line: c.first_line, model: c.model, moods: c.moods };
 			const portrait = (c.portrait ?? '').split('?')[0]; // strip cache buster
 			if (portrait) entry.portrait = portrait;
+			if (c.portraits && Object.keys(c.portraits).length > 0) entry.portraits = c.portraits;
+			if (c.portrait_rules && c.portrait_rules.length > 0) entry.portrait_rules = c.portrait_rules;
 			out[k] = entry;
 		}
 		return out;
@@ -102,6 +124,8 @@
 				model: String(v.model ?? 'default'),
 				moods,
 				portrait: String(v.portrait ?? ''),
+				portraits: (v.portraits && typeof v.portraits === 'object') ? v.portraits as Record<string, string> : {},
+				portrait_rules: Array.isArray(v.portrait_rules) ? v.portrait_rules as PortraitRule[] : [],
 			};
 		});
 	}
@@ -372,6 +396,7 @@
 						characterEntries = dictToCharEntries(s.characters);
 					}
 					storyImages = normalizeStoryImages(s.story_images);
+					sceneGallery = Array.isArray(s.scene_gallery) ? s.scene_gallery : [];
 				}
 			} catch { /* ignore */ }
 		}
@@ -402,6 +427,7 @@
 				characters: charactersToDict(),
 				story_images: storyImages,
 				notes: notes.trim(),
+				scene_gallery: sceneGallery,
 			};
 			const url = mode === 'edit' ? `/api/stories/${storyId}` : '/api/stories';
 			const method = mode === 'edit' ? 'PUT' : 'POST';
@@ -857,6 +883,77 @@
 			{/if}
 
 			<div class="field">
+				<strong>Scene Gallery</strong>
+				<span class="hint">Pre-made images triggered during play by tags and keywords. Displayed in the sidebar.</span>
+				{#each sceneGallery as item, idx (item.id || idx)}
+					<div class="gallery-card">
+						<div class="gallery-card-header">
+							<strong>{item.id || `Scene ${idx + 1}`}</strong>
+							<button type="button" class="btn sm danger" onclick={() => {
+								sceneGallery = sceneGallery.filter((_, i) => i !== idx);
+							}}>Remove</button>
+						</div>
+						{#if item.url}
+							<img src={item.url.startsWith('/') ? item.url : `/images/scenes/${item.url}`}
+								alt={item.caption || item.id} class="gallery-thumb" />
+						{/if}
+						<label class="field-sm">
+							<span>ID</span>
+							<input type="text" bind:value={item.id} placeholder="kitchen_morning" />
+						</label>
+						<label class="field-sm">
+							<span>Image URL</span>
+							<input type="text" bind:value={item.url} placeholder="/images/scenes/story_12_kitchen.png" />
+						</label>
+						<label class="field-sm">
+							<span>Tags (comma-separated)</span>
+							<input type="text" value={item.tags.join(', ')}
+								oninput={(e) => {
+									item.tags = (e.currentTarget as HTMLInputElement).value.split(',').map(t => t.trim()).filter(Boolean);
+									sceneGallery = [...sceneGallery];
+								}}
+								placeholder="kitchen, morning, cooking" />
+						</label>
+						<label class="field-sm">
+							<span>Trigger phrase</span>
+							<input type="text" bind:value={item.trigger} placeholder="cooking breakfast together" />
+						</label>
+						<label class="field-sm">
+							<span>Caption</span>
+							<input type="text" bind:value={item.caption} placeholder="Morning light fills the kitchen" />
+						</label>
+						<div class="gallery-card-options">
+							<label class="field-sm inline">
+								<span>Priority</span>
+								<input type="number" bind:value={item.priority} min="0" max="10" style="width:4rem" />
+							</label>
+							<label class="tag-check">
+								<input type="checkbox" bind:checked={item.one_time} />
+								One-time (milestone)
+							</label>
+						</div>
+						<label class="field-sm">
+							<span>ComfyUI prompt (for generation)</span>
+							<textarea rows="2" bind:value={item.prompt} placeholder="Cozy apartment kitchen, morning sunlight..."></textarea>
+						</label>
+					</div>
+				{/each}
+				<button type="button" class="btn sm" onclick={() => {
+					sceneGallery = [...sceneGallery, {
+						id: `scene_${sceneGallery.length + 1}`,
+						url: '',
+						tags: [],
+						trigger: '',
+						priority: 5,
+						one_time: false,
+						caption: '',
+						style: 'cinematic',
+						prompt: '',
+					}];
+				}}>+ Add Scene Image</button>
+			</div>
+
+			<div class="field">
 				<strong>Description</strong>
 				<span class="hint">Short catalog pitch — 1-2 sentences that make players want to try it.</span>
 				<textarea rows="3" bind:value={description}></textarea>
@@ -1152,6 +1249,15 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
+	.gallery-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
+	.gallery-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+	.gallery-thumb { max-width: 200px; height: auto; border-radius: 6px; border: 1px solid #2a2f38; margin-bottom: 0.5rem; }
+	.gallery-card-options { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+	.field-sm { display: block; margin-bottom: 0.4rem; }
+	.field-sm span { display: block; font-size: 0.78rem; color: #9aa0a6; margin-bottom: 0.15rem; }
+	.field-sm input, .field-sm textarea { width: 100%; box-sizing: border-box; font-size: 0.85rem; }
+	.field-sm.inline { display: inline-flex; align-items: center; gap: 0.3rem; }
+	.field-sm.inline span { display: inline; margin-bottom: 0; }
 	.cover-controls { margin-top: 0.5rem; }
 	.cover-btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 	.cover-preview {

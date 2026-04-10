@@ -31,6 +31,9 @@ class State(TypedDict):
     _narrator_text: str
     _character_responses: dict
     _bubbles: list
+    _scene_image: dict
+    _active_portraits: dict
+    _shown_images: list
     _subgraph_name: str
     _story_id: int
 

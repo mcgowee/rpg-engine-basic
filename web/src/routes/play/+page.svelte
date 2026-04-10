@@ -32,6 +32,8 @@
 	let storyImages = $state<StoryImage[]>([]);
 	let memorySummary = $state('');
 	let turnCount = $state(0);
+	let currentSceneImage = $state<{ url: string; caption: string } | null>(null);
+	let activePortraits = $state<Record<string, string>>({});
 	let paused = $state(false);
 	let saves = $state<SaveRow[]>([]);
 	let message = $state('');
@@ -131,6 +133,20 @@
 				}
 			}
 			characters = parsed;
+		}
+		// Scene image from scene_image node
+		const si = data.scene_image;
+		if (si && typeof si === 'object' && !Array.isArray(si)) {
+			const siObj = si as Record<string, unknown>;
+			currentSceneImage = {
+				url: String(siObj.url ?? ''),
+				caption: String(siObj.caption ?? ''),
+			};
+		}
+		// Active portraits from scene_image node
+		const ap = data.active_portraits;
+		if (ap && typeof ap === 'object' && !Array.isArray(ap)) {
+			activePortraits = ap as Record<string, string>;
 		}
 	}
 
@@ -521,19 +537,35 @@
 	<section class="page narrow"><p class="muted state-note">Loading game…</p></section>
 {:else if storyId != null}
 	<div class="layout">
-		{#if hasCharacters}
+		{#if hasCharacters || currentSceneImage}
 			<aside class="portrait-sidebar">
+				{#if currentSceneImage?.url}
+					<div class="scene-image-card">
+						<img
+							src={currentSceneImage.url.startsWith('/') ? currentSceneImage.url : `/images/scenes/${currentSceneImage.url}`}
+							alt={currentSceneImage.caption || 'Scene'}
+							class="scene-sidebar-img"
+							loading="lazy"
+							decoding="async"
+						/>
+						{#if currentSceneImage.caption}
+							<span class="scene-caption">{currentSceneImage.caption}</span>
+						{/if}
+					</div>
+				{/if}
 				{#each characters as char (char.label)}
+					{@const charKey = char.label.toLowerCase().replace(/\s+/g, '_')}
+					{@const activePortrait = activePortraits[charKey] || char.portrait}
 					<div class="portrait-card">
-						{#if char.portrait && !isPortraitBroken(char.portrait)}
+						{#if activePortrait && !isPortraitBroken(activePortrait)}
 							<img
-								src={portraitImageSrc(char.portrait)}
+								src={portraitImageSrc(activePortrait)}
 								alt={char.label}
 								class="portrait-img"
 								loading="lazy"
 								decoding="async"
-								onerror={() => markPortraitBroken(char.portrait ?? '')}
-								onload={() => clearPortraitBroken(char.portrait ?? '')}
+								onerror={() => markPortraitBroken(activePortrait ?? '')}
+								onload={() => clearPortraitBroken(activePortrait ?? '')}
 							/>
 						{:else}
 							<div class="portrait-placeholder">
@@ -782,6 +814,9 @@
 	.bubble.narrator { background: #1a1d23; border-left-color: #81c995; }
 	.bubble.character { background: #1a1d23; border-left-color: #c58af9; }
 	.char-action { display: block; font-style: italic; color: #9aa0a6; font-size: 0.88rem; margin-bottom: 0.3rem; }
+	.scene-image-card { text-align: center; margin-bottom: 0.5rem; }
+	.scene-sidebar-img { width: 100%; border-radius: 8px; border: 1px solid #2a2f38; display: block; }
+	.scene-caption { display: block; font-size: 0.68rem; color: #9aa0a6; margin-top: 0.2rem; line-height: 1.2; font-style: italic; }
 	:global([data-theme="light"]) .bubble.character { border-left-color: #9c27b0; }
 	.scene-row { display: flex; justify-content: center; }
 	.scene-img {

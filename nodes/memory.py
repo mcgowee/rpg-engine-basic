@@ -31,6 +31,16 @@ def memory_node(state: dict) -> dict:
                 if isinstance(a, dict) and "axis" in a and "value" in a
             }
 
+    # Add scene image info to turn if one was matched
+    scene_image = state.get("_scene_image")
+    if isinstance(scene_image, dict) and scene_image.get("url"):
+        turn["scene_image"] = scene_image
+
+    # Add active portrait info
+    active_portraits = state.get("_active_portraits")
+    if isinstance(active_portraits, dict) and active_portraits:
+        turn["active_portraits"] = active_portraits
+
     history = list(state.get("history") or [])
     history.append(turn)
     return {"history": history, "turn_count": len(history)}

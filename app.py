@@ -831,6 +831,7 @@ def _story_row_to_dict(r, include_content=False) -> dict:
         "cover_image": r["cover_image"] or "",
         "cover_image_id": r["cover_image_id"] if "cover_image_id" in r.keys() else None,
         "story_images": story_images,
+        "scene_gallery": json.loads(r["scene_gallery"] or "[]") if "scene_gallery" in r.keys() else [],
         "is_public": bool(r["is_public"]),
         "play_count": r["play_count"],
         "created_at": r["created_at"],
@@ -982,12 +983,18 @@ def update_story(story_id: int):
             nsfw_tags_json = json.dumps(update_nsfw_tags)
         else:
             nsfw_tags_json = row["nsfw_tags"] or "[]"
+        update_scene_gallery = data.get("scene_gallery")
+        if update_scene_gallery is not None:
+            scene_gallery_json = json.dumps(update_scene_gallery if isinstance(update_scene_gallery, list) else [])
+        else:
+            scene_gallery_json = row["scene_gallery"] if "scene_gallery" in row.keys() else "[]"
         conn.execute(
             """UPDATE stories SET title = ?, description = ?, genre = ?, tone = ?,
                   nsfw_rating = ?, nsfw_tags = ?, opening = ?,
                   narrator_prompt = ?, narrator_model = ?, player_name = ?,
                   player_background = ?, subgraph_name = ?, main_graph_template_id = ?,
-                  characters = ?, notes = ?, story_images = ?, updated_at = datetime('now')
+                  characters = ?, notes = ?, story_images = ?, scene_gallery = ?,
+                  updated_at = datetime('now')
                WHERE id = ?""",
             (
                 data.get("title", row["title"]),
@@ -1006,6 +1013,7 @@ def update_story(story_id: int):
                 characters_json,
                 data.get("notes", row["notes"]),
                 story_images_json,
+                scene_gallery_json,
                 story_id,
             ),
         )
@@ -1230,6 +1238,11 @@ def _build_state_from_story(row) -> dict:
         nsfw_tags = json.loads(row["nsfw_tags"] or "[]")
     except (json.JSONDecodeError, TypeError):
         pass
+    scene_gallery = []
+    try:
+        scene_gallery = json.loads(row["scene_gallery"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        pass
     return {
         "message": "",
         "response": "",
@@ -1247,11 +1260,13 @@ def _build_state_from_story(row) -> dict:
             "setting": row["description"] or "",
             "nsfw_rating": row["nsfw_rating"] or "none",
             "nsfw_tags": nsfw_tags,
+            "scene_images": scene_gallery,
         },
         "game_title": row["title"],
         "opening": row["opening"] or "",
         "paused": False,
         "turn_count": 0,
+        "_shown_images": [],
     }
 
 
@@ -1462,6 +1477,8 @@ def play_chat():
             "memory_summary": result.get("memory_summary", ""),
             "player": result.get("player", {}),
             "subgraph_name": result.get("_subgraph_name", ""),
+            "scene_image": result.get("_scene_image"),
+            "active_portraits": result.get("_active_portraits", {}),
         })
     finally:
         adv_lock.release()

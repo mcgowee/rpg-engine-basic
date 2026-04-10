@@ -1,12 +1,13 @@
 {
   "name": "narrator_chat",
-  "description": "Full featured: narrator describes the world, each character responds independently with dialogue + action, mood tracking, rolling memory.",
-  "nodes": ["narrator", "character_agent", "response_builder", "mood", "condense", "memory"],
+  "description": "Full featured: narrator + character agents + scene image matching + mood tracking + rolling memory.",
+  "nodes": ["narrator", "character_agent", "response_builder", "scene_image", "mood", "condense", "memory"],
   "edges": [
     { "from": "__start__", "to": "narrator" },
     { "from": "narrator", "to": "character_agent" },
     { "from": "character_agent", "to": "response_builder" },
-    { "from": "response_builder", "to": "mood" },
+    { "from": "response_builder", "to": "scene_image" },
+    { "from": "scene_image", "to": "mood" },
     { "from": "mood", "to": "condense" },
     { "from": "condense", "to": "memory" },
     { "from": "memory", "to": "__end__" }

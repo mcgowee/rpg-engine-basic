@@ -68,6 +68,7 @@ def init_db():
             subgraph_name TEXT DEFAULT 'conversation',
             main_graph_template_id INTEGER REFERENCES main_graph_templates(id),
             characters TEXT DEFAULT '{}',
+            scene_gallery TEXT DEFAULT '[]',
             notes TEXT DEFAULT '',
             cover_image TEXT DEFAULT '',
             story_images TEXT DEFAULT '[]',
@@ -152,6 +153,9 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     if "story_images" not in cols:
         conn.execute("ALTER TABLE stories ADD COLUMN story_images TEXT DEFAULT '[]'")
+        conn.commit()
+    if "scene_gallery" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN scene_gallery TEXT DEFAULT '[]'")
         conn.commit()
 
     # Migrate all old subgraphs to narrator_chat architecture.
