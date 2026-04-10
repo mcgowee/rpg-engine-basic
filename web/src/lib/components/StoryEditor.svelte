@@ -5,6 +5,8 @@
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
 	import { coverImagePosition } from '$lib/coverDisplay';
+	import type { CharEntry, MoodAxis, PortraitRule } from '$lib/characterTypes';
+	import { charEntriesFromStoryCharacters } from '$lib/characterTypes';
 
 	type Props = {
 		mode: 'create' | 'edit';
@@ -131,12 +133,6 @@
 			galleryImageError = 'Network error';
 		}
 	}
-	let generatingPortrait = $state('');
-	let portraitStyle = $state('anime');
-	let portraitPromptText = $state('');
-	let buildingPortraitPrompt = $state('');
-	let portraitStyles = $state<{ key: string; description: string }[]>([]);
-	let portraitError = $state('');
 	let brokenPortraits = new SvelteSet<string>();
 
 	// Shared content
@@ -146,14 +142,6 @@
 	let playerBackground = $state('');
 
 	// Characters
-	type MoodAxis = { axis: string; low: string; high: string; value: number };
-	type PortraitRule = { mood?: Record<string, [number, number]>; tags?: string[]; use: string; priority?: number; _prompt?: string };
-	type CharEntry = {
-		key: string; prompt: string; first_line: string; model: string;
-		moods: MoodAxis[]; portrait?: string;
-		portraits?: Record<string, string>;
-		portrait_rules?: PortraitRule[];
-	};
 	let characterEntries = $state<CharEntry[]>([]);
 
 	function addCharacter() {
@@ -174,36 +162,12 @@
 			if (portrait) entry.portrait = portrait;
 			if (c.portraits && Object.keys(c.portraits).length > 0) entry.portraits = c.portraits;
 			if (c.portrait_rules && c.portrait_rules.length > 0) entry.portrait_rules = c.portrait_rules;
+			if (c.face_ref && Object.keys(c.face_ref).length > 0) entry.face_ref = c.face_ref;
+			const fed = (c.face_extra_details ?? '').trim();
+			if (fed) entry.face_extra_details = fed;
 			out[k] = entry;
 		}
 		return out;
-	}
-
-	function dictToCharEntries(d: Record<string, unknown>): CharEntry[] {
-		return Object.entries(d).map(([key, val]) => {
-			const v = val as Record<string, unknown>;
-			let moods: MoodAxis[] = [];
-			if (Array.isArray(v.moods)) {
-				moods = (v.moods as Record<string, unknown>[]).map(m => ({
-					axis: String(m.axis ?? 'mood'),
-					low: String(m.low ?? 'low'),
-					high: String(m.high ?? 'high'),
-					value: Number(m.value ?? 5),
-				}));
-			} else if (v.mood !== undefined) {
-				moods = [{ axis: 'mood', low: 'hostile', high: 'friendly', value: Number(v.mood ?? 5) }];
-			}
-			return {
-				key,
-				prompt: String(v.prompt ?? ''),
-				first_line: String(v.first_line ?? ''),
-				model: String(v.model ?? 'default'),
-				moods,
-				portrait: String(v.portrait ?? ''),
-				portraits: (v.portraits && typeof v.portraits === 'object') ? v.portraits as Record<string, string> : {},
-				portrait_rules: Array.isArray(v.portrait_rules) ? v.portrait_rules as PortraitRule[] : [],
-			};
-		});
 	}
 
 	// AI
@@ -357,8 +321,6 @@
 	onMount(async () => {
 		loadCoverStyles();
 		loadExistingImages();
-		fetch('/api/ai/portrait-styles', { credentials: 'include' })
-			.then(r => r.json()).then(j => { if (Array.isArray(j.styles)) portraitStyles = j.styles; }).catch(() => {});
 		try {
 			const r = await fetch('/api/subgraphs', { credentials: 'include' });
 			if (r.ok) {
@@ -403,8 +365,8 @@
 					narratorModel = s.narrator_model ?? 'default';
 					playerName = s.player_name ?? 'Adventurer';
 					playerBackground = s.player_background ?? '';
-					if (s.characters && typeof s.characters === 'object') {
-						characterEntries = dictToCharEntries(s.characters);
+					if (s.characters && typeof s.characters === 'object' && !Array.isArray(s.characters)) {
+						characterEntries = charEntriesFromStoryCharacters(s.characters as Record<string, unknown>);
 					}
 					storyImages = normalizeStoryImages(s.story_images);
 					sceneGallery = Array.isArray(s.scene_gallery) ? s.scene_gallery : [];
@@ -550,35 +512,6 @@
 			coverError = 'Network error';
 		} finally {
 			generatingCover = false;
-		}
-	}
-
-	async function generatePortrait(charKey: string, charIdx: number) {
-		if (!storyId || generatingPortrait) return;
-		generatingPortrait = charKey;
-		portraitError = '';
-		try {
-			const r = await fetch('/api/ai/generate-portrait', {
-				method: 'POST', credentials: 'include',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ story_id: storyId, character_key: charKey }),
-			});
-			const j = await r.json().catch(() => ({}));
-			if (r.ok && j.portrait) {
-				// Update the character entry with the portrait filename
-				const entry = characterEntries[charIdx];
-				if (entry) {
-					// Store portrait in a way that gets saved with the character
-					(entry as Record<string, unknown>)['portrait'] = j.portrait + '?t=' + Date.now();
-					characterEntries = [...characterEntries]; // trigger reactivity
-				}
-			} else {
-				portraitError = j.error ?? 'Portrait generation failed';
-			}
-		} catch {
-			portraitError = 'Network error';
-		} finally {
-			generatingPortrait = '';
 		}
 	}
 
@@ -993,7 +926,26 @@
 
 					{#if mode === 'edit'}
 						<div class="field">
-							<strong>Default Portrait</strong>
+							<strong>Image &amp; media</strong>
+							<span class="hint">
+								Base portraits and expression variants are created on a dedicated page. Saves apply to this story; use
+								<strong>Save story</strong> here for prompts and moods.
+							</span>
+							{#if storyId && char.key.trim()}
+								<div class="char-media-row">
+									<a
+										class="btn sm primary"
+										href="/charactermedia/{storyId}/{encodeURIComponent(char.key)}"
+									>
+										Open image &amp; media editor
+									</a>
+									<code class="char-media-key">{char.key}</code>
+								</div>
+							{:else}
+								<p class="muted" style="font-size:0.88rem; margin-top:0.35rem">
+									Set a character key and save the story before opening the media editor.
+								</p>
+							{/if}
 							{#if char.portrait && !isPortraitBroken(idx, char.portrait)}
 								<div class="portrait-preview">
 									<img
@@ -1012,68 +964,9 @@
 										<span>Portrait unavailable</span>
 									</div>
 								</div>
+							{:else}
+								<p class="muted" style="font-size:0.88rem; margin-top:0.35rem">No portrait yet.</p>
 							{/if}
-
-							<label class="field-sm">
-								<span>Style</span>
-								<select bind:value={portraitStyle} style="font-size:0.85rem; width:auto">
-									{#each portraitStyles as s (s.key)}
-										<option value={s.key}>{s.key}</option>
-									{/each}
-									{#if portraitStyles.length === 0}
-										<option value="anime">anime</option>
-									{/if}
-								</select>
-							</label>
-
-							<div class="cover-btn-row">
-								<button type="button" class="btn sm"
-									disabled={buildingPortraitPrompt === char.key || !char.key.trim()}
-									onclick={async () => {
-										buildingPortraitPrompt = char.key;
-										try {
-											const r = await fetch('/api/ai/build-portrait-prompt', {
-												method: 'POST', credentials: 'include',
-												headers: { 'Content-Type': 'application/json' },
-												body: JSON.stringify({ story_id: storyId, character_key: char.key, style: portraitStyle }),
-											});
-											const j = await r.json().catch(() => ({}));
-											if (r.ok && j.prompt) portraitPromptText = j.prompt;
-										} catch { /* ignore */ }
-										finally { buildingPortraitPrompt = ''; }
-									}}>
-									{#if buildingPortraitPrompt === char.key}<span class="spinner"></span> Building...{:else}Build Prompt{/if}
-								</button>
-								<button type="button" class="btn sm primary"
-									disabled={generatingPortrait === char.key || !char.key.trim()}
-									title="Generate portrait (requires ComfyUI)"
-									onclick={() => generatePortrait(char.key, idx)}>
-									{#if generatingPortrait === char.key}<span class="spinner"></span> Generating...{:else}🎨 Generate{/if}
-								</button>
-							</div>
-
-							{#if portraitPromptText}
-								<textarea rows="2" bind:value={portraitPromptText} style="font-size:0.82rem; margin-top:0.3rem"></textarea>
-							{/if}
-
-							<div class="field-sm" style="margin-top:0.4rem">
-								<span>Or select existing image</span>
-								<div class="image-url-row">
-									<select style="flex:1; font-size:0.82rem"
-										value={char.portrait ?? ''}
-										onchange={(e) => {
-											char.portrait = (e.currentTarget as HTMLSelectElement).value;
-											characterEntries = [...characterEntries];
-										}}>
-										<option value="">— select —</option>
-										{#each existingSceneImages.filter(img => img.type === 'portrait') as img (img.url)}
-											<option value={img.filename}>{img.filename}</option>
-										{/each}
-									</select>
-								</div>
-							</div>
-
-							{#if portraitError && generatingPortrait === ''}<p class="err" style="font-size:0.85rem">{portraitError}</p>{/if}
 						</div>
 					{/if}
 
@@ -1107,183 +1000,6 @@
 						{/each}
 						<button type="button" class="btn sm" onclick={() => { char.moods = [...char.moods, { axis: '', low: '', high: '', value: 5 }]; }}>Add axis</button>
 					</div>
-
-					{#if mode === 'edit' && char.moods.length > 0}
-						<div class="field">
-							<strong>Portrait Variants</strong>
-							<span class="hint">Different portraits displayed based on mood state. The scene_image node swaps them during play.</span>
-
-							{#each (char.portrait_rules ?? []) as rule, ri (ri)}
-								{@const variantUrl = (char.portraits ?? {})[rule.use] ?? ''}
-								<div class="variant-card">
-									<div class="variant-header">
-										<input type="text" bind:value={rule.use} placeholder="variant name (e.g. flirty)" class="variant-name-input" />
-										<button type="button" class="btn sm danger" onclick={() => {
-											char.portrait_rules = (char.portrait_rules ?? []).filter((_, i) => i !== ri);
-											characterEntries = [...characterEntries];
-										}}>×</button>
-									</div>
-
-									{#if variantUrl}
-										<div class="variant-preview">
-											<img src={portraitSrc(variantUrl)} alt="{rule.use} variant" class="variant-thumb" />
-										</div>
-									{/if}
-
-									<div class="variant-rules">
-										<span class="hint">Mood ranges — when ALL match, this variant is used:</span>
-										{#each Object.entries(rule.mood ?? {}) as [axis, range], mi (axis)}
-											<div class="variant-mood-row">
-												<select value={axis} onchange={(e) => {
-													const newAxis = (e.currentTarget as HTMLSelectElement).value;
-													const m = { ...(rule.mood ?? {}) };
-													const val = m[axis];
-													delete m[axis];
-													m[newAxis] = val;
-													rule.mood = m;
-													characterEntries = [...characterEntries];
-												}}>
-													{#each char.moods as a (a.axis)}
-														<option value={a.axis}>{a.axis}</option>
-													{/each}
-												</select>
-												<span class="hint" style="display:inline">from</span>
-												<input type="number" min="1" max="10" value={range[0]}
-													oninput={(e) => {
-														const m = { ...(rule.mood ?? {}) };
-														m[axis] = [Number((e.currentTarget as HTMLInputElement).value), range[1]];
-														rule.mood = m;
-														characterEntries = [...characterEntries];
-													}}
-													style="width:3.5rem" />
-												<span class="hint" style="display:inline">to</span>
-												<input type="number" min="1" max="10" value={range[1]}
-													oninput={(e) => {
-														const m = { ...(rule.mood ?? {}) };
-														m[axis] = [range[0], Number((e.currentTarget as HTMLInputElement).value)];
-														rule.mood = m;
-														characterEntries = [...characterEntries];
-													}}
-													style="width:3.5rem" />
-												<button type="button" class="btn sm" onclick={() => {
-													const m = { ...(rule.mood ?? {}) };
-													delete m[axis];
-													rule.mood = m;
-													characterEntries = [...characterEntries];
-												}}>×</button>
-											</div>
-										{/each}
-										<button type="button" class="btn sm" onclick={() => {
-											const available = char.moods.find(a => !Object.keys(rule.mood ?? {}).includes(a.axis));
-											if (available) {
-												rule.mood = { ...(rule.mood ?? {}), [available.axis]: [5, 10] };
-												characterEntries = [...characterEntries];
-											}
-										}}>+ Add mood rule</button>
-									</div>
-
-									<label class="field-sm">
-										<span>Tag triggers (optional, comma-separated)</span>
-										<input type="text" value={(rule.tags ?? []).join(', ')}
-											oninput={(e) => {
-												rule.tags = (e.currentTarget as HTMLInputElement).value.split(',').map(t => t.trim()).filter(Boolean);
-												characterEntries = [...characterEntries];
-											}}
-											placeholder="date, restaurant, dressed up" />
-									</label>
-
-									<div class="field-sm">
-										<span>Image</span>
-										<div class="image-url-row">
-											<select style="flex:1; font-size:0.82rem"
-												value={variantUrl}
-												onchange={(e) => {
-													if (!char.portraits) char.portraits = {};
-													char.portraits[rule.use] = (e.currentTarget as HTMLSelectElement).value;
-													characterEntries = [...characterEntries];
-												}}>
-												<option value="">— select existing —</option>
-												{#each existingSceneImages.filter(img => img.type === 'portrait') as img (img.url)}
-													<option value={img.filename}>{img.filename}</option>
-												{/each}
-											</select>
-											<span class="hint" style="display:inline; margin:0 0.3rem">or</span>
-											<input type="text" value={variantUrl}
-												oninput={(e) => {
-													if (!char.portraits) char.portraits = {};
-													char.portraits[rule.use] = (e.currentTarget as HTMLInputElement).value;
-													characterEntries = [...characterEntries];
-												}}
-												placeholder="paste URL" style="flex:1; font-size:0.82rem" />
-										</div>
-									</div>
-
-									<div class="gallery-btn-row">
-										<button type="button" class="btn sm"
-											disabled={buildingPortraitPrompt === `${char.key}_${rule.use}` || !char.key.trim() || !rule.use.trim()}
-											onclick={async () => {
-												const varKey = `${char.key}_${rule.use}`;
-												buildingPortraitPrompt = varKey;
-												try {
-													const r = await fetch('/api/ai/build-portrait-prompt', {
-														method: 'POST', credentials: 'include',
-														headers: { 'Content-Type': 'application/json' },
-														body: JSON.stringify({ story_id: storyId, character_key: char.key, style: portraitStyle }),
-													});
-													const j = await r.json().catch(() => ({}));
-													if (r.ok && j.prompt) {
-														rule._prompt = j.prompt.replace(/portrait/i, `${rule.use} expression portrait`);
-														characterEntries = [...characterEntries];
-													}
-												} catch { /* ignore */ }
-												finally { buildingPortraitPrompt = ''; }
-											}}>
-											{#if buildingPortraitPrompt === `${char.key}_${rule.use}`}<span class="spinner"></span> Building...{:else}Build Prompt{/if}
-										</button>
-										<button type="button" class="btn sm primary"
-											disabled={generatingPortrait === `${char.key}_${rule.use}` || !char.key.trim() || !rule.use.trim() || !(rule._prompt ?? '').trim()}
-											onclick={async () => {
-												const varKey = `${char.key}_${rule.use}`;
-												const prompt = (rule._prompt ?? '').trim();
-												if (!prompt || !storyId) return;
-												generatingPortrait = varKey;
-												try {
-													const r = await fetch('/api/ai/generate-portrait', {
-														method: 'POST', credentials: 'include',
-														headers: { 'Content-Type': 'application/json' },
-														body: JSON.stringify({ story_id: storyId, character_key: varKey, prompt }),
-													});
-													const j = await r.json().catch(() => ({}));
-													if (r.ok && j.portrait) {
-														if (!char.portraits) char.portraits = {};
-														char.portraits[rule.use] = j.portrait;
-														characterEntries = [...characterEntries];
-														loadExistingImages();
-													}
-												} catch { /* ignore */ }
-												finally { generatingPortrait = ''; }
-											}}>
-											{#if generatingPortrait === `${char.key}_${rule.use}`}<span class="spinner"></span> Generating...{:else}🎨 Generate{/if}
-										</button>
-									</div>
-									{#if rule._prompt}
-										<textarea rows="2" bind:value={rule._prompt} placeholder="Portrait prompt for this variant..." style="font-size:0.82rem; width:100%; margin-top:0.3rem"></textarea>
-									{/if}
-								</div>
-							{/each}
-
-							<button type="button" class="btn sm" onclick={() => {
-								if (!char.portrait_rules) char.portrait_rules = [];
-								const firstAxis = char.moods[0]?.axis ?? 'mood';
-								char.portrait_rules = [...char.portrait_rules, {
-									use: '',
-									mood: { [firstAxis]: [5, 10] },
-									tags: [],
-								}];
-								characterEntries = [...characterEntries];
-							}}>+ Add Variant</button>
-						</div>
-					{/if}
 
 					<button type="button" class="btn sm danger" onclick={() => removeCharacter(idx)}>Remove character</button>
 				</fieldset>
@@ -1434,6 +1150,9 @@
 	.tabs button:hover { color: #e8eaed; border-color: #46505e; background: #20242c; }
 	.tabs button.active { background: #1a73e8; color: #fff; border-color: #1a73e8; font-weight: 600; }
 	.tab-content { max-width: 700px; }
+	.char-media-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 0.5rem 0 0.35rem; }
+	.char-media-row .btn { text-decoration: none; display: inline-block; text-align: center; }
+	.char-media-key { font-size: 0.82rem; background: #2a2f38; padding: 0.2rem 0.45rem; border-radius: 4px; }
 	.field { display: block; margin-bottom: 1rem; }
 	.field-meta { border: 1px solid #2a2f38; border-radius: 10px; padding: 0.75rem 0.85rem; background: #161a20; }
 	.field strong { display: block; margin-bottom: 0.25rem; }
@@ -1461,14 +1180,6 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
-	.variant-card { border: 1px solid #2a2f38; padding: 0.6rem; border-radius: 6px; margin-bottom: 0.6rem; background: #13151a; }
-	.variant-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
-	.variant-name-input { font-size: 0.88rem; font-weight: 600; max-width: 12rem; }
-	.variant-preview { margin-bottom: 0.4rem; }
-	.variant-thumb { max-width: 100px; height: auto; border-radius: 6px; border: 1px solid #2a2f38; }
-	.variant-rules { margin-bottom: 0.4rem; }
-	.variant-mood-row { display: flex; gap: 0.3rem; align-items: center; margin-bottom: 0.3rem; flex-wrap: wrap; }
-	.variant-mood-row select { font-size: 0.82rem; width: auto; }
 	.gallery-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
 	.gallery-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
 	.gallery-card-body { display: flex; gap: 0.75rem; margin-bottom: 0.5rem; }

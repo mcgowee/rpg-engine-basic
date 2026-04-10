@@ -1,13 +1,14 @@
 {
   "name": "narrator_chat",
-  "description": "Full featured: narrator + character agents + mood tracking + scene image matching + rolling memory.",
-  "nodes": ["narrator", "character_agent", "response_builder", "mood", "scene_image", "condense", "memory"],
+  "description": "Full featured: narrator + character agents + mood tracking + expression picking + scene image matching + rolling memory.",
+  "nodes": ["narrator", "character_agent", "response_builder", "mood", "expression_picker", "scene_image", "condense", "memory"],
   "edges": [
     { "from": "__start__", "to": "narrator" },
     { "from": "narrator", "to": "character_agent" },
     { "from": "character_agent", "to": "response_builder" },
     { "from": "response_builder", "to": "mood" },
-    { "from": "mood", "to": "scene_image" },
+    { "from": "mood", "to": "expression_picker" },
+    { "from": "expression_picker", "to": "scene_image" },
     { "from": "scene_image", "to": "condense" },
     { "from": "condense", "to": "memory" },
     { "from": "memory", "to": "__end__" }

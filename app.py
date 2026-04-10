@@ -220,12 +220,19 @@ NODE_DESCRIPTIONS = {
         "reads": ["characters", "_narrator_text", "_character_responses"],
         "writes": ["_bubbles", "response"],
     },
+    "expression_picker": {
+        "summary": "Picks character portrait expression via LLM",
+        "description": "For each character with portrait variants, asks the LLM to pick the best facial expression based on the current scene. One LLM call per character.",
+        "llm": True,
+        "reads": ["characters", "message", "_narrator_text", "_character_responses", "_active_portraits"],
+        "writes": ["_active_portraits"],
+    },
     "scene_image": {
         "summary": "Scene / gallery image for sidebar",
         "description": "Selects or records scene art (gallery tags, triggers) for the play sidebar. No prose LLM.",
         "llm": False,
-        "reads": ["story", "characters", "history", "_narrator_text", "_character_responses"],
-        "writes": ["_scene_image", "_active_portraits", "_shown_images"],
+        "reads": ["story", "_narrator_text", "_character_responses"],
+        "writes": ["_scene_image", "_shown_images"],
     },
     "mood": {
         "summary": "Tracks character mood axes via LLM",
@@ -1055,6 +1062,118 @@ def update_story(story_id: int):
     return jsonify({"ok": True})
 
 
+@app.route("/stories/<int:story_id>/character-portraits", methods=["POST"])
+@login_required
+def merge_story_character_portraits(story_id: int):
+    """Merge portrait / face-wizard fields for one character without a full story PUT."""
+    data = request.get_json(silent=True) or {}
+    character_key = (data.get("character_key") or "").strip()
+    if not character_key:
+        return jsonify({"error": "character_key is required"}), 400
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT characters FROM stories WHERE id = ? AND user_id = ?",
+            (story_id, g.user_id),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+
+        characters = json.loads(row["characters"] or "{}")
+        char_data = characters.get(character_key)
+        if not isinstance(char_data, dict):
+            return jsonify({"error": f"Character '{character_key}' not found"}), 404
+
+        if "portrait" in data:
+            p = data.get("portrait")
+            if isinstance(p, str) and p.strip():
+                char_data["portrait"] = p.strip().split("?")[0]
+            elif p is None or p == "":
+                char_data.pop("portrait", None)
+
+        if "portraits" in data and isinstance(data["portraits"], dict):
+            portraits = dict(char_data.get("portraits") or {})
+            for k, v in data["portraits"].items():
+                if not isinstance(k, str):
+                    continue
+                k = k.strip()
+                if not k or not isinstance(v, str):
+                    continue
+                vs = v.strip().split("?")[0]
+                if vs:
+                    portraits[k] = vs
+            char_data["portraits"] = portraits
+
+        if "face_ref" in data and isinstance(data["face_ref"], dict):
+            cleaned: dict[str, str] = {}
+            for k, v in data["face_ref"].items():
+                if isinstance(k, str) and isinstance(v, str) and k.strip():
+                    cleaned[k.strip()] = v.strip()[:500]
+            if cleaned:
+                char_data["face_ref"] = cleaned
+
+        if "face_extra_details" in data:
+            fed = data.get("face_extra_details")
+            if isinstance(fed, str) and fed.strip():
+                char_data["face_extra_details"] = fed.strip()[:2000]
+            elif fed is None or fed == "":
+                char_data.pop("face_extra_details", None)
+
+        if "portrait_rules" in data:
+            pr = data.get("portrait_rules")
+            if pr is None:
+                char_data.pop("portrait_rules", None)
+            elif isinstance(pr, list):
+                cleaned_rules: list[dict] = []
+                for item in pr[:24]:
+                    if not isinstance(item, dict):
+                        continue
+                    use = (item.get("use") or "").strip()
+                    if not use or len(use) > 64:
+                        continue
+                    entry: dict = {"use": use}
+                    mood = item.get("mood")
+                    if isinstance(mood, dict):
+                        mood_out: dict[str, list[int]] = {}
+                        for mk, mv in mood.items():
+                            if not isinstance(mk, str) or not mk.strip():
+                                continue
+                            if isinstance(mv, (list, tuple)) and len(mv) >= 2:
+                                try:
+                                    lo = int(mv[0])
+                                    hi = int(mv[1])
+                                    if 1 <= lo <= 10 and 1 <= hi <= 10 and lo <= hi:
+                                        mood_out[mk.strip()[:64]] = [lo, hi]
+                                except (TypeError, ValueError):
+                                    pass
+                        if mood_out:
+                            entry["mood"] = mood_out
+                    tags = item.get("tags")
+                    if isinstance(tags, list):
+                        entry["tags"] = [str(t).strip()[:80] for t in tags if str(t).strip()][:16]
+                    try:
+                        p = item.get("priority")
+                        if p is not None:
+                            entry["priority"] = int(p)
+                    except (TypeError, ValueError):
+                        pass
+                    if entry.get("mood") or entry.get("tags"):
+                        cleaned_rules.append(entry)
+                char_data["portrait_rules"] = cleaned_rules
+
+        characters[character_key] = char_data
+        conn.execute(
+            """UPDATE stories SET characters = ?, updated_at = datetime('now') WHERE id = ?""",
+            (json.dumps(characters), story_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "character": char_data})
+
+
 @app.route("/stories/<int:story_id>", methods=["DELETE"])
 @login_required
 def delete_story(story_id: int):
@@ -1579,6 +1698,7 @@ def play_status():
         "player": state.get("player", {}),
         "subgraph_name": state.get("_subgraph_name", ""),
         "save_slots": save_slots,
+        "active_portraits": state.get("_active_portraits") or {},
     }
     if state.get("opening"):
         payload["opening"] = state["opening"]
@@ -2905,14 +3025,292 @@ SCENE_STYLES = {
     "photorealistic": "photorealistic, natural lighting, high detail, professional photography",
 }
 
-PORTRAIT_STYLES = {
-    "anime": "anime character portrait, cel-shaded, expressive eyes, clean lines, vibrant",
-    "realistic": "photorealistic portrait, studio lighting, high detail, sharp focus",
-    "painterly": "digital painting portrait, oil paint texture, dramatic lighting, concept art",
-    "comic": "graphic novel character, bold lines, dynamic shading, ink and color",
-    "watercolor": "watercolor portrait, soft edges, delicate features, artistic",
-    "fantasy-art": "fantasy character portrait, epic lighting, detailed armor/clothing, artstation",
+# Phase 1 (face wizard): forward-facing reference headshots for IP-Adapter / LoRA datasets.
+FACE_CANDIDATE_PROMPT_SUFFIX = (
+    "front view, facing camera, direct eye contact, symmetrical face, "
+    "head and upper chest visible, neutral relaxed expression, mouth closed, "
+    "plain solid light gray studio backdrop, no scenery, no environment, no props, "
+    "empty background, centered subject, soft even studio lighting, clean headshot"
+)
+
+FACE_CANDIDATE_NEGATIVE_EXTRA = (
+    "background detail, busy background, scenery, landscape, indoor, outdoor, "
+    "room interior, sky, trees, windows, furniture, depth of field, bokeh, "
+    "blurred background, crowd, text, watermark, signature, logo, "
+    "profile, side view, three quarter view, looking away, looking down, dutch angle"
+)
+
+# Manual face-reference controls (phase 1 wizard) — keys sent from UI; values are prompt fragments.
+FACE_REF_DEFAULTS: dict[str, str] = {
+    "sex": "female",
+    "ethnicity": "unspecified",
+    "age": "young_adult",
+    "hair_color": "brown",
+    "hair_length": "medium",
+    "eye_color": "brown",
+    "facial_hair": "none",
+    "image_style": "anime",
 }
+
+FACE_REF_OPTIONS_SEX = [
+    ("unspecified", "Unspecified"),
+    ("female", "Female"),
+    ("male", "Male"),
+    ("androgynous", "Androgynous"),
+]
+
+FACE_REF_OPTIONS_ETHNICITY = [
+    ("unspecified", "Unspecified"),
+    ("east_asian", "East Asian"),
+    ("south_asian", "South Asian"),
+    ("southeast_asian", "Southeast Asian"),
+    ("black", "Black / African"),
+    ("white_european", "White / European"),
+    ("middle_eastern", "Middle Eastern"),
+    ("latino", "Latino / Hispanic"),
+    ("pacific", "Pacific Islander"),
+    ("indigenous", "Indigenous"),
+    ("mixed", "Mixed"),
+]
+
+FACE_REF_OPTIONS_AGE = [
+    ("unspecified", "Unspecified"),
+    ("teen", "Teen"),
+    ("young_adult", "Young adult"),
+    ("adult", "Adult"),
+    ("middle_aged", "Middle-aged"),
+    ("senior", "Senior"),
+]
+
+FACE_REF_OPTIONS_HAIR_COLOR = [
+    ("black", "Black"),
+    ("brown", "Brown"),
+    ("blonde", "Blonde"),
+    ("red", "Red / ginger"),
+    ("auburn", "Auburn"),
+    ("gray_white", "Gray / white"),
+    ("silver", "Silver"),
+    ("platinum", "Platinum blonde"),
+    ("blue", "Blue (dyed)"),
+    ("green", "Green (dyed)"),
+    ("pink", "Pink (dyed)"),
+    ("purple", "Purple (dyed)"),
+    ("multicolor", "Multicolor"),
+]
+
+FACE_REF_OPTIONS_HAIR_LENGTH = [
+    ("bald", "Bald"),
+    ("buzz", "Buzz cut"),
+    ("short", "Short"),
+    ("medium", "Medium"),
+    ("long", "Long"),
+    ("very_long", "Very long"),
+]
+
+FACE_REF_OPTIONS_EYE_COLOR = [
+    ("brown", "Brown"),
+    ("dark_brown", "Dark brown"),
+    ("blue", "Blue"),
+    ("green", "Green"),
+    ("hazel", "Hazel"),
+    ("gray", "Gray"),
+    ("amber", "Amber"),
+    ("black", "Black"),
+    ("red_violet", "Red / violet (fantasy)"),
+    ("heterochromia", "Heterochromia"),
+]
+
+FACE_REF_OPTIONS_FACIAL_HAIR = [
+    ("none", "None"),
+    ("stubble", "Stubble"),
+    ("mustache", "Mustache"),
+    ("goatee", "Goatee"),
+    ("short_beard", "Short beard"),
+    ("full_beard", "Full beard"),
+]
+
+FACE_REF_OPTIONS_IMAGE_STYLE = [
+    ("anime", "Anime / cel-shaded"),
+    ("semi_realistic", "Semi-realistic illustration"),
+    ("soft_anime", "Soft anime / VN"),
+    ("realistic", "Photorealistic"),
+    ("painterly", "Painterly / digital paint"),
+    ("comic", "Comic / graphic novel"),
+    ("watercolor", "Watercolor style"),
+]
+
+FACE_REF_PROMPT_SEX = {
+    "unspecified": "",
+    "female": "woman",
+    "male": "man",
+    "androgynous": "androgynous person",
+}
+
+FACE_REF_PROMPT_ETHNICITY = {
+    "unspecified": "",
+    "east_asian": "East Asian appearance",
+    "south_asian": "South Asian appearance",
+    "southeast_asian": "Southeast Asian appearance",
+    "black": "Black African appearance",
+    "white_european": "European appearance",
+    "middle_eastern": "Middle Eastern appearance",
+    "latino": "Latino appearance",
+    "pacific": "Pacific Islander appearance",
+    "indigenous": "Indigenous appearance",
+    "mixed": "mixed ethnicity appearance",
+}
+
+FACE_REF_PROMPT_AGE = {
+    "unspecified": "",
+    "teen": "teenager, youthful face",
+    "young_adult": "young adult",
+    "adult": "adult",
+    "middle_aged": "middle-aged",
+    "senior": "elderly, aged face",
+}
+
+FACE_REF_PROMPT_HAIR_COLOR = {
+    "black": "black",
+    "brown": "brown",
+    "blonde": "blonde",
+    "red": "red ginger",
+    "auburn": "auburn",
+    "gray_white": "gray and white",
+    "silver": "silver",
+    "platinum": "platinum blonde",
+    "blue": "blue dyed",
+    "green": "green dyed",
+    "pink": "pink dyed",
+    "purple": "purple dyed",
+    "multicolor": "multicolored",
+}
+
+FACE_REF_PROMPT_HAIR_LENGTH = {
+    "bald": "completely bald",
+    "buzz": "buzz cut",
+    "short": "short hair",
+    "medium": "medium length hair",
+    "long": "long hair",
+    "very_long": "very long hair",
+}
+
+FACE_REF_PROMPT_EYE = {
+    "brown": "brown eyes",
+    "dark_brown": "dark brown eyes",
+    "blue": "blue eyes",
+    "green": "green eyes",
+    "hazel": "hazel eyes",
+    "gray": "gray eyes",
+    "amber": "amber eyes",
+    "black": "dark brown to black eyes",
+    "red_violet": "red or violet eyes",
+    "heterochromia": "heterochromatic eyes",
+}
+
+FACE_REF_PROMPT_FACIAL_HAIR = {
+    "none": "",
+    "stubble": "light stubble",
+    "mustache": "mustache",
+    "goatee": "goatee",
+    "short_beard": "short beard",
+    "full_beard": "full beard",
+}
+
+FACE_REF_PROMPT_IMAGE_STYLE = {
+    "anime": "anime style portrait, cel-shaded, clean lines",
+    "semi_realistic": "semi-realistic illustrated portrait, detailed shading",
+    "soft_anime": "soft anime visual novel portrait, gentle shading",
+    "realistic": "photorealistic portrait, natural skin texture, DSLR photo",
+    "painterly": "digital painting portrait, visible brush strokes",
+    "comic": "comic book portrait, bold ink outlines",
+    "watercolor": "watercolor illustration portrait, soft edges",
+}
+
+
+def _face_ref_allowed(key: str, value: str, allowed: set[str]) -> str:
+    if value in allowed:
+        return value
+    return FACE_REF_DEFAULTS.get(key, next(iter(allowed)))
+
+
+def build_face_reference_prompt(data: dict) -> tuple[str, str]:
+    """Build positive prompt and a short human-readable summary from manual face controls."""
+    d = dict(FACE_REF_DEFAULTS)
+    for k in FACE_REF_DEFAULTS:
+        if k in data and data[k] is not None:
+            raw = str(data[k]).strip()
+            if raw:
+                d[k] = raw
+
+    sex = _face_ref_allowed("sex", d["sex"], set(FACE_REF_PROMPT_SEX.keys()))
+    eth = _face_ref_allowed("ethnicity", d["ethnicity"], set(FACE_REF_PROMPT_ETHNICITY.keys()))
+    age = _face_ref_allowed("age", d["age"], set(FACE_REF_PROMPT_AGE.keys()))
+    hc = _face_ref_allowed("hair_color", d["hair_color"], set(FACE_REF_PROMPT_HAIR_COLOR.keys()))
+    hl = _face_ref_allowed("hair_length", d["hair_length"], set(FACE_REF_PROMPT_HAIR_LENGTH.keys()))
+    eye = _face_ref_allowed("eye_color", d["eye_color"], set(FACE_REF_PROMPT_EYE.keys()))
+    fh = _face_ref_allowed("facial_hair", d["facial_hair"], set(FACE_REF_PROMPT_FACIAL_HAIR.keys()))
+    st = _face_ref_allowed("image_style", d["image_style"], set(FACE_REF_PROMPT_IMAGE_STYLE.keys()))
+
+    parts: list[str] = [FACE_REF_PROMPT_IMAGE_STYLE[st]]
+
+    s_sex = FACE_REF_PROMPT_SEX[sex]
+    s_eth = FACE_REF_PROMPT_ETHNICITY[eth]
+    s_age = FACE_REF_PROMPT_AGE[age]
+    if s_sex:
+        parts.append(s_sex)
+    if s_eth:
+        parts.append(s_eth)
+    if s_age:
+        parts.append(s_age)
+
+    if hl == "bald":
+        parts.append("bald head, no hair on scalp")
+    else:
+        h_str = FACE_REF_PROMPT_HAIR_LENGTH[hl]
+        c_str = FACE_REF_PROMPT_HAIR_COLOR[hc]
+        parts.append(f"{h_str}, {c_str} hair")
+
+    parts.append(FACE_REF_PROMPT_EYE[eye])
+
+    s_fh = FACE_REF_PROMPT_FACIAL_HAIR[fh]
+    if s_fh:
+        parts.append(s_fh)
+
+    extra = (data.get("face_extra_details") or "").strip()
+    if extra:
+        parts.append(extra)
+
+    parts.append(FACE_CANDIDATE_PROMPT_SUFFIX)
+    prompt = ", ".join(p for p in parts if p)
+
+    summary_bits = [f"{k}: {d[k]}" for k in FACE_REF_DEFAULTS]
+    if extra:
+        summary_bits.append(f"extra: {extra[:120]}")
+    summary = "; ".join(summary_bits)
+
+    return prompt, summary
+
+
+@app.route("/ai/face-ref-options", methods=["GET"])
+def ai_face_ref_options():
+    """Static dropdown metadata for face wizard (phase 1)."""
+
+    def opts(pairs: list[tuple[str, str]]) -> list[dict[str, str]]:
+        return [{"value": a, "label": b} for a, b in pairs]
+
+    return jsonify({
+        "defaults": dict(FACE_REF_DEFAULTS),
+        "fields": {
+            "sex": opts(FACE_REF_OPTIONS_SEX),
+            "ethnicity": opts(FACE_REF_OPTIONS_ETHNICITY),
+            "age": opts(FACE_REF_OPTIONS_AGE),
+            "hair_color": opts(FACE_REF_OPTIONS_HAIR_COLOR),
+            "hair_length": opts(FACE_REF_OPTIONS_HAIR_LENGTH),
+            "eye_color": opts(FACE_REF_OPTIONS_EYE_COLOR),
+            "facial_hair": opts(FACE_REF_OPTIONS_FACIAL_HAIR),
+            "image_style": opts(FACE_REF_OPTIONS_IMAGE_STYLE),
+        },
+    })
 
 
 @app.route("/ai/build-scene-prompt", methods=["POST"])
@@ -3101,92 +3499,9 @@ CRITICAL: Only extract what the text says. Do not add laptops if text says cards
         return jsonify({"error": f"Prompt generation failed: {e}"}), 500
 
 
-@app.route("/ai/build-portrait-prompt", methods=["POST"])
-@optional_rate_limit(RATE_LIMIT_AI)
-@login_required
-def ai_build_portrait_prompt():
-    """Use LLM to build a portrait prompt from character data + style."""
-    data = request.get_json(silent=True) or {}
-    try:
-        story_id = int(data.get("story_id"))
-    except (TypeError, ValueError):
-        return jsonify({"error": "story_id is required"}), 400
-    character_key = (data.get("character_key") or "").strip()
-    if not character_key:
-        return jsonify({"error": "character_key is required"}), 400
-
-    style_key = (data.get("style") or "anime").strip()
-    style_suffix = PORTRAIT_STYLES.get(style_key, PORTRAIT_STYLES["anime"])
-
-    conn = get_db()
-    try:
-        row = conn.execute(
-            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
-        ).fetchone()
-    finally:
-        conn.close()
-    if not row:
-        return jsonify({"error": "Story not found"}), 404
-
-    try:
-        chars = json.loads(row["characters"] or "{}")
-    except (json.JSONDecodeError, TypeError):
-        chars = {}
-    char_data = chars.get(character_key)
-    if not char_data or not isinstance(char_data, dict):
-        return jsonify({"error": f"Character '{character_key}' not found"}), 404
-
-    char_prompt = char_data.get("prompt", "")
-    genre_val = row["genre"] or "fantasy"
-
-    from model_resolver import get_model_for_role
-    model = get_model_for_role("image_prompt")
-    try:
-        llm = get_llm(model)
-    except Exception as e:
-        return jsonify({"error": f"LLM unavailable: {e}"}), 503
-
-    label = character_key.replace("_", " ").title()
-    llm_prompt = f"""Write a detailed image generation prompt for a character portrait.
-
-Character name: {label}
-Character description: {char_prompt}
-Story genre: {genre_val}
-
-Visual style: {style_suffix}
-
-Write a single paragraph image prompt (40-60 words) describing this character's appearance.
-Rules:
-- Describe physical appearance: face, hair, build, clothing, expression
-- Include lighting and background appropriate to the genre
-- Do NOT use the character's name — describe them visually
-- End with the style: {style_suffix}
-- Return ONLY the prompt text
-
-Prompt:"""
-
-    try:
-        raw = llm_result_to_text(llm.invoke(llm_prompt)).strip()
-        for prefix in ["Prompt:", "prompt:", "Image prompt:", "Portrait prompt:"]:
-            if raw.startswith(prefix):
-                raw = raw[len(prefix):].strip()
-        if raw.startswith('"') and raw.endswith('"'):
-            raw = raw[1:-1].strip()
-        if style_suffix.split(",")[0].lower() not in raw.lower():
-            raw = f"{raw}, {style_suffix}"
-        return jsonify({"prompt": raw, "style": style_key})
-    except Exception as e:
-        return jsonify({"error": f"Prompt generation failed: {e}"}), 500
-
-
 @app.route("/ai/scene-styles", methods=["GET"])
 def list_scene_styles():
     return jsonify({"styles": [{"key": k, "description": v} for k, v in SCENE_STYLES.items()]})
-
-
-@app.route("/ai/portrait-styles", methods=["GET"])
-def list_portrait_styles():
-    return jsonify({"styles": [{"key": k, "description": v} for k, v in PORTRAIT_STYLES.items()]})
 
 
 @app.route("/ai/list-scene-images", methods=["GET"])
@@ -3528,10 +3843,11 @@ def ai_generate_story_image():
     )
 
 
-@app.route("/ai/generate-portrait", methods=["POST"])
+@app.route("/ai/generate-character-faces", methods=["POST"])
 @optional_rate_limit(RATE_LIMIT_AI)
 @login_required
-def ai_generate_portrait():
+def ai_generate_character_faces():
+    """Generate N candidate face images for a character. User picks one as the reference."""
     import comfyui_client
 
     data = request.get_json(silent=True) or {}
@@ -3542,12 +3858,12 @@ def ai_generate_portrait():
     character_key = (data.get("character_key") or "").strip()
     if not character_key:
         return jsonify({"error": "character_key is required"}), 400
+    count = min(int(data.get("count", 3)), 6)  # Max 6 candidates
 
     if not comfyui_client.is_available():
-        return jsonify({"error": "Image generation not available (ComfyUI not running)"}), 503
+        return jsonify({"error": "ComfyUI not available"}), 503
 
     conn = get_db()
-    image_id: int | None = None
     try:
         row = conn.execute(
             "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
@@ -3560,139 +3876,173 @@ def ai_generate_portrait():
         if not char_data or not isinstance(char_data, dict):
             return jsonify({"error": f"Character '{character_key}' not found"}), 404
 
-        # Step 1: Use LLM to convert personality prompt to visual description
-        personality = char_data.get("prompt", "")
-        char_label = character_key.replace("_", " ").title()
-        genre = row["genre"] or "fantasy"
-
-        style_hint = ""
-        g0 = (genre or "").lower()
-        if g0 in ("romance", "comedy"):
-            style_hint = (
-                "\nStyle hint: describe a cute anime-inspired look (slice-of-life romance VN) — "
-                "soft features, expressive eyes, warm palette for hair/outfit; keep it PG.\n"
-            )
-        elif g0 == "drama":
-            style_hint = (
-                "\nStyle hint: corporate job interview — interviewers in a glass conference room, "
-                "polished office clothing, professional grooming; stylized cartoon/anime portrait, not photorealistic.\n"
-            )
-        elif g0 == "thriller":
-            style_hint = (
-                "\nStyle hint: spy thriller — intelligence operatives, formal gala or field attire, "
-                "sharp eyes, composed face; stylized anime portrait, not photorealistic.\n"
-            )
-        visual_prompt = f"""Based on this RPG character description, write a short physical appearance description (2-3 sentences) for generating a portrait image. Focus on: face, hair, clothing, expression, age, build. Do not include personality or behavior — only visual details.
-{style_hint}
-Character name: {char_label}
-Genre: {genre}
-Personality description: {personality}
-
-Physical appearance:"""
-
-        try:
-            llm = get_llm(get_model_for_role("tools"))
-            visual_desc = llm_result_to_text(llm.invoke(visual_prompt)).strip()
-        except Exception as e:
-            logger.error("Portrait LLM failed: %s", e)
-            if (genre or "").lower() == "drama":
-                visual_desc = (
-                    f"{char_label}, corporate job interviewer, business professional, stylized anime cartoon look, "
-                    "sharp office attire, glass conference room, evaluating candidate"
-                )
-            elif (genre or "").lower() == "thriller":
-                visual_desc = (
-                    f"{char_label}, seasoned intelligence operative, sharp observant eyes, "
-                    "composed expression, formal or field-appropriate attire, anime spy thriller portrait"
-                )
-            else:
-                visual_desc = f"{char_label}, {genre} character"
-
-        g_low = (genre or "").lower()
-        if g_low in ("romance", "comedy"):
-            style_suffix = (
-                "cute anime style portrait, cel-shaded, soft warm lighting, large expressive eyes, "
-                "friendly approachable face, head and shoulders, cozy slice-of-life mood"
-            )
-        elif g_low == "drama":
-            style_suffix = (
-                "stylized cartoon anime portrait, business professionals conducting a job interview, "
-                "modern glass-walled conference room daylight, sharp office attire, attentive interviewer "
-                "expression facing the candidate, cel-shaded, clean character design, head and shoulders, "
-                "subtle blurred meeting table or chairs in background"
-            )
-        elif g_low == "thriller":
-            style_suffix = (
-                "anime spy thriller portrait, seasoned intelligence operative, sharp observant eyes, "
-                "controlled expression, evening formal or tactical-chic attire, cool cinematic rim light, "
-                "cel-shaded, dangerous competence, head and shoulders, dark moody background"
-            )
-        else:
-            style_suffix = (
-                "portrait, head and shoulders, dark atmospheric background, RPG character art, "
-                "detailed face, cinematic lighting"
-            )
-
-        # Step 2: Generate portrait via ComfyUI
         nsfw_rating = row["nsfw_rating"] or "none"
+
         custom_prompt = (data.get("prompt") or "").strip()
-        comfyui_prompt = custom_prompt if custom_prompt else f"{visual_desc}, {style_suffix}"
+        if custom_prompt:
+            base_prompt = custom_prompt
+            visual_summary = "custom prompt"
+        else:
+            base_prompt, visual_summary = build_face_reference_prompt(data)
+
         ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
-        ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
-        image_id = create_image_record(
-            conn,
-            kind="portrait",
-            scope="character",
-            owner_type="story",
-            owner_id=story_id,
-            owner_key=character_key,
-            prompt=comfyui_prompt,
-            workflow_name="PonyForRPG" if ckpt_key == "pony" else "FluxForRPG",
-            model_name=ckpt_name,
-            width=512,
-            height=768,
-        )
-        conn.commit()
+        ckpt_cfg = comfyui_client.CHECKPOINTS[ckpt_key]
+        neg_parts = [ckpt_cfg["negative_prompt"], FACE_CANDIDATE_NEGATIVE_EXTRA]
+        face_negative = ", ".join(p for p in neg_parts if p)
 
         portraits_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "portraits")
         os.makedirs(portraits_dir, exist_ok=True)
 
-        prefix = f"portrait_{story_id}_{character_key}"
-        comfyui_filename = comfyui_client.generate_image(comfyui_prompt, width=512, height=768, prefix=prefix, nsfw_rating=nsfw_rating)
-        if not comfyui_filename:
-            if image_id is not None:
-                mark_image_failed(conn, image_id, "Portrait generation failed")
-                conn.commit()
-            return jsonify({"error": "Portrait generation failed"}), 500
+        candidates = []
+        for i in range(count):
+            prefix = f"face_{story_id}_{character_key}_{i}"
+            comfyui_filename = comfyui_client.generate_image(
+                base_prompt,
+                width=768,
+                height=768,
+                prefix=prefix,
+                nsfw_rating=nsfw_rating,
+                negative_prompt=face_negative,
+            )
+            if not comfyui_filename:
+                continue
 
-        local_filename = f"story_{story_id}_{character_key}.png"
-        local_path = os.path.join(portraits_dir, local_filename)
+            local_filename = f"face_{story_id}_{character_key}_{i}.png"
+            local_path = os.path.join(portraits_dir, local_filename)
+            if comfyui_client.download_image(comfyui_filename, local_path):
+                candidates.append({
+                    "index": i,
+                    "filename": local_filename,
+                    "url": f"/images/portraits/{local_filename}",
+                })
 
-        if not comfyui_client.download_image(comfyui_filename, local_path):
-            if image_id is not None:
-                mark_image_failed(conn, image_id, "Failed to save portrait")
-                conn.commit()
-            return jsonify({"error": "Failed to save portrait"}), 500
-        if image_id is not None:
-            mark_image_ready(conn, image_id, local_path)
-
-        # Step 3: Update character data with portrait filename
-        char_data["portrait"] = local_filename
-        characters[character_key] = char_data
-        conn.execute(
-            "UPDATE stories SET characters = ?, updated_at = datetime('now') WHERE id = ?",
-            (json.dumps(characters), story_id),
-        )
-        conn.commit()
+        if not candidates:
+            return jsonify({"error": "All face generations failed"}), 500
     finally:
         conn.close()
 
     return jsonify({
         "ok": True,
-        "image_id": image_id,
-        "portrait": local_filename,
-        "url": f"/images/portraits/{local_filename}",
-        "visual_description": visual_desc,
+        "candidates": candidates,
+        "visual_description": visual_summary,
+        "count": len(candidates),
+    })
+
+
+@app.route("/ai/generate-character-variants", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_generate_character_variants():
+    """Generate mood-based portrait variants from an approved reference face using IP-Adapter."""
+    import comfyui_client
+
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    character_key = (data.get("character_key") or "").strip()
+    if not character_key:
+        return jsonify({"error": "character_key is required"}), 400
+    reference_filename = (data.get("reference") or "").strip()
+    if not reference_filename:
+        return jsonify({"error": "reference filename is required"}), 400
+
+    # Variants to generate — list of {variant_key, prompt_suffix}
+    variants = data.get("variants")
+    if not variants or not isinstance(variants, list):
+        return jsonify({"error": "variants list is required"}), 400
+
+    weight = float(data.get("weight", 0.75))
+
+    if not comfyui_client.is_available():
+        return jsonify({"error": "ComfyUI not available"}), 503
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+
+        characters = json.loads(row["characters"] or "{}")
+        char_data = characters.get(character_key)
+        if not char_data or not isinstance(char_data, dict):
+            return jsonify({"error": f"Character '{character_key}' not found"}), 404
+
+        nsfw_rating = row["nsfw_rating"] or "none"
+        genre = row["genre"] or "fantasy"
+        char_label = character_key.replace("_", " ").title()
+
+        portraits_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "portraits")
+        os.makedirs(portraits_dir, exist_ok=True)
+
+        ref_path = os.path.join(portraits_dir, reference_filename)
+        if not os.path.exists(ref_path):
+            return jsonify({"error": "Reference image not found on disk"}), 404
+
+        results = []
+        for v in variants[:12]:  # Cap at 12 variants
+            variant_key = (v.get("key") or "").strip()
+            prompt_suffix = (v.get("prompt") or "").strip()
+            if not variant_key or not prompt_suffix:
+                continue
+
+            full_prompt = (
+                f"{char_label}, {prompt_suffix}, portrait, head and shoulders, "
+                "detailed face, cinematic lighting, high quality character art"
+            )
+
+            prefix = f"variant_{story_id}_{character_key}_{variant_key}"
+            comfyui_filename = comfyui_client.generate_with_face_ref(
+                prompt=full_prompt,
+                ref_image_path=ref_path,
+                width=512,
+                height=768,
+                prefix=prefix,
+                nsfw_rating=nsfw_rating,
+                weight=weight,
+            )
+            if not comfyui_filename:
+                results.append({"key": variant_key, "ok": False, "error": "Generation failed"})
+                continue
+
+            local_filename = f"variant_{story_id}_{character_key}_{variant_key}.png"
+            local_path = os.path.join(portraits_dir, local_filename)
+            if comfyui_client.download_image(comfyui_filename, local_path):
+                results.append({
+                    "key": variant_key,
+                    "ok": True,
+                    "filename": local_filename,
+                    "url": f"/images/portraits/{local_filename}",
+                })
+            else:
+                results.append({"key": variant_key, "ok": False, "error": "Download failed"})
+
+        # Auto-update character portraits dict with successful variants
+        portraits = char_data.get("portraits") or {}
+        updated = False
+        for r in results:
+            if r.get("ok"):
+                portraits[r["key"]] = r["filename"]
+                updated = True
+        if updated:
+            char_data["portraits"] = portraits
+            characters[character_key] = char_data
+            conn.execute(
+                "UPDATE stories SET characters = ?, updated_at = datetime('now') WHERE id = ?",
+                (json.dumps(characters), story_id),
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "results": results,
+        "total": len(results),
+        "success": sum(1 for r in results if r.get("ok")),
     })
 
 

@@ -26,7 +26,14 @@
 	let playerName = $state('');
 	let subgraphName = $state('');
 	type MoodAxis = { axis: string; low: string; high: string; value: number };
-	type CharDisplay = { label: string; moods: MoodAxis[]; legacyMood?: number; portrait?: string };
+	type CharDisplay = {
+		key: string;
+		label: string;
+		moods: MoodAxis[];
+		legacyMood?: number;
+		portrait?: string;
+		portraits?: Record<string, string>;
+	};
 	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
 	let characters = $state<CharDisplay[]>([]);
 	let storyImages = $state<StoryImage[]>([]);
@@ -47,7 +54,6 @@
 	let buildingScenePrompt = $state(false);
 	let showScenePromptEditor = $state(false);
 	let sceneStyles = $state<{ key: string; description: string }[]>([]);
-	let portraitStyles = $state<{ key: string; description: string }[]>([]);
 	let brokenPortraitImages = new SvelteSet<string>();
 	let brokenSceneImages = new SvelteSet<string>();
 	let brokenStoryImages = new SvelteSet<string>();
@@ -116,11 +122,21 @@
 				if (!v || typeof v !== 'object') continue;
 				const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 				const portrait = typeof v.portrait === 'string' ? v.portrait : '';
+				let portraits: Record<string, string> | undefined;
+				if (v.portraits && typeof v.portraits === 'object' && !Array.isArray(v.portraits)) {
+					portraits = {};
+					for (const [pk, pv] of Object.entries(v.portraits as Record<string, unknown>)) {
+						if (typeof pv === 'string' && pv.trim()) portraits[pk] = pv.trim();
+					}
+					if (Object.keys(portraits).length === 0) portraits = undefined;
+				}
 				const rawMoods = v.moods;
 				if (Array.isArray(rawMoods) && rawMoods.length > 0) {
 					parsed.push({
+						key: k,
 						label,
 						portrait,
+						portraits,
 						moods: rawMoods.map((m: Record<string, unknown>) => ({
 							axis: String(m.axis ?? 'mood'),
 							low: String(m.low ?? 'low'),
@@ -129,7 +145,7 @@
 						})),
 					});
 				} else {
-					parsed.push({ label, portrait, moods: [], legacyMood: Number(v.mood ?? 5) });
+					parsed.push({ key: k, label, portrait, portraits, moods: [], legacyMood: Number(v.mood ?? 5) });
 				}
 			}
 			characters = parsed;
@@ -299,8 +315,6 @@
 		// Load image styles
 		fetch('/api/ai/scene-styles', { credentials: 'include' })
 			.then(r => r.json()).then(j => { if (Array.isArray(j.styles)) sceneStyles = j.styles; }).catch(() => {});
-		fetch('/api/ai/portrait-styles', { credentials: 'include' })
-			.then(r => r.json()).then(j => { if (Array.isArray(j.styles)) portraitStyles = j.styles; }).catch(() => {});
 	});
 
 	async function send() {
@@ -525,8 +539,18 @@
 		try { return new Date(s).toLocaleString(); } catch { return s; }
 	}
 
+	function portraitBasename(path: string): string {
+		const s = (path || '').split('?')[0].trim();
+		if (!s) return '';
+		const i = s.lastIndexOf('/');
+		return i >= 0 ? s.slice(i + 1) : s;
+	}
+
 	function portraitImageSrc(path: string): string {
-		return `/images/portraits/${path}`;
+		const p = (path || '').split('?')[0].trim();
+		if (!p) return '';
+		if (p.startsWith('/')) return p;
+		return `/images/portraits/${p}`;
 	}
 
 	function isPortraitBroken(path: string): boolean {
@@ -609,9 +633,8 @@
 						{/if}
 					</div>
 				{/if}
-				{#each characters as char (char.label)}
-					{@const charKey = char.label.toLowerCase().replace(/\s+/g, '_')}
-					{@const activePortrait = activePortraits[charKey] || char.portrait}
+				{#each characters as char (char.key)}
+					{@const activePortrait = portraitBasename(activePortraits[char.key] || char.portrait || '')}
 					<div class="portrait-card">
 						{#if activePortrait && !isPortraitBroken(activePortrait)}
 							<img
@@ -620,6 +643,7 @@
 								class="portrait-img"
 								loading="lazy"
 								decoding="async"
+								title="Current expression"
 								onerror={() => markPortraitBroken(activePortrait ?? '')}
 								onload={() => clearPortraitBroken(activePortrait ?? '')}
 							/>
@@ -630,6 +654,33 @@
 							</div>
 						{/if}
 						<span class="portrait-name">{char.label}</span>
+						{#if char.portraits && Object.keys(char.portraits).length > 0}
+							<div class="portrait-variants" aria-label="Expression variants">
+								<span class="variants-caption">Variants</span>
+								<div class="portrait-variants-strip">
+									{#each Object.entries(char.portraits).sort(([a], [b]) => a.localeCompare(b)) as [vkey, vfile] (vkey)}
+										{@const file = portraitBasename(vfile || '')}
+										{@const isActive = Boolean(file && activePortrait && file === activePortrait)}
+										<div class="portrait-variant-chip" class:active={isActive} title="{vkey}{isActive ? ' (current)' : ''}">
+											{#if file && !isPortraitBroken(file)}
+												<img
+													src={portraitImageSrc(file)}
+													alt={vkey}
+													loading="lazy"
+													decoding="async"
+													class="portrait-variant-img"
+													onerror={() => markPortraitBroken(file)}
+													onload={() => clearPortraitBroken(file)}
+												/>
+											{:else}
+												<div class="portrait-variant-fallback">{vkey.slice(0, 1)}</div>
+											{/if}
+											<span class="portrait-variant-label">{vkey}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/each}
 			</aside>
@@ -745,7 +796,7 @@
 			{#if hasCharacters}
 				<section class="side-block">
 					<h2>Characters</h2>
-					{#each characters as char (char.label)}
+					{#each characters as char (char.key)}
 						<div class="char-block">
 							<strong>{char.label}</strong>
 							{#if char.moods.length > 0}
@@ -756,6 +807,23 @@
 								</ul>
 							{:else if char.legacyMood !== undefined}
 								<span class="mood-badge">mood: {char.legacyMood}/10</span>
+							{/if}
+							{#if char.portraits && Object.keys(char.portraits).length > 0}
+								{@const ap = portraitBasename(activePortraits[char.key] || char.portrait || '')}
+								<div class="sidebar-char-variants">
+									<span class="variants-caption">Portraits</span>
+									<div class="sidebar-char-variant-strip">
+										{#each Object.entries(char.portraits).sort(([a], [b]) => a.localeCompare(b)) as [vk, vf] (vk)}
+											{@const f = portraitBasename(vf || '')}
+											<div class="sidebar-char-variant" class:active={Boolean(f && ap && f === ap)} title={vk}>
+												{#if f && !isPortraitBroken(f)}
+													<img src={portraitImageSrc(f)} alt="" loading="lazy" decoding="async" onerror={() => markPortraitBroken(f)} onload={() => clearPortraitBroken(f)} />
+												{/if}
+												<span>{vk}</span>
+											</div>
+										{/each}
+									</div>
+								</div>
 							{/if}
 						</div>
 					{/each}
@@ -840,7 +908,7 @@
 	.page.narrow { padding: 1rem; max-width: 40rem; }
 	.state-note { border: 1px dashed #3a414d; border-radius: 10px; padding: 0.75rem 0.85rem; background: #171b22; }
 	.layout { display: flex; gap: 0.75rem; max-width: 1300px; margin: 0 auto; padding: 0 0.5rem 2rem; min-height: calc(100vh - 2rem); }
-	.portrait-sidebar { width: 100px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.25rem; overflow-y: auto; max-height: calc(100vh - 2rem); }
+	.portrait-sidebar { width: 118px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.25rem; overflow-y: auto; max-height: calc(100vh - 2rem); }
 	.portrait-card { text-align: center; }
 	.portrait-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; display: block; aspect-ratio: 2 / 3; }
 	.portrait-placeholder {
@@ -858,6 +926,20 @@
 		font-size: 0.68rem;
 	}
 	.portrait-name { display: block; font-size: 0.72rem; color: #9aa0a6; margin-top: 0.25rem; line-height: 1.2; }
+	.variants-caption { display: block; font-size: 0.62rem; color: #7f8896; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.4rem; text-align: left; }
+	.portrait-variants { margin-top: 0.15rem; text-align: left; width: 100%; }
+	.portrait-variants-strip { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.2rem; }
+	.portrait-variant-chip { width: 36px; text-align: center; }
+	.portrait-variant-chip.active .portrait-variant-img { outline: 2px solid #1a73e8; outline-offset: 1px; }
+	.portrait-variant-img { width: 36px; height: 54px; object-fit: cover; border-radius: 4px; border: 1px solid #2a2f38; display: block; }
+	.portrait-variant-fallback { width: 36px; height: 54px; border-radius: 4px; border: 1px solid #2a2f38; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; color: #7f8896; background: #161a20; }
+	.portrait-variant-label { display: block; font-size: 0.58rem; color: #7f8896; margin-top: 0.1rem; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 36px; }
+	.sidebar-char-variants { margin-top: 0.45rem; }
+	.sidebar-char-variant-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.2rem; }
+	.sidebar-char-variant { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; font-size: 0.65rem; color: #9aa0a6; max-width: 52px; }
+	.sidebar-char-variant img { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid #2a2f38; }
+	.sidebar-char-variant.active img { outline: 2px solid #1a73e8; outline-offset: 1px; }
+	.sidebar-char-variant span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52px; }
 	.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.75rem; }
 	.transcript-wrap { flex: 1; min-height: 200px; border: 1px solid #2a2f38; border-radius: 10px; background: #1a1d23; overflow: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
 	.transcript { height: min(60vh, 520px); overflow-y: auto; padding: 0.75rem; }
@@ -918,7 +1000,7 @@
 	.kv { margin: 0; display: grid; grid-template-columns: 6rem 1fr; gap: 0.25rem 0.5rem; font-size: 0.88rem; }
 	.kv dt { margin: 0; color: #9aa0a6; font-weight: 600; }
 	.kv dd { margin: 0; }
-	.char-block { margin-bottom: 0.65rem; }
+	.char-block { margin-bottom: 0.85rem; }
 	.char-block strong { font-size: 0.9rem; }
 	.mood-list { list-style: none; margin: 0.2rem 0 0; padding: 0; font-size: 0.82rem; }
 	.mood-list li { margin-bottom: 0.15rem; }
