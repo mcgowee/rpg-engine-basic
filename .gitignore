@@ -31,5 +31,9 @@ web/.svelte-kit/
 .DS_Store
 Thumbs.db
 
+# Generated images (too many, too large for git)
+web/static/images/scenes/
+web/static/images/story/
+
 # Cursor
 .cursor/

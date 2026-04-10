@@ -24,9 +24,8 @@
 	let genre = $state('');
 	let tone = $state('');
 	let nsfwRating = $state('none');
-	let nsfwTags = $state<string[]>([]);
 	let opening = $state('');
-	let subgraphName = $state('conversation');
+	let subgraphName = $state('narrator_chat_lite');
 	let notes = $state('');
 	let coverImage = $state('');
 	let coverCacheBust = $state('');
@@ -39,11 +38,8 @@
 	let coverLoadFailed = $state(false);
 	let genreCoverLoadFailed = $state(false);
 	type StoryImage = { filename: string; image_id?: number | null; prompt?: string; created_at?: string };
+	/** Legacy field — preserved on load/save; use Gallery tab for new scene art */
 	let storyImages = $state<StoryImage[]>([]);
-	let manualStoryImagePrompt = $state('');
-	let generatingStoryImage = $state(false);
-	let storyImageError = $state('');
-	let storyImageOk = $state('');
 
 	// Scene gallery
 	type SceneGalleryItem = {
@@ -135,7 +131,6 @@
 			galleryImageError = 'Network error';
 		}
 	}
-	let brokenStoryImages = new SvelteSet<string>();
 	let generatingPortrait = $state('');
 	let portraitStyle = $state('anime');
 	let portraitPromptText = $state('');
@@ -312,28 +307,6 @@
 		return `/images/portraits/${portrait}`;
 	}
 
-	function storyImageSrc(filename: string): string {
-		return `/images/story/${filename}`;
-	}
-
-	function storyImageKey(img: StoryImage, idx: number): string {
-		return `${idx}:${img.filename}:${img.created_at ?? ''}`;
-	}
-
-	function isStoryImageBroken(key: string): boolean {
-		return brokenStoryImages.has(key);
-	}
-
-	function markStoryImageBroken(key: string): void {
-		if (brokenStoryImages.has(key)) return;
-		brokenStoryImages.add(key);
-	}
-
-	function clearStoryImageBroken(key: string): void {
-		if (!brokenStoryImages.has(key)) return;
-		brokenStoryImages.delete(key);
-	}
-
 	function normalizeStoryImages(value: unknown): StoryImage[] {
 		if (!Array.isArray(value)) return [];
 		const out: StoryImage[] = [];
@@ -351,49 +324,6 @@
 			});
 		}
 		return out;
-	}
-
-	function buildAutoStoryImagePrompt(): string {
-		const parts = [title.trim(), genre.trim(), tone.trim(), description.trim(), opening.trim()]
-			.filter(Boolean)
-			.slice(0, 4);
-		return parts.join(' | ');
-	}
-
-	function removeStoryImage(index: number): void {
-		storyImages = storyImages.filter((_, i) => i !== index);
-	}
-
-	async function generateStoryImage(prompt: string): Promise<void> {
-		if (!storyId || generatingStoryImage) return;
-		generatingStoryImage = true;
-		storyImageError = '';
-		storyImageOk = '';
-		try {
-			const r = await fetch('/api/ai/generate-story-image', {
-				method: 'POST', credentials: 'include',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ story_id: storyId, prompt }),
-			});
-			const j = await r.json().catch(() => ({}));
-			if (!r.ok || !j.filename) {
-				storyImageError = j.error ?? 'Story image generation failed';
-				return;
-			}
-			const next: StoryImage = {
-				filename: String(j.filename),
-				image_id: j.image_id == null ? null : Number(j.image_id),
-				prompt: String(j.prompt ?? ''),
-				created_at: String(j.created_at ?? new Date().toISOString()),
-			};
-			storyImages = [...storyImages, next];
-			storyImageOk = 'Story image generated.';
-			manualStoryImagePrompt = '';
-		} catch {
-			storyImageError = 'Network error';
-		} finally {
-			generatingStoryImage = false;
-		}
 	}
 
 	function portraitErrorKey(idx: number, portrait: string): string {
@@ -423,8 +353,6 @@
 		{ value: 'explicit', label: 'Explicit — sex and graphic content are central' },
 		{ value: 'extreme', label: 'Extreme — no limits' },
 	];
-
-	const NSFW_TAGS = ['romance', 'gay/lesbian', 'explicit'];
 
 	onMount(async () => {
 		loadCoverStyles();
@@ -463,9 +391,8 @@
 					genre = s.genre ?? '';
 					tone = s.tone ?? '';
 					nsfwRating = s.nsfw_rating ?? 'none';
-					nsfwTags = Array.isArray(s.nsfw_tags) ? s.nsfw_tags : [];
 					opening = s.opening ?? '';
-					subgraphName = s.subgraph_name ?? 'conversation';
+					subgraphName = s.subgraph_name ?? 'narrator_chat_lite';
 					mainGraphTemplateId =
 						s.main_graph_template_id != null && s.main_graph_template_id !== ''
 							? String(s.main_graph_template_id)
@@ -499,7 +426,7 @@
 				genre,
 				tone: tone.trim(),
 				nsfw_rating: nsfwRating,
-				nsfw_tags: nsfwTags,
+				nsfw_tags: [],
 				opening: opening.trim(),
 				subgraph_name: subgraphName,
 				main_graph_template_id:
@@ -713,7 +640,7 @@
 		notes: {
 			improve: 'AI rewrites: clearer, more helpful, explains what the story demonstrates',
 			instruct: 'Tell the AI what to add — e.g. "mention the mood system" or "add tips for new players"',
-			placeholder: 'e.g. explain how the conditional edge works in this story',
+			placeholder: 'e.g. note which subgraph you recommend and why',
 		},
 		narrator_prompt: {
 			improve: 'AI rewrites: clearer instructions about tone, pacing, and style',

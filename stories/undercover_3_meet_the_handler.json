@@ -1,7 +1,7 @@
 {
   "export_version": 1,
   "title": "Spy Thriller: Meet the Handler",
-  "description": "Tutorial 3 of 5 — Handler Viper is in the scene. Subgraph: smart_conversation. After the narrator sets the scene, NPCs speak in character, then a short narrator coda closes the beat.",
+  "description": "Tutorial 3 of 5 — Handler Viper is in the scene. Subgraph: narrator_chat. After the narrator sets the scene, Viper speaks via character_agent; bubbles separate narrator vs character lines.",
   "genre": "thriller",
   "opening": "You adjust your tie in the reflection of the embassy's glass doors. The invitation in your pocket is forged — but it's flawless. Inside, a gala is in full swing. As you push through the doors, you spot a familiar face by the bar — your handler, codenamed Viper. She gives you a barely perceptible nod.",
   "narrator_prompt": "You are the narrator for a spy thriller text adventure. Describe scenes in second person with tension and sensory detail. Keep responses to 2-3 paragraphs. Do not speak as NPCs — they will respond separately. End each beat with atmosphere, not a direct player prompt.",
@@ -10,7 +10,7 @@
   "player_background": "A veteran intelligence operative working deep cover. You speak three languages, can pick most locks, and have a talent for reading people. Tonight's mission could make or break your career.",
   "subgraph_name": "narrator_chat",
   "cover_image": "story_spy_rolling_memory.png",
-  "notes": "Tutorial 3/5 — smart_conversation: Viper speaks after the narrator; narrator_coda ends the turn. Delete all characters in a copy to see the graph skip NPC steps (same subgraph).",
+  "notes": "Tutorial 3/5 — narrator_chat with one character: watch narrator (green) vs character (purple) bubbles. Remove all characters in a copy to see dialogue bubbles disappear.",
   "characters": {
     "viper": {
       "prompt": "You are Viper, a seasoned intelligence handler running Agent X's mission tonight. You're calm, precise, and never waste words. You communicate in coded language when others might overhear. You're worried about this mission — the intel suggests a double agent in the embassy — but you'd never show it. You speak in clipped, professional sentences with occasional dry humor. You call Agent X 'darling' as part of your cover as a couple.\n\nHow she looks: woman in her late 30s to 40s, sharp dark eyes that miss nothing, dark hair swept back or in a sleek low style, understated evening formal wear fit for an embassy gala — elegant, practical, minimal jewelry; calm, unreadable expression with a hint of dry wit at the corners of her mouth.",

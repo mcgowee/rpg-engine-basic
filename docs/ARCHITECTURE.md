@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes how **RPG Engine Basic** is structured: the LangGraph **subgraphs**, **runtime state**, the **Flask API**, and how the **SvelteKit** client talks to the backend.
+This document describes how **RPG Engine Basic** is structured: LangGraph **subgraphs**, **runtime state**, the **Flask API**, and how the **SvelteKit** client talks to the backend.
 
 ## System overview
 
@@ -19,19 +19,18 @@ flowchart LR
 
 ## Conversation engine: subgraphs (LangGraph)
 
-A **subgraph** is a JSON document validated by `graphs/builder.py::validate_graph_definition` and compiled with **LangGraph**’s `StateGraph`.
+A **subgraph** is a JSON document validated by `graphs/builder.py::validate_graph_definition` and compiled with **LangGraph**’s `StateGraph`. Edges use **`__start__`** and **`__end__`** only (no routers).
 
 ### State shape
 
 The shared `State` `TypedDict` in `graphs/builder.py` defines the fields graphs expect, including:
 
 - **Player input / output:** `message`, `response`
-- **Memory:** `history` (list of turn strings), `memory_summary` (LLM-compressed summary)
+- **Memory:** `history` (structured turn dicts: player, narrator, per-character dialogue/action, mood snapshot), `memory_summary` (LLM-compressed summary)
 - **Story context:** `narrator` (`prompt`, `model`), `player`, `characters`, `story` (genre, tone, NSFW metadata, etc.), `game_title`, `opening`, `paused`, `turn_count`
+- **UI payload:** `_bubbles` (narrator + character bubbles), `_scene_image`, `_active_portraits`, `_narrator_text`, `_character_responses`
 
-The `State` `TypedDict` in `graphs/builder.py` lists the fields LangGraph merges; at play time the dict may also include **`story`** and other keys added by `_build_state_from_story` / saves.
-
-At runtime, `app.py` adds private keys such as `_story_id` and `_subgraph_name` for bookkeeping; these are not part of the graph schema but ride along in the same dict.
+At runtime, `app.py` adds keys such as `_story_id` and `_subgraph_name` for bookkeeping.
 
 ### Nodes (`nodes/`)
 
@@ -39,28 +38,24 @@ Registered in `nodes/__init__.py` as `NODE_REGISTRY`:
 
 | Node | LLM? | Role |
 |------|------|------|
-| `narrator` | Yes | Builds the main scene response from prompts + context |
-| `npc` | Yes | Appends in-character dialogue per NPC |
-| `mood` | Yes | Updates per-character mood (axes 1–10 or legacy single-field step) |
-| `narrator_coda` | Yes | Optional closing beat after NPC lines (e.g. player prompt) |
-| `condense` | Yes | Refreshes `memory_summary` from `history` |
-| `memory` | No | Appends the turn to `history`, updates `turn_count` |
+| `narrator` | Yes | Main scene narration; sets `_narrator_text` |
+| `character_agent` | Yes | Per-character dialogue + short action → `_character_responses` |
+| `response_builder` | No | Builds `_bubbles` for the play UI |
+| `scene_image` | No* | Sidebar scene / gallery image selection |
+| `mood` | Yes | Updates character mood axes |
+| `condense` | Yes | Refreshes `memory_summary` from structured `history` |
+| `memory` | No | Appends structured turns, updates `turn_count` |
 
-### Routers (`routers/`)
-
-- `route_graph_entry` — always enters at `narrator`.
-- `route_after_narrator` — returns the string **`npc`** when `characters` is non-empty, else **`condense`**. The graph’s **mapping** renames that to the next node (e.g. map `"npc"` → `mood` so the chain is mood → npc, or map `"npc"` → `npc` when there is no mood node).
-
-Example: `graphs/full_story.json` wires `narrator` → conditional → `mood` → `npc` → `narrator_coda` → `condense` → `memory` → end.
+\*May integrate ComfyUI; no prose LLM inside the node.
 
 ### Registry
 
-`graphs/registry.py` loads every row from `subgraphs`, parses JSON, compiles, and caches. CRUD routes in `app.py` call `reload_one` / `remove` so the cache stays consistent. **Play** uses `registry.require(state["_subgraph_name"])` after checking `name in registry`.
+`graphs/registry.py` loads subgraph rows, parses JSON, compiles, and caches. CRUD routes in `app.py` call `reload_one` / `remove` so the cache stays consistent. **Play** uses `registry.require(state["_subgraph_name"])` after checking `name in registry`.
 
 ## Play flow
 
 1. **`POST /play/start`** — Builds state, applies main-graph phase 0 when `main_graph_template_id` is set (`play_phases`), optionally pre-fills `response` with `opening`, stores the session in **`GameSessionCache`** (LRU + TTL; `GAME_SESSION_CACHE_MAX=0` disables and forces DB reload each time), upserts slot 0, increments `play_count`.
-2. **`POST /play/chat`** — Per-session lock, `registry.require(...).invoke(state)`, history merge, **`advance_phase_after_turn`**, persist slot 0. Rate-limited via `RATE_LIMIT_PLAY_CHAT`.
+2. **`POST /play/chat`** — Per-session lock, `registry.require(...).invoke(state)`, history merge, **`advance_phase_after_turn`**, persist slot 0. Response includes `bubbles`, `scene_image`, and related fields for the multi-bubble UI. Rate-limited via `RATE_LIMIT_PLAY_CHAT`.
 3. **`GET /play/status`**, **`POST /play/save|load`**, pause/unpause — same cache + `_ensure_play_session` / `hydrate_runtime_from_story_save` so template-based saves keep `_subgraph_name`.
 
 Concurrency: `threading.Lock` per `session_{story_id}_{user_id}` avoids overlapping LLM turns for the same adventure.
@@ -69,7 +64,7 @@ Concurrency: `threading.Lock` per `session_{story_id}_{user_id}` avoids overlapp
 
 ## Stories and seed data
 
-- **DB table `stories`** holds flat columns plus JSON `characters` (personalities, mood axes, portraits, etc.).
+- **DB table `stories`** holds flat columns plus JSON `characters` (personalities, mood axes, portraits, variant rules, etc.).
 - **`db.py::seed_builtin_stories`** imports `stories/*.json` once per title for the synthetic `system` user and marks them public.
 - **`seed_builtin_subgraphs`** imports `graphs/*.json` as builtin subgraphs (same `system` user).
 
@@ -77,7 +72,7 @@ Concurrency: `threading.Lock` per `session_{story_id}_{user_id}` avoids overlapp
 
 The **`main_graph_templates`** table and UI (`web/src/routes/graphs/main/+page.svelte`) let authors define ordered **phases**, each referencing a **subgraph name** and a **transition** (`milestone`, `rules`, `turns`, `location`, `manual`) with a string `condition`.
 
-**Main graph in play:** If `stories.main_graph_template_id` is set, `play_phases.apply_main_graph_to_new_state` initializes `_phase_index`, `_turns_in_phase`, and `_subgraph_name` from the first phase. After each `/play/chat` turn, `advance_phase_after_turn` may advance the phase when the template’s `transition` matches (`turns`, `milestone`, `manual`, `location`, or `rules` via `_rules_transition`). If the column is null, play uses `stories.subgraph_name` only (same as before).
+**Main graph in play:** If `stories.main_graph_template_id` is set, `play_phases.apply_main_graph_to_new_state` initializes `_phase_index`, `_turns_in_phase`, and `_subgraph_name` from the first phase. After each `/play/chat` turn, `advance_phase_after_turn` may advance the phase when the template’s `transition` matches. If the column is null, play uses `stories.subgraph_name` only.
 
 ## AI and images
 
@@ -102,6 +97,6 @@ The **`main_graph_templates`** table and UI (`web/src/routes/graphs/main/+page.s
 
 ## Other docs
 
-- [docs/SUBGRAPHS.md](SUBGRAPHS.md) — builtin subgraph comparison (pipelines, routing).
+- [docs/SUBGRAPHS.md](SUBGRAPHS.md) — builtin subgraph comparison.
 - [NODE_STATUS.md](../NODE_STATUS.md) — nodes and builtins snapshot.
 - [docs/INDEX.md](INDEX.md) — list of documentation in this repo.

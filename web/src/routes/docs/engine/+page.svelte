@@ -9,16 +9,8 @@
 		writes: string[];
 	};
 
-	type RouterDesc = {
-		summary: string;
-		description: string;
-		returns: string[];
-	};
-
 	let nodes = $state<string[]>([]);
 	let nodeDescs = $state<Record<string, NodeDesc>>({});
-	let routers = $state<Record<string, string[]>>({});
-	let routerDescs = $state<Record<string, RouterDesc>>({});
 	let loading = $state(true);
 	let error = $state('');
 
@@ -29,8 +21,6 @@
 			const data = await r.json();
 			nodes = data.nodes ?? [];
 			nodeDescs = data.node_descriptions ?? {};
-			routers = data.routers ?? {};
-			routerDescs = data.router_descriptions ?? {};
 		} catch {
 			error = 'Network error';
 		} finally {
@@ -46,13 +36,13 @@
 <section class="docs">
 	<p class="breadcrumb"><a href="/docs">Docs</a> / Engine Reference</p>
 	<div class="doc-hero">
-		<img src="/images/docs-engine-hero.png" alt="Graph nodes and routes visualization" />
+		<img src="/images/docs-engine-hero.png" alt="LangGraph-style pipeline: narrator, characters, bubbles, memory" />
 	</div>
 	<h1>Engine Reference</h1>
-	<p class="lede">How nodes, routers, edges, and state work together to run a story. For graph builders who want to create custom subgraphs.</p>
+	<p class="lede">How nodes, edges, and state work together each turn. For authors designing or cloning custom subgraphs.</p>
 	<p class="see-also">
 		<strong>Choosing a builtin pipeline?</strong>
-		<a href="/docs/subgraphs">Subgraphs guide</a> — compares every shipped subgraph and when to use each.
+		<a href="/docs/subgraphs">Subgraphs guide</a> — compares the three shipped subgraphs.
 	</p>
 
 	{#if loading}
@@ -63,22 +53,20 @@
 
 		<div class="section">
 			<h2>How a Turn Works</h2>
-			<p>Every time the player sends a message, this happens:</p>
+			<p>Every time the player sends a message:</p>
 			<ol>
-				<li>The player's message is stored in <code>state.message</code></li>
-				<li>The engine looks up which <strong>subgraph</strong> this story uses</li>
-				<li>The subgraph's <strong>entry point router</strong> runs, returning a string</li>
-				<li>The entry point <strong>mapping</strong> translates that string to the first node</li>
-				<li>That node runs, reads state, returns updates that get merged back</li>
-				<li>The next edge (static or conditional) determines the next node</li>
-				<li>Repeat until the graph reaches <code>__end__</code></li>
-				<li>The final <code>state.response</code> is sent back to the player</li>
+				<li>The message is stored in <code>state.message</code>.</li>
+				<li>The engine loads the story’s <strong>subgraph</strong> from the registry.</li>
+				<li>LangGraph follows <strong>edges</strong> from <code>__start__</code> through each node until <code>__end__</code>.</li>
+				<li>Each node reads the state dict and returns partial updates that get merged.</li>
+				<li><code>response_builder</code> produces <code>_bubbles</code> for the play UI (narrator + character bubbles).</li>
+				<li>The client receives <code>response</code>, <code>bubbles</code>, optional <code>scene_image</code>, moods, and memory fields.</li>
 			</ol>
 		</div>
 
 		<div class="section">
 			<h2>Nodes ({nodes.length} available)</h2>
-			<p>Each node is a Python function that takes the game state and returns updates. Nodes are the building blocks — you wire them together in the <a href="/graphs">Graph Editor</a>.</p>
+			<p>Each node is a Python function registered in <code>NODE_REGISTRY</code>. Wire them in the <a href="/graphs">Graph Editor</a> with <code>__start__</code> / <code>__end__</code> edges.</p>
 
 			{#each nodes as name (name)}
 				{@const desc = nodeDescs[name]}
@@ -102,146 +90,80 @@
 		</div>
 
 		<div class="section">
-			<h2>Routers ({Object.keys(routers).length} available)</h2>
-			<p>Routers are Python functions at decision points in the graph. They check the state and return a string. The graph's <strong>mapping</strong> translates that string to the next node.</p>
-			<p>The same router can be used in different graphs with different mappings. For example, <code>route_after_narrator</code> returns <code>"npc"</code> when characters exist — but one graph maps that to the <code>npc</code> node while another maps it to <code>mood</code> first.</p>
-
-			{#each Object.entries(routers) as [name, returns] (name)}
-				{@const desc = routerDescs[name]}
-				<div class="card" id={`router-${name}`}>
-					<h3>{name}</h3>
-					{#if desc}
-						<p class="summary">{desc.summary}</p>
-						<p class="detail">{desc.description}</p>
-					{/if}
-					<p class="returns"><strong>Returns:</strong> {returns.map(r => `"${r}"`).join(' or ')}</p>
-				</div>
-			{/each}
-		</div>
-
-		<div class="section">
 			<h2>Edges</h2>
-			<p>Edges connect nodes. There are two types:</p>
-
-			<h3>Static edges</h3>
-			<p>Always go from A to B, no questions asked. In the JSON:</p>
-			<pre>{`{ "from": "narrator", "to": "condense" }`}</pre>
-
-			<h3>Conditional edges</h3>
-			<p>A router decides which node comes next. In the JSON:</p>
-			<pre>{`{
-  "from": "narrator",
-  "router": "route_after_narrator",
-  "mapping": {
-    "npc": "mood",
-    "condense": "condense"
-  }
-}`}</pre>
-			<p>The router runs, returns a string (e.g. <code>"npc"</code>), the mapping translates it to the actual node (e.g. <code>"mood"</code>). This lets one graph handle different story configurations.</p>
+			<p>Edges are static only. The first edge must leave <code>__start__</code>; the last must reach <code>__end__</code>.</p>
+			<pre>{`{ "from": "__start__", "to": "narrator" }
+{ "from": "narrator", "to": "character_agent" }
+{ "from": "memory", "to": "__end__" }`}</pre>
 		</div>
 
 		<div class="section">
-			<h2>Builtin Subgraphs</h2>
-			<p>These are pre-built graphs you can use or clone from the <a href="/graphs">Graph Editor</a>. They're listed from simplest to most complex.</p>
+			<h2>Builtin subgraphs</h2>
+			<p>Shipped JSON under <code>graphs/</code> — compare tradeoffs on the <a href="/docs/subgraphs">Subgraphs</a> page.</p>
 
 			<div class="graph-card">
-				<h3>basic_narrator</h3>
-				<p class="flow"><code>narrator → __end__</code></p>
-				<p>Single-turn narration only. Fastest option and useful for quick prototypes.</p>
-			</div>
-
-			<div class="graph-card">
-				<h3>conversation</h3>
-				<p class="flow"><code>narrator → memory → __end__</code></p>
-				<p>
-					Default choice: narrator plus the <code>memory</code> node (turns recorded in the graph). No
-					<code>condense</code> or <code>npc</code>. The narrator sees the last two exchanges and any
-					<code>memory_summary</code> if another pipeline set it — for a rolling AI summary, use
-					<code>full_conversation</code>. One LLM call per turn.
-				</p>
-			</div>
-
-			<div class="graph-card">
-				<h3>full_conversation</h3>
-				<p class="flow"><code>narrator → condense → memory → __end__</code></p>
-				<p>Adds AI memory summary. Condense compresses the story into ~100 words so the narrator has long-term context.</p>
-			</div>
-
-			<div class="graph-card">
-				<h3>full_memory</h3>
-				<p class="flow"><code>narrator → mood → npc → condense → memory → __end__</code></p>
-				<p>
-					Fixed chain (no conditional routing): always runs mood and NPC after the narrator. Best when the story
-					<strong>always</strong> has a cast and mood axes; unlike <code>full_story</code>, it does not skip those
-					nodes when there are no characters.
-				</p>
-			</div>
-
-			<div class="graph-card">
-				<h3>smart_conversation</h3>
+				<h3>narrator_chat</h3>
 				<p class="flow">
-					<code>narrator → [route_after_narrator] → npc → narrator_coda → condense → memory → __end__</code>
+					<code>narrator → character_agent → response_builder → scene_image → mood → condense → memory → __end__</code>
 				</p>
-				<p>
-					Conditional NPC: with characters, narrator sets the scene (without a player prompt yet), NPCs speak, then
-					<code>narrator_coda</code> closes; without characters, narrator goes straight to condense. One graph for
-					both cases.
-				</p>
+				<p>Full pipeline: bubbles, sidebar scene image when configured, mood axes, rolling summary.</p>
 			</div>
 
 			<div class="graph-card">
-				<h3>full_story</h3>
+				<h3>narrator_chat_lite</h3>
 				<p class="flow">
-					<code>narrator → [route_after_narrator] → mood → npc → narrator_coda → condense → memory → __end__</code>
+					<code>narrator → character_agent → response_builder → memory → __end__</code>
 				</p>
-				<p>
-					Canonical “full” pipeline: mood updates, NPC dialogue, narrator coda (player prompt), then rolling summary.
-					Without characters, routing skips mood, NPC, and coda and goes straight to condense. Same graph as the former
-					<code>conversation_with_mood</code> alias — use <code>full_story</code> only.
+				<p>Faster turns — no mood, condense, or scene_image node.</p>
+			</div>
+
+			<div class="graph-card">
+				<h3>chat_direct</h3>
+				<p class="flow">
+					<code>character_agent → response_builder → memory → __end__</code>
 				</p>
+				<p>No narrator node; characters respond directly with memory still recorded.</p>
 			</div>
 		</div>
 
 		<div class="section">
-			<h2>State Fields</h2>
-			<p>The game state is a Python dict that flows through every node. Each node reads what it needs and returns a partial dict of updates.</p>
+			<h2>State fields</h2>
+			<p>The game state is a Python dict merged across nodes. Common keys:</p>
 			<table>
 				<thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
 				<tbody>
-					<tr><td><code>message</code></td><td>str</td><td>Player's current input</td></tr>
-					<tr><td><code>response</code></td><td>str</td><td>Narration + NPC lines + optional narrator coda (combined)</td></tr>
-					<tr><td><code>history</code></td><td>list</td><td>Turn log (written by memory node)</td></tr>
-					<tr><td><code>memory_summary</code></td><td>str</td><td>Compressed story summary (written by condense node)</td></tr>
-					<tr><td><code>narrator</code></td><td>dict</td><td>Narrator config: <code>prompt</code> and <code>model</code></td></tr>
-					<tr><td><code>player</code></td><td>dict</td><td>Player character: <code>name</code> and <code>background</code></td></tr>
-					<tr><td><code>characters</code></td><td>dict</td><td>NPCs keyed by id, each with <code>prompt</code>, <code>moods</code>, <code>model</code></td></tr>
+					<tr><td><code>message</code></td><td>str</td><td>Player’s current input</td></tr>
+					<tr><td><code>response</code></td><td>str</td><td>Combined text (bubbles flattened) for plain-text clients</td></tr>
+					<tr><td><code>_bubbles</code></td><td>list</td><td>UI payload: narrator + character bubbles from <code>response_builder</code></td></tr>
+					<tr><td><code>_narrator_text</code></td><td>str</td><td>Last narrator beat (internal)</td></tr>
+					<tr><td><code>_character_responses</code></td><td>dict</td><td>Per-character dialogue + action (internal)</td></tr>
+					<tr><td><code>history</code></td><td>list</td><td>Structured turns (memory node)</td></tr>
+					<tr><td><code>memory_summary</code></td><td>str</td><td>Rolling summary (condense)</td></tr>
+					<tr><td><code>narrator</code></td><td>dict</td><td><code>prompt</code>, <code>model</code></td></tr>
+					<tr><td><code>player</code></td><td>dict</td><td><code>name</code>, <code>background</code></td></tr>
+					<tr><td><code>characters</code></td><td>dict</td><td>Cast: prompts, moods, portraits, rules</td></tr>
 					<tr><td><code>game_title</code></td><td>str</td><td>Story title</td></tr>
-					<tr><td><code>opening</code></td><td>str</td><td>Opening text before first turn</td></tr>
-					<tr><td><code>paused</code></td><td>bool</td><td>Game paused flag</td></tr>
-					<tr><td><code>turn_count</code></td><td>int</td><td>Completed turns (written by memory node)</td></tr>
+					<tr><td><code>opening</code></td><td>str</td><td>Shown before first turn</td></tr>
+					<tr><td><code>paused</code></td><td>bool</td><td>Pause flag</td></tr>
+					<tr><td><code>turn_count</code></td><td>int</td><td>Completed turns</td></tr>
 				</tbody>
 			</table>
 		</div>
 
 		<div class="section">
-			<h2>Testing Subgraphs</h2>
-			<p>The <a href="/graphs">Graph Editor</a> has a built-in test runner. Save a subgraph, then use the Test section to send a message through it and see the trace — which nodes ran, what each returned, and the full state after each step.</p>
-			<p>You can test with a <strong>dummy state</strong> (fake room, generic narrator) or load state from an <strong>existing story</strong> for realistic results.</p>
-			<p>The test trace is the best way to understand how a graph works — you can see exactly what data flows through each node.</p>
+			<h2>Testing subgraphs</h2>
+			<p>The <a href="/graphs">Graph Editor</a> can run a saved subgraph against a dummy state or a real story and show the trace (nodes run and state after each step).</p>
 		</div>
 
 		<div class="section">
-			<h2>Creating Custom Subgraphs</h2>
+			<h2>Creating custom subgraphs</h2>
 			<ol>
-				<li>Go to <a href="/graphs">Graphs</a> and click <strong>New Subgraph</strong></li>
-				<li>Check the nodes you want to include</li>
-				<li>Set the entry point router and mapping</li>
-				<li>Add static edges to connect nodes in order</li>
-				<li>Optionally add conditional edges with routers for branching</li>
-				<li>Use the JSON preview to verify the definition</li>
-				<li>Save and test</li>
+				<li>Open <a href="/graphs">Graphs</a> → <strong>New Subgraph</strong>.</li>
+				<li>Select nodes from the registry checklist.</li>
+				<li>Add edges from <code>__start__</code> through your chain to <code>__end__</code>.</li>
+				<li>Use the JSON preview, save, and test.</li>
 			</ol>
-			<p>Every node you check must be reachable — either through the entry point or through an edge from another node. Unreachable nodes cause compilation errors.</p>
+			<p>Every selected node must be reachable from <code>__start__</code>; unreachable nodes fail compilation.</p>
 		</div>
 
 	{/if}
@@ -266,6 +188,7 @@
 	.section h3 { margin: 1rem 0 0.3rem; font-size: 1rem; }
 	.section p, .section li { line-height: 1.55; color: #bdc1c6; }
 	.section ol { padding-left: 1.25rem; }
+	.section pre { font-size: 0.82rem; overflow-x: auto; padding: 0.75rem; background: #13151a; border: 1px solid #2a2f38; border-radius: 8px; color: #c9d1d9; }
 	.card { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 0.75rem; background: #1a1d23; }
 	.card-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
 	.card h3 { margin: 0; font-size: 1rem; }
@@ -276,7 +199,6 @@
 	.detail { margin: 0 0 0.5rem; font-size: 0.88rem; color: #9aa0a6; line-height: 1.5; }
 	.state-io { font-size: 0.82rem; color: #9aa0a6; }
 	.state-io p { margin: 0.15rem 0; }
-	.returns { font-size: 0.85rem; color: #9aa0a6; margin: 0.3rem 0 0; }
 	.graph-card { border-left: 3px solid #2a2f38; padding: 0.5rem 0 0.5rem 0.85rem; margin-bottom: 0.75rem; }
 	.graph-card h3 { margin: 0 0 0.2rem; font-size: 0.95rem; }
 	.graph-card p { margin: 0.2rem 0; font-size: 0.88rem; color: #bdc1c6; }
@@ -290,9 +212,9 @@
 	:global([data-theme="light"]) .section li,
 	:global([data-theme="light"]) .detail,
 	:global([data-theme="light"]) .state-io,
-	:global([data-theme="light"]) .returns,
 	:global([data-theme="light"]) .graph-card p { color: #334155; }
 	:global([data-theme="light"]) .card { background: #fff; border-color: #dfe3e8; }
 	:global([data-theme="light"]) .summary { color: #111827; }
 	:global([data-theme="light"]) .doc-hero { border-color: #dfe3e8; }
+	:global([data-theme="light"]) .section pre { background: #f8fafc; border-color: #dfe3e8; color: #1e293b; }
 </style>

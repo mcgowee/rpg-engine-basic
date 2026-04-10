@@ -37,9 +37,10 @@
 		<h2>What is a subgraph?</h2>
 		<p>
 			A <strong>subgraph</strong> is the LangGraph pipeline that runs on every turn: which <strong>nodes</strong> execute
-			(narrator, mood, NPC, condense, memory, …) and in what order. You choose one per story in the Story Editor
-			(<strong>Subgraph</strong> on the Subgraph tab). Builtin definitions live in <code>graphs/*.json</code>; you can
-			also build custom subgraphs in the <a href="/graphs">Graph Editor</a>.
+			(narrator, character_agent, response_builder, scene_image, mood, condense, memory) and in what order. You choose one per
+			story in the Story Editor (<strong>Subgraph</strong> tab). Builtin definitions live in <code>graphs/*.json</code>; you can
+			also build custom subgraphs in the <a href="/graphs">Graph Editor</a>. Graphs use <code>__start__</code> /
+			<code>__end__</code> edges only — there are no routers.
 		</p>
 	</div>
 
@@ -51,47 +52,27 @@
 					<tr>
 						<th>Subgraph</th>
 						<th>Pipeline (simplified)</th>
-						<th>Conditional?</th>
 					</tr>
 				</thead>
 				<tbody>
 					<tr>
-						<td><code>basic_narrator</code></td>
-						<td>narrator → end</td>
-						<td>No</td>
+						<td><code>narrator_chat</code></td>
+						<td>narrator → character_agent → response_builder → scene_image → mood → condense → memory → end</td>
 					</tr>
 					<tr>
-						<td><code>conversation</code></td>
-						<td>narrator → memory → end</td>
-						<td>No</td>
+						<td><code>narrator_chat_lite</code></td>
+						<td>narrator → character_agent → response_builder → memory → end</td>
 					</tr>
 					<tr>
-						<td><code>full_conversation</code></td>
-						<td>narrator → condense → memory → end</td>
-						<td>No</td>
-					</tr>
-					<tr>
-						<td><code>smart_conversation</code></td>
-						<td>narrator → (npc → coda <span class="or">or</span> condense) → memory → end</td>
-						<td>Yes</td>
-					</tr>
-					<tr>
-						<td><code>full_memory</code></td>
-						<td>narrator → mood → npc → condense → memory → end</td>
-						<td>No</td>
-					</tr>
-					<tr>
-						<td><code>full_story</code></td>
-						<td>narrator → (mood → npc → coda <span class="or">or</span> condense) → memory → end</td>
-						<td>Yes</td>
+						<td><code>chat_direct</code></td>
+						<td>character_agent → response_builder → memory → end</td>
 					</tr>
 				</tbody>
 			</table>
 		</div>
 		<p class="hint">
-			When <strong>conditional</strong> routing is on, the router <code>route_after_narrator</code> checks whether the story has
-			<strong>characters</strong>. If yes, the graph continues along the NPC path (and mood where present); if no, it jumps to
-			<code>condense</code> and skips nodes that only make sense with a cast.
+			Legacy subgraph names in older databases are rewritten on migrate to <code>narrator_chat</code> (with characters) or
+			<code>narrator_chat_lite</code> (without).
 		</p>
 	</div>
 
@@ -108,66 +89,32 @@
 				</thead>
 				<tbody>
 					<tr>
-						<td><code>basic_narrator</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>
-							Runs <strong>only</strong> the narrator each turn and ends. Fast and simple (one LLM call), but no in-graph
-							memory, condense, NPCs, or mood—each turn is isolated unless something outside this graph adds history.
+							Full pipeline: narrator prose, per-character dialogue + action, bubble assembly, optional sidebar scene image,
+							mood axes, condense summary, structured memory.
 						</td>
 						<td class="col-good-for">
-							One-shots, demos, tutorials, quick experiments—anywhere you want the leanest turns and do not need in-graph memory.
+							Default for rich campaigns — character voices, mood tracking, long-term summary, gallery-driven scene art.
 						</td>
 					</tr>
 					<tr>
-						<td><code>conversation</code></td>
+						<td><code>narrator_chat_lite</code></td>
 						<td>
-							Narrator, then <strong>memory</strong> appends the turn. Cheap (one narrator LLM per turn) and keeps raw
-							history for context, but no <code>condense</code>, so no rolling AI “story so far” summary from this graph.
+							Narrator + character agents + bubbles + memory. Skips mood, condense, and scene_image for fewer LLM calls and
+							simpler turns.
 						</td>
 						<td class="col-good-for">
-							Short solo arcs, light continuity, prototyping—stories where raw history is enough and you want cheap per-turn cost.
+							Fast playtests, tutorials, or stories where you do not need mood compression or automatic scene picks.
 						</td>
 					</tr>
 					<tr>
-						<td><code>full_conversation</code></td>
+						<td><code>chat_direct</code></td>
 						<td>
-							Narrator, then <strong>condense</strong> builds a compressed summary, then <strong>memory</strong> stores the
-							turn. Good for long solo arcs with a real memory summary, but two LLM calls per turn and no NPC or mood nodes.
+							No narrator node: characters respond directly; response_builder still produces bubbles; memory records the turn.
 						</td>
 						<td class="col-good-for">
-							Long solo campaigns, exploration, epics without a named cast—when you need a rolling summary but not NPCs or mood.
-						</td>
-					</tr>
-					<tr>
-						<td><code>smart_conversation</code></td>
-						<td>
-							<strong>Branches</strong> after the narrator: with characters, scene → NPC lines → <strong>narrator_coda</strong>
-							(player prompt) → condense → memory; with no characters, narrator goes straight to condense → memory (skips NPC +
-							coda). Flexible for solo or cast, but no mood tracking.
-						</td>
-						<td class="col-good-for">
-							Mysteries, ensemble dialogue, heists with a crew—any NPC-heavy plot where you do not need character mood axes.
-						</td>
-					</tr>
-					<tr>
-						<td><code>full_memory</code></td>
-						<td>
-							<strong>Fixed</strong> chain: narrator → mood → NPC → condense → memory—no branch, no
-							<code>narrator_coda</code>. Full mood + NPC + summary when you always have a cast; the path does not skip mood/NPC
-							for empty casts (unlike <code>full_story</code>).
-						</td>
-						<td class="col-good-for">
-							Relationship drama, emotional beats, fixed-party adventures—stories where the cast is always present and mood matters.
-						</td>
-					</tr>
-					<tr>
-						<td><code>full_story</code></td>
-						<td>
-							<strong>Branches</strong> after the narrator: with characters, mood → NPC → narrator_coda → condense → memory;
-							with none, straight to condense → memory. Richest behavior with skips when there is no cast; most LLM work when the
-							full path runs.
-						</td>
-						<td class="col-good-for">
-							Full-featured games: mood + NPCs + post-scene player beat—works for solo or optional cast and scales down when no characters are defined.
+							Pure dialogue-first setups where you do not want a separate narrator voice.
 						</td>
 					</tr>
 				</tbody>
@@ -178,20 +125,17 @@
 	<div class="section">
 		<h2>One-line picker</h2>
 		<ul class="picker">
-			<li><strong>Minimal / tutorial:</strong> <code>basic_narrator</code></li>
-			<li><strong>Solo + cheap memory:</strong> <code>conversation</code></li>
-			<li><strong>Solo + long-term summary:</strong> <code>full_conversation</code></li>
-			<li><strong>NPCs, no mood axes:</strong> <code>smart_conversation</code></li>
-			<li><strong>Mood + NPCs, cast always:</strong> <code>full_memory</code></li>
-			<li><strong>Mood + NPCs + coda, cast optional:</strong> <code>full_story</code></li>
+			<li><strong>Full experience:</strong> <code>narrator_chat</code></li>
+			<li><strong>Faster turns:</strong> <code>narrator_chat_lite</code></li>
+			<li><strong>No narrator:</strong> <code>chat_direct</code></li>
 		</ul>
 	</div>
 
 	<div class="section">
 		<h2>Related</h2>
 		<ul>
-			<li><a href="/docs/stories">Creating Stories</a> — subgraph field and builtin story examples</li>
-			<li><a href="/docs/engine">Engine Reference</a> — nodes, routers, and state</li>
+			<li><a href="/docs/stories">Creating Stories</a> — subgraph field, Gallery tab, portrait variants</li>
+			<li><a href="/docs/engine">Engine Reference</a> — nodes and state</li>
 			<li><a href="/graphs">Graph Editor</a> — build and test custom subgraphs</li>
 		</ul>
 	</div>
@@ -283,7 +227,6 @@
 	.tbl code { font-size: 0.82rem; }
 	.tbl-wide td:nth-child(2) { min-width: 14rem; }
 	.tbl-wide .col-good-for { min-width: 12rem; }
-	.or { color: #8ab4f8; font-weight: 600; font-size: 0.8rem; }
 	.picker { margin: 0.25rem 0 0; }
 	.picker li { margin-bottom: 0.35rem; }
 	.nav-links { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #2a2f38; font-size: 0.9rem; }

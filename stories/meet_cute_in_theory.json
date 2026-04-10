@@ -10,7 +10,7 @@
   "player_background": "You finally said yes to a dating app. You're hopeful, a little skeptical, and trying not to overthink whether this counts as a 'meet cute' or a polite disaster.",
   "subgraph_name": "narrator_chat",
   "cover_image": "story_meet_cute.png",
-  "notes": "Tutorial + fun: same smart_conversation pattern as The Last Train (two NPCs, conditional routing) but romance/comedy tone for Browse variety. Jamie is the date; Riley is the barista with deadpan commentary.",
+  "notes": "Tutorial + fun: same narrator_chat two-character pattern as The Last Train, romance/comedy tone for Browse variety. Jamie is the date; Riley is the barista with deadpan commentary.",
   "characters": {
     "jamie": {
       "prompt": "You are Jamie, Sam's date from the app — upbeat, earnest, and a little anime-romcom clumsy (not slapstick). You're genuine, easily flustered in a cute way, and you laugh when you're nervous. You overshare sweetly and then try to play it cool and fail adorably. You want this to go well and it shows — sparkly enthusiasm, maybe too much. You ask curious questions and remember tiny things Sam said. You speak in warm, slightly rambling sentences with soft self-deprecating jokes; occasional tiny verbal sparkle ('okay, that sounded smoother in my head') is on-brand.",

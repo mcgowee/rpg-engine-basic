@@ -6,13 +6,13 @@ This is proprietary software. See [LICENSE](LICENSE) for terms. See [TERMS_OF_SE
 
 ---
 
-A **text RPG authoring and play platform**: authors define stories (opening, narrator instructions, player, NPCs), pick a **conversation subgraph** (LangGraph), and players chat turn-by-turn with LLM-backed narration, optional NPC lines, mood tracking, and rolling memory summaries. A **SvelteKit** front end proxies to a **Flask** API; state lives in **SQLite** with optional **ComfyUI** image generation for covers, portraits, and scene art.
+A **text RPG authoring and play platform**: authors define stories (opening, narrator instructions, player, cast), pick a **subgraph** (LangGraph), and players chat turn-by-turn with LLM-backed narration, **multi-bubble** output (narrator + characters), optional mood tracking, rolling memory summaries, and sidebar scene art when configured. A **SvelteKit** front end proxies to a **Flask** API; state lives in **SQLite** with optional **ComfyUI** image generation for covers, portraits, and scenes.
 
 ## What you can do
 
 - **Register / log in** — session cookies; passwords hashed with bcrypt.
 - **Stories** — create, edit, publish, copy, export/import JSON; builtin sample stories ship from `stories/*.json`.
-- **Subgraphs** — JSON LangGraph definitions in `graphs/*.json` seed as builtin templates; users can add custom subgraphs (validated, compiled, cached in memory).
+- **Subgraphs** — JSON LangGraph definitions in `graphs/*.json` seed as builtin templates (`narrator_chat`, `narrator_chat_lite`, `chat_direct`); users can add custom subgraphs (validated, compiled, cached in memory).
 - **Play** — start a session, send messages through the story’s `subgraph_name`, autosave to slot 0, manual save/load slots, pause.
 - **Books** — turn play history into polished prose via LLM and save edited “books.”
 - **Graphs UI** — edit subgraph JSON and design **main graph templates**. Stories can attach a template (`main_graph_template_id`); play then runs phased subgraphs with transitions (turns, milestone text in the player message, manual phrase, `location` state key, or `_rules_transition`). Otherwise the story’s single `subgraph_name` is used—see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -28,8 +28,8 @@ A **text RPG authoring and play platform**: authors define stories (opening, nar
 | `config.py` | `.env` loading, Flask/LLM paths |
 | `auth.py` | bcrypt + `login_required` |
 | `graphs/` | JSON subgraph definitions, `builder.py` (LangGraph), `registry.py` (compile cache) |
-| `nodes/` | Runnable nodes: narrator, memory, condense, npc, mood |
-| `routers/` | Conditional edge functions for graph entry and post-narrator routing |
+| `nodes/` | Runnable nodes: narrator, character_agent, response_builder, scene_image, mood, condense, memory |
+| `routers/` | Legacy package (empty registry; graphs use `__start__`/`__end__` edges only) |
 | `llm/` | `get_llm()` → Ollama or Azure OpenAI |
 | `stories/` | Builtin public story JSON for first-time DB seed |
 | `web/` | SvelteKit (adapter-node); `/api/*` proxies to Flask (`FLASK_API_URL`) |
@@ -96,7 +96,7 @@ Open the dev URL Vite prints (often `http://localhost:5173`). API calls go to `/
 
 - [docs/INDEX.md](docs/INDEX.md) — map of repo docs vs in-app `/docs` pages.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — graph model, play flow, main graph phases, API boundaries.
-- [docs/SUBGRAPHS.md](docs/SUBGRAPHS.md) — builtin subgraph pipelines and routing (mirrored under `web/static/docs/` for the web app).
+- [docs/SUBGRAPHS.md](docs/SUBGRAPHS.md) — builtin subgraph pipelines (mirrored under `web/static/docs/` for the web app).
 - [docs/BUILTIN_STORIES.md](docs/BUILTIN_STORIES.md) — seed stories table (subgraph, genre, filenames).
 - [NODE_STATUS.md](NODE_STATUS.md) — implemented nodes and builtins snapshot.
 - [NODE_ROADMAP.md](NODE_ROADMAP.md) — node ideas and future work.

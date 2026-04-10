@@ -2,7 +2,7 @@
 
 ## Trust boundaries
 
-- **Subgraph definitions** are JSON stored in the database and compiled into LangGraph graphs. They may only reference **registered node and router names** (`validate_graph_definition`), which limits arbitrary code execution. Still, treat **public subgraphs** and **public main graph templates** as content from trusted authors only: a malicious author could craft prompts-heavy graphs that increase LLM cost or produce unwanted output.
+- **Subgraph definitions** are JSON stored in the database and compiled into LangGraph graphs. They may only reference **registered node names** (`validate_graph_definition`), which limits arbitrary code execution. Still, treat **public subgraphs** and **public main graph templates** as content from trusted authors only: a malicious author could craft prompts-heavy graphs that increase LLM cost or produce unwanted output.
 
 - **Stories** include narrator prompts, character prompts, and optional notes. These strings are sent to the LLM as instructions. Users who can publish **public** stories can influence what visitors’ LLM sessions do (within the game’s prompt structure).
 
@@ -17,3 +17,7 @@
 - **ComfyUI** and **Ollama/Azure** endpoints should not be exposed to untrusted networks without authentication; the Flask app assumes they are reachable only from trusted infrastructure.
 
 - **`/health`** is unauthenticated for load balancers; it returns database and (for Ollama) upstream status only.
+
+## API surface (high level)
+
+Session-protected JSON APIs live in `app.py` (proxied as `/api/*` from SvelteKit). Examples: **`/me`**, **`/subgraphs`**, **`/stories`**, **`/play/start`**, **`/play/chat`**, **`/play/status`**, **`/settings/models`**, **`/graph-registry`**, **`/ai/*`** assist routes, and image routes under **`/ai/generate-*`**. There is **no** router registry in API responses — `graph-registry` returns node metadata and empty router maps for compatibility.

@@ -10,5 +10,5 @@
   "player_background": "A veteran lighthouse keeper called out of retirement to investigate why the Blackrock Light went dark during the worst storm of the season.",
   "subgraph_name": "narrator_chat_lite",
   "cover_image": "story_midnight_lighthouse.png",
-  "notes": "Demonstrates the default conversation graph (narrator + memory). No NPCs — the narrator describes scenes and remembers previous turns."
+  "notes": "Demonstrates narrator_chat_lite (narrator + memory, no condense/mood). No cast — the narrator describes scenes and remembers previous turns in structured history."
 }

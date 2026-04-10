@@ -9,7 +9,7 @@ What lives where in this repository and how it relates to the **in-app** guides 
 | `/docs` | Hub — links to all guides |
 | `/docs/playing` | Browsing, play UI, saves, moods (player-facing) |
 | `/docs/stories` | Story Editor, characters, subgraph field, **builtin stories table** |
-| `/docs/engine` | Nodes, routers, edges, state, builtin graphs (author / builder) |
+| `/docs/engine` | Nodes, edges, state, builtin graphs (author / builder) |
 | `/docs/subgraphs` | Builtin subgraph comparison tables and picker |
 
 The app also serves a copy of **SUBGRAPHS.md** at `/docs/SUBGRAPHS.md` (from `web/static/docs/SUBGRAPHS.md`) for quick raw viewing.
@@ -22,7 +22,7 @@ The app also serves a copy of **SUBGRAPHS.md** at `/docs/SUBGRAPHS.md` (from `we
 | [SUBGRAPHS.md](SUBGRAPHS.md) | Builtin subgraph reference (keep in sync with `web/static/docs/SUBGRAPHS.md`) |
 | [BUILTIN_STORIES.md](BUILTIN_STORIES.md) | Builtin seed stories: subgraph, genre, filenames |
 | [IMAGE_ASSET_BACKLOG.md](IMAGE_ASSET_BACKLOG.md) | Planned/generated image assets for the web UI |
-| [../NODE_STATUS.md](../NODE_STATUS.md) | Implemented nodes, routers, builtin list, default subgraph |
+| [../NODE_STATUS.md](../NODE_STATUS.md) | Implemented nodes, builtin subgraphs |
 | [../NODE_ROADMAP.md](../NODE_ROADMAP.md) | Future nodes and features (not yet built) |
 | [../README.md](../README.md) | Setup, env vars, layout of the repo |
 | [../SECURITY.md](../SECURITY.md) | Operational security notes |

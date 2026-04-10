@@ -12,7 +12,7 @@
 		response: string;
 		moods: Record<string, Record<string, number>>;
 		memory_summary: string;
-		narrator_guidance: string;
+		bubble_count: number;
 		time_seconds: number;
 		response_length: number;
 	};
@@ -95,7 +95,7 @@
 	type NodeStatus = 'ok' | 'skipped' | 'warn' | 'error';
 	type NodeHealthTurn = {
 		turn: number;
-		guard: { status: NodeStatus; detail: string };
+		bubbles: { status: NodeStatus; detail: string };
 		narrator: { status: NodeStatus; chars: number };
 		condense: { status: NodeStatus; words: number };
 		memory: { status: NodeStatus; detail: string };
@@ -106,15 +106,13 @@
 		turns: NodeHealthTurn[];
 		issues: string[];
 		memorySummaries: { turn: number; summary: string }[];
-		guardOutputs: { turn: number; guidance: string }[];
 		moodSnapshots: MoodSnapshot[];
 		stats: {
 			avgResponseChars: number;
 			avgTime: number;
 			memoryPopulated: number;
 			memoryEmpty: number;
-			guardFired: number;
-			guardSkipped: number;
+			avgBubbles: number;
 			maxMemoryWords: number;
 		};
 	};
@@ -125,36 +123,28 @@
 		const issues: string[] = [];
 		const memorySummaries: { turn: number; summary: string }[] = [];
 		const moodSnapshots: MoodSnapshot[] = [];
-		const guardOutputs: { turn: number; guidance: string }[] = [];
 		let memoryPopulated = 0;
 		let memoryEmpty = 0;
-		let guardFired = 0;
-		let guardSkipped = 0;
 		let maxMemoryWords = 0;
+		let bubbleSum = 0;
 
 		for (const t of turns) {
-			// Guard status
-			let guard: { status: NodeStatus; detail: string };
-			if (t.turn <= 2 && !t.narrator_guidance) {
-				guard = { status: 'skipped', detail: 'Skipped (< 2 turns history)' };
-				guardSkipped++;
-			} else if (t.narrator_guidance) {
-				const lines = t.narrator_guidance.split('\n').filter(l => l.trim());
-				guard = { status: 'ok', detail: `${lines.length} direction${lines.length !== 1 ? 's' : ''}` };
-				guardFired++;
-				guardOutputs.push({ turn: t.turn, guidance: t.narrator_guidance });
+			const bc = t.bubble_count;
+			bubbleSum += bc;
+			let bubbles: { status: NodeStatus; detail: string };
+			if (bc <= 0) {
+				bubbles = { status: 'skipped', detail: 'No bubbles' };
+			} else if (bc === 1) {
+				bubbles = { status: 'ok', detail: '1 bubble' };
 			} else {
-				guard = { status: 'skipped', detail: 'No output' };
-				guardSkipped++;
+				bubbles = { status: 'ok', detail: `${bc} bubbles` };
 			}
 
-			// Narrator status
 			const narrator = {
 				status: (t.response_length > 0 ? 'ok' : 'error') as NodeStatus,
 				chars: t.response_length,
 			};
 
-			// Condense / Memory status
 			const memWords = t.memory_summary ? t.memory_summary.split(/\s+/).length : 0;
 			if (memWords > maxMemoryWords) maxMemoryWords = memWords;
 
@@ -177,32 +167,18 @@
 				memoryEmpty++;
 			}
 
-			// Issue detection
 			if (t.response_length === 0) {
-				issues.push(`Turn ${t.turn}: Narrator returned empty response`);
+				issues.push(`Turn ${t.turn}: Empty combined response`);
 			}
 			if (t.response_length > 2000) {
 				issues.push(`Turn ${t.turn}: Response very long (${t.response_length} chars) — may need shorter prompt`);
 			}
-			if (t.turn > 2 && !t.narrator_guidance && t.turn > 3) {
-				// Guard should be firing after turn 2
-			}
 
-			// Check for duplicate guard output
-			if (guardOutputs.length >= 2) {
-				const prev = guardOutputs[guardOutputs.length - 2];
-				const curr = guardOutputs[guardOutputs.length - 1];
-				if (prev && curr && prev.guidance === curr.guidance) {
-					issues.push(`Turn ${t.turn}: Quality guard produced duplicate output (same as turn ${prev.turn})`);
-				}
-			}
-
-			// Mood snapshots
 			if (t.moods && Object.keys(t.moods).length > 0) {
 				moodSnapshots.push({ turn: t.turn, moods: t.moods });
 			}
 
-			healthTurns.push({ turn: t.turn, guard, narrator, condense, memory, time: t.time_seconds });
+			healthTurns.push({ turn: t.turn, bubbles, narrator, condense, memory, time: t.time_seconds });
 		}
 
 		const totalChars = turns.reduce((a, t) => a + t.response_length, 0);
@@ -212,15 +188,13 @@
 			turns: healthTurns,
 			issues,
 			memorySummaries,
-			guardOutputs,
 			moodSnapshots,
 			stats: {
 				avgResponseChars: turns.length > 0 ? Math.round(totalChars / turns.length) : 0,
 				avgTime: turns.length > 0 ? +(totalTime / turns.length).toFixed(1) : 0,
 				memoryPopulated,
 				memoryEmpty,
-				guardFired,
-				guardSkipped,
+				avgBubbles: turns.length > 0 ? +(bubbleSum / turns.length).toFixed(1) : 0,
 				maxMemoryWords,
 			},
 		};
@@ -420,13 +394,15 @@
 				break;
 			}
 
+			const bubblesRaw = data.bubbles;
+			const bubbleCount = Array.isArray(bubblesRaw) ? bubblesRaw.length : 0;
 			const turn: TurnResult = {
 				turn: i + 1,
 				message: msg,
 				response: String(data.response ?? ''),
 				moods: parseMoods(data),
 				memory_summary: String(data.memory_summary ?? ''),
-				narrator_guidance: String(data.narrator_guidance ?? ''),
+				bubble_count: bubbleCount,
 				time_seconds: Math.round(turnTime * 100) / 100,
 				response_length: String(data.response ?? '').length,
 			};
@@ -516,13 +492,15 @@
 
 				if (data.error) break;
 
+				const bubblesRaw = data.bubbles;
+				const bubbleCount = Array.isArray(bubblesRaw) ? bubblesRaw.length : 0;
 				results.push({
 					turn: i + 1,
 					message: msg,
 					response: String(data.response ?? ''),
 					moods: parseMoods(data),
 					memory_summary: String(data.memory_summary ?? ''),
-					narrator_guidance: String(data.narrator_guidance ?? ''),
+					bubble_count: bubbleCount,
 					time_seconds: Math.round(turnTime * 100) / 100,
 					response_length: String(data.response ?? '').length,
 				});
@@ -696,7 +674,7 @@
 			report += `### Turn ${t.turn}\n`;
 			report += `**Player:** ${t.message}\n\n`;
 			report += `**Response:** ${t.response.slice(0, 300)}${t.response.length > 300 ? '...' : ''}\n\n`;
-			if (t.narrator_guidance) report += `**Quality Guard:** ${t.narrator_guidance}\n\n`;
+			if (t.bubble_count > 0) report += `**Bubbles:** ${t.bubble_count}\n\n`;
 		}
 
 		return report;
@@ -750,7 +728,7 @@
 		r += `## Stats\n`;
 		r += `- Avg Response Chars: ${nh.stats.avgResponseChars}\n`;
 		r += `- Avg Turn Time: ${nh.stats.avgTime}s\n`;
-		r += `- Guard Fired: ${nh.stats.guardFired}/${nh.stats.guardFired + nh.stats.guardSkipped}\n`;
+		r += `- Avg Bubbles / Turn: ${nh.stats.avgBubbles}\n`;
 		r += `- Memory Populated: ${nh.stats.memoryPopulated}/${nh.stats.memoryPopulated + nh.stats.memoryEmpty}\n`;
 		r += `- Max Summary Words: ${nh.stats.maxMemoryWords}\n\n`;
 
@@ -761,10 +739,10 @@
 		}
 
 		r += `## Per-Turn Node Status\n`;
-		r += `| Turn | Guard | Narrator | Condense | Memory | Time |\n`;
-		r += `|------|-------|----------|----------|--------|------|\n`;
+		r += `| Turn | Bubbles | Response | Condense | Memory | Time |\n`;
+		r += `|------|---------|----------|----------|--------|------|\n`;
 		for (const t of nh.turns) {
-			r += `| ${t.turn} | ${t.guard.detail} | ${t.narrator.chars} chars | ${t.condense.words > 0 ? `${t.condense.words} words` : 'Empty'} | ${t.memory.detail} | ${t.time.toFixed(1)}s |\n`;
+			r += `| ${t.turn} | ${t.bubbles.detail} | ${t.narrator.chars} chars | ${t.condense.words > 0 ? `${t.condense.words} words` : 'Empty'} | ${t.memory.detail} | ${t.time.toFixed(1)}s |\n`;
 		}
 		r += `\n`;
 
@@ -798,14 +776,6 @@
 				r += `\n`;
 			}
 			r += `\n`;
-		}
-
-		if (nh.guardOutputs.length > 0) {
-			r += `## Quality Guard Outputs\n`;
-			for (const go of nh.guardOutputs) {
-				r += `### Turn ${go.turn}\n`;
-				r += `${go.guidance}\n\n`;
-			}
 		}
 
 		return r;
@@ -1249,7 +1219,7 @@
 				{#if !nodeHealth}
 					<div class="eval-start">
 						<h2>Node Health Analysis</h2>
-						<p>Analyze pipeline node behavior for this session. Checks quality guard output, memory/condense status, response sizes, and timing. No API call — runs locally.</p>
+						<p>Analyze pipeline behavior for this session: UI bubbles from the API, memory/condense status, response sizes, and timing. No extra API call — runs locally.</p>
 						<button type="button" class="btn primary" onclick={analyzeNodeHealth}>
 							<Icon name="zap" size={14} /> Analyze Nodes
 						</button>
@@ -1267,8 +1237,8 @@
 								<span class="nh-stat-label">Avg Turn Time</span>
 							</div>
 							<div class="nh-stat">
-								<span class="nh-stat-value">{nodeHealth.stats.guardFired}/{nodeHealth.stats.guardFired + nodeHealth.stats.guardSkipped}</span>
-								<span class="nh-stat-label">Guard Fired</span>
+								<span class="nh-stat-value">{nodeHealth.stats.avgBubbles}</span>
+								<span class="nh-stat-label">Avg Bubbles</span>
 							</div>
 							<div class="nh-stat">
 								<span class="nh-stat-value">{nodeHealth.stats.memoryPopulated}/{nodeHealth.stats.memoryPopulated + nodeHealth.stats.memoryEmpty}</span>
@@ -1304,8 +1274,8 @@
 								<thead>
 									<tr>
 										<th>Turn</th>
-										<th>Guard</th>
-										<th>Narrator</th>
+										<th>Bubbles</th>
+										<th>Response</th>
 										<th>Condense</th>
 										<th>Memory</th>
 										<th>Time</th>
@@ -1316,7 +1286,7 @@
 										<tr>
 											<td>{t.turn}</td>
 											<td>
-												<span class="nh-badge nh-{t.guard.status}">{t.guard.detail}</span>
+												<span class="nh-badge nh-{t.bubbles.status}">{t.bubbles.detail}</span>
 											</td>
 											<td>
 												<span class="nh-badge nh-{t.narrator.status}">{t.narrator.chars} chars</span>
@@ -1378,19 +1348,6 @@
 										{/each}
 									</tbody>
 								</table>
-							</div>
-						{/if}
-
-						<!-- Guard outputs -->
-						{#if nodeHealth.guardOutputs.length > 0}
-							<div class="eval-section">
-								<h3>Quality Guard Outputs</h3>
-								{#each nodeHealth.guardOutputs as go (go.turn)}
-									<div class="nh-guard-entry">
-										<span class="nh-guard-turn">Turn {go.turn}</span>
-										<pre class="nh-guard-text">{go.guidance}</pre>
-									</div>
-								{/each}
 							</div>
 						{/if}
 
@@ -1463,9 +1420,9 @@
 										{/each}
 									</div>
 								{/if}
-								{#if turn.narrator_guidance}
+								{#if turn.bubble_count > 0}
 									<div class="entry-guidance">
-										<span class="guidance-label">Quality Guard:</span> {turn.narrator_guidance}
+										<span class="guidance-label">Bubbles:</span> {turn.bubble_count}
 									</div>
 								{/if}
 							</div>
@@ -1693,9 +1650,6 @@
 	.nh-memory-turn { font-weight: 600; color: #8ab4f8; font-size: 0.85rem; }
 	.nh-memory-words { font-size: 0.75rem; color: #9aa0a6; margin-left: 0.4rem; }
 	.nh-memory-text { margin: 0.3rem 0 0; font-size: 0.85rem; color: #e8eaed; line-height: 1.5; }
-	.nh-guard-entry { margin-bottom: 0.75rem; }
-	.nh-guard-turn { font-weight: 600; color: #c58af9; font-size: 0.85rem; display: block; margin-bottom: 0.25rem; }
-	.nh-guard-text { margin: 0; font-size: 0.82rem; color: #e8eaed; background: #1a1d23; border: 1px solid #2a2f38; border-radius: 6px; padding: 0.5rem 0.75rem; white-space: pre-wrap; line-height: 1.5; }
 	:global([data-theme="light"]) .mode-toggle { border-color: #d9dde2; }
 	:global([data-theme="light"]) .mode-btn { background: #f7f9fb; color: #5a6472; border-right-color: #d9dde2; }
 	:global([data-theme="light"]) .mode-btn:hover { color: #1f2937; background: #eef2f7; }

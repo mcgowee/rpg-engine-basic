@@ -19,13 +19,14 @@
 	<div class="section">
 		<h2>The Play Screen</h2>
 
-		<h3>Chat Area (left)</h3>
-		<p>This is where the story unfolds. You'll see two types of messages:</p>
+		<h3>Chat area (left)</h3>
+		<p>This is where the story unfolds. Replies are shown as <strong>bubbles</strong>:</p>
 		<ul>
-			<li><strong>Your messages</strong> (blue left border) — what you typed</li>
-			<li><strong>Narrator + NPC responses</strong> (green left border) — the narrator describes the scene, then any NPCs present respond in character</li>
+			<li><strong>Player</strong> (blue) — what you typed</li>
+			<li><strong>Narrator</strong> (green) — scene prose from the narrator node</li>
+			<li><strong>Characters</strong> (purple) — dialogue and short action from each cast member</li>
 		</ul>
-		<p>The narrator doesn't control NPCs — they speak separately based on their own personality prompts. So the narrator might describe "Silas shifts uncomfortably" and then Silas actually says something in his own voice.</p>
+		<p>The narrator does not speak as the cast — character lines come from the character agent using each character’s prompt and mood state.</p>
 
 		<h3>Sidebar (right)</h3>
 		<p>The sidebar shows the current game state:</p>
@@ -37,7 +38,9 @@
 			<dt>Turns</dt>
 			<dd>How many turns you've taken</dd>
 			<dt>Subgraph</dt>
-			<dd>Which graph pipeline is running — see <a href="/docs/subgraphs">Subgraphs</a> for a comparison, or <a href="/docs/engine">Engine Reference</a> for nodes and routers</dd>
+			<dd>Which pipeline is running — see <a href="/docs/subgraphs">Subgraphs</a> or <a href="/docs/engine">Engine Reference</a></dd>
+			<dt>Scene image</dt>
+			<dd>When the story’s gallery and subgraph support it, a scene image can appear above the sidebar panels</dd>
 		</dl>
 	</div>
 
@@ -57,7 +60,7 @@
 			honesty: 2/10 (deceptive → truthful)
 		</div>
 		<p>Each axis shifts independently. You might build trust (cooperativeness goes up) while making someone more nervous (anxiety goes up) at the same time. The labels tell you what each end of the scale means.</p>
-		<p>NPCs use their mood state when deciding how to respond. A terrified character talks differently than a confident one, even with the same personality prompt.</p>
+		<p>Character agents use mood state when deciding how to respond. A terrified character talks differently than a confident one, even with the same personality prompt.</p>
 	</div>
 
 	<div class="section">
@@ -65,8 +68,8 @@
 		<p>Click <strong>Memory (AI summary)</strong> in the sidebar to see what the engine remembers about the story so far. This is a compressed summary that the narrator uses for context.</p>
 		<p>
 			Whether you see a rolling AI summary depends on the <a href="/docs/subgraphs">subgraph</a>.
-			<code>conversation</code> keeps turn history in the graph; <code>full_conversation</code> and other graphs that
-			include <code>condense</code> maintain the compressed summary the narrator uses for long-range context.
+			<code>narrator_chat</code> runs <code>condense</code> each turn and updates the compressed summary;
+			<code>narrator_chat_lite</code> and <code>chat_direct</code> skip condense, so the sidebar summary stays empty unless something else set it.
 		</p>
 	</div>
 

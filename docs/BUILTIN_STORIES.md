@@ -8,20 +8,20 @@ Optional **`cover_image`** in each JSON: filename under `web/static/images/cover
 
 | Story | File | Genre | Subgraph | NPCs | Notes |
 |-------|------|-------|----------|-----:|-------|
-| The Midnight Lighthouse | `midnight_lighthouse.json` | mystery | `conversation` | 0 | Default-style pipeline: narrator + memory, no condense/NPC. |
-| The Last Train | `the_last_train.json` | thriller | `smart_conversation` | 2 | Two NPCs on a train. |
-| Meet Cute (In Theory) | `meet_cute_in_theory.json` | romance | `smart_conversation` | 2 | Rom-com café date + barista; same subgraph as Last Train, different tone (tutorial + fun). |
-| Open Mic Nightmare | `open_mic_nightmare.json` | comedy | `conversation` | 0 | Pure comedy; narrator + memory for callback jokes across turns. |
-| The Job Interview | `the_job_interview.json` | drama | `full_story` | 2 | Mood axes on two interviewers + narrator coda. |
-| The Interrogation | `the_interrogation.json` | thriller | `full_story` | 1 | One NPC with multiple mood axes. |
-| Spy Thriller: Narrator Only | `undercover_1_narrator_only.json` | thriller | `basic_narrator` | 0 | Tutorial 1/5 — no in-graph memory between turns. |
-| Spy Thriller: Rolling Memory | `undercover_2_with_memory.json` | thriller | `full_conversation` | 0 | Tutorial 2/5 — condense + rolling summary. |
-| Spy Thriller: Meet the Handler | `undercover_3_meet_the_handler.json` | thriller | `smart_conversation` | 1 | Tutorial 3/5 — NPC + narrator coda. |
-| Spy Thriller: Trust & Tension | `undercover_4_trust_and_tension.json` | thriller | `full_memory` | 1 | Tutorial 4/5 — mood axes + fixed mood→NPC chain. |
-| Spy Thriller: Full Pipeline | `undercover_5_full_story.json` | thriller | `full_story` | 2 | Tutorial 5/5 — moods, two NPCs, coda, conditional routing. |
+| The Midnight Lighthouse | `midnight_lighthouse.json` | mystery | `narrator_chat_lite` | 0 | Solo mystery; narrator + memory, no condense/mood. |
+| The Last Train | `the_last_train.json` | thriller | `narrator_chat` | 2 | Two characters on a train; full pipeline. |
+| Meet Cute (In Theory) | `meet_cute_in_theory.json` | romance | `narrator_chat` | 2 | Rom-com café + barista; same pattern as Last Train. |
+| Open Mic Nightmare | `open_mic_nightmare.json` | comedy | `narrator_chat_lite` | 0 | Comedy solo; structured history for callbacks. |
+| The Job Interview | `the_job_interview.json` | drama | `narrator_chat` | 2 | Mood axes on two interviewers. |
+| The Interrogation | `the_interrogation.json` | thriller | `narrator_chat` | 1 | One character, multiple mood axes. |
+| Spy Thriller: Narrator Only | `undercover_1_narrator_only.json` | thriller | `narrator_chat_lite` | 0 | Tutorial 1/5 — lite pipeline, no cast. |
+| Spy Thriller: Rolling Memory | `undercover_2_with_memory.json` | thriller | `narrator_chat` | 0 | Tutorial 2/5 — condense + rolling summary. |
+| Spy Thriller: Meet the Handler | `undercover_3_meet_the_handler.json` | thriller | `narrator_chat` | 1 | Tutorial 3/5 — narrator + one character. |
+| Spy Thriller: Trust & Tension | `undercover_4_trust_and_tension.json` | thriller | `narrator_chat` | 1 | Tutorial 4/5 — mood axes + dialogue. |
+| Spy Thriller: Full Pipeline | `undercover_5_full_story.json` | thriller | `narrator_chat` | 2 | Tutorial 5/5 — two characters, full pipeline. |
 
-The **Spy Thriller** series (same embassy premise, **tutorials 1–5**) walks through progressively richer graphs. All five use the same card banner: **`covers/story_spy_rolling_memory.png`**. **Meet Cute** and **Open Mic Nightmare** add romance and comedy so Browse isn’t only mystery/thriller.
+The **Spy Thriller** series (same embassy premise, **tutorials 1–5**) walks through progressively richer setups. All five use the same card banner: **`covers/story_spy_rolling_memory.png`**. **Meet Cute** and **Open Mic Nightmare** add romance and comedy so Browse isn’t only mystery/thriller.
 
-**Removed from defaults (redundant):** `blackrock_keeper.json` (overlapped Tutorial 3 for `smart_conversation`); `undercover_6_embassy_gala.json` (duplicate of Tutorial 5’s `full_story` demo).
+**Removed from defaults (redundant):** `blackrock_keeper.json`; `undercover_6_embassy_gala.json`.
 
 See also: [SUBGRAPHS.md](SUBGRAPHS.md), [INDEX.md](INDEX.md).

@@ -8,17 +8,16 @@
 		description: string;
 		nodes: string[];
 		edges: { from: string; to: string }[];
-		conditional_edges: {
+		// Legacy — ignored on save (graphs use __start__/__end__ only)
+		conditional_edges?: {
 			from: string;
 			router: string;
 			mapping: Record<string, string>;
 		}[];
-		// Legacy — old graphs may still have this
 		entry_point?: { router: string; mapping: Record<string, string> };
 	};
 
 	let registryNodes = $state<string[]>([]);
-	let registryRouters = $state<string[]>([]);
 	let registryReady = $state(false);
 	let registryError = $state<string | null>(null);
 
@@ -31,9 +30,6 @@
 	let description = $state('');
 	let selectedNodes = $state<string[]>([]);
 	let edgeRows = $state<{ from: string; to: string }[]>([{ from: '__start__', to: '' }]);
-	let condEdgeRows = $state<
-		{ from: string; router: string; mappingRows: { k: string; v: string }[] }[]
-	>([]);
 
 	let saveErrors = $state<string[]>([]);
 	let saving = $state(false);
@@ -88,22 +84,11 @@
 		const edges = edgeRows
 			.filter((e) => e.from && e.to)
 			.map((e) => ({ from: e.from, to: e.to }));
-		const conditional_edges = condEdgeRows
-			.filter((ce) => ce.from && ce.router)
-			.map((ce) => {
-				const m: Record<string, string> = {};
-				for (const r of ce.mappingRows) {
-					const k = r.k.trim();
-					if (k) m[k] = r.v.trim();
-				}
-				return { from: ce.from, router: ce.router, mapping: m };
-			});
 		return {
 			name: name.trim(),
 			description: description.trim(),
 			nodes: [...selectedNodes].sort((a, b) => a.localeCompare(b)),
 			edges,
-			conditional_edges
 		};
 	}
 
@@ -129,15 +114,6 @@
 			eds.length > 0
 				? eds.map((e) => ({ from: e.from, to: e.to }))
 				: [{ from: '__start__', to: '' }];
-		const ces = def.conditional_edges ?? [];
-		condEdgeRows = ces.map((ce) => ({
-			from: ce.from,
-			router: ce.router,
-			mappingRows:
-				Object.keys(ce.mapping ?? {}).length > 0
-					? Object.entries(ce.mapping).map(([k, v]) => ({ k, v: String(v) }))
-					: [{ k: '', v: '' }]
-		}));
 	}
 
 	function blankForm() {
@@ -145,7 +121,6 @@
 		description = '';
 		selectedNodes = [];
 		edgeRows = [{ from: '__start__', to: '' }];
-		condEdgeRows = [];
 		rowId = null;
 		nameReadOnly = false;
 		pageLoadError = null;
@@ -218,16 +193,8 @@
 					registryError = `Failed to load graph registry (${r.status})`;
 					return;
 				}
-				const j = (await r.json()) as { nodes?: string[]; routers?: Record<string, string[]> | string[] };
+				const j = (await r.json()) as { nodes?: string[] };
 				registryNodes = Array.isArray(j.nodes) ? j.nodes : [];
-				if (Array.isArray(j.routers)) {
-					registryRouters = j.routers;
-				} else if (j.routers && typeof j.routers === 'object') {
-					registryRouters = Object.keys(j.routers);
-				} else {
-					registryRouters = [];
-				}
-				// Routers no longer used — graphs use __start__/__end__ edges
 			} catch {
 				registryError = 'Network error loading graph registry';
 			} finally {
@@ -528,157 +495,6 @@
 					>
 				</div>
 
-				<div class="graph-section">
-					<h2 class="sub">Conditional edges</h2>
-					<p class="hint">Per source node: router chooses the next step.</p>
-					{#each condEdgeRows as ce, ci (ci)}
-						<div class="cond-card">
-							<div class="map-row">
-								<label class="inline">
-									From
-									<select
-										class="inp"
-										value={ce.from}
-										onchange={(e) => {
-											const v = (e.currentTarget as HTMLSelectElement).value;
-											condEdgeRows = condEdgeRows.map((c, j) =>
-												j === ci ? { ...c, from: v } : c
-											);
-										}}
-									>
-										<option value="">— from —</option>
-										{#each nodeOptionsForDropdown as n (n)}
-											<option value={n}>{n}</option>
-										{/each}
-									</select>
-								</label>
-								<label class="inline">
-									Router
-									<select
-										class="inp"
-										value={ce.router}
-										onchange={(e) => {
-											const v = (e.currentTarget as HTMLSelectElement).value;
-											condEdgeRows = condEdgeRows.map((c, j) =>
-												j === ci ? { ...c, router: v } : c
-											);
-										}}
-									>
-										<option value="">— router —</option>
-										{#each registryRouters as r (r)}
-											<option value={r}>{r}</option>
-										{/each}
-									</select>
-								</label>
-								<button
-									type="button"
-									class="btn sm danger"
-									onclick={() => {
-										condEdgeRows = condEdgeRows.filter((_, j) => j !== ci);
-									}}>Remove edge</button
-								>
-							</div>
-							<div class="nested">
-								<div class="map-header small" aria-hidden="true">
-									<span>Router returns</span>
-									<span class="mid"></span>
-									<span>Goes to</span>
-								</div>
-								{#each ce.mappingRows as mr, mi (mi)}
-									<div class="map-row">
-										<select
-											class="inp"
-											value={mr.k}
-											aria-label="Router returns"
-											onchange={(e) => {
-												const keyVal = (e.currentTarget as HTMLSelectElement).value;
-												condEdgeRows = condEdgeRows.map((c, j) =>
-													j !== ci
-														? c
-														: {
-																...c,
-																mappingRows: c.mappingRows.map((x, k) =>
-																	k === mi ? { ...x, k: keyVal } : x
-																)
-															}
-												);
-											}}
-										>
-											<option value="">— router return —</option>
-											{#if mr.k && !toOptions.includes(mr.k)}
-												<option value={mr.k}>{mr.k} (not in graph)</option>
-											{/if}
-											{#each toOptions as t (t)}
-												<option value={t}>{t}</option>
-											{/each}
-										</select>
-										<span class="arrow">→</span>
-										<select
-											class="inp"
-											value={mr.v}
-											aria-label="Goes to"
-											onchange={(e) => {
-												const toVal = (e.currentTarget as HTMLSelectElement).value;
-												condEdgeRows = condEdgeRows.map((c, j) =>
-													j !== ci
-														? c
-														: {
-																...c,
-																mappingRows: c.mappingRows.map((x, k) =>
-																	k === mi ? { ...x, v: toVal } : x
-																)
-															}
-												);
-											}}
-										>
-											<option value="">— to —</option>
-											{#each toOptions as t (t)}
-												<option value={t}>{t}</option>
-											{/each}
-										</select>
-										<button
-											type="button"
-											class="btn sm"
-											onclick={() => {
-												condEdgeRows = condEdgeRows.map((c, j) => {
-													if (j !== ci) return c;
-													const mappingRows = c.mappingRows.filter((_, k) => k !== mi);
-													return {
-														...c,
-														mappingRows:
-															mappingRows.length > 0 ? mappingRows : [{ k: '', v: '' }]
-													};
-												});
-											}}>Remove</button
-										>
-									</div>
-								{/each}
-								<button
-									type="button"
-									class="btn"
-									onclick={() => {
-										condEdgeRows = condEdgeRows.map((c, j) =>
-											j !== ci
-												? c
-												: { ...c, mappingRows: [...c.mappingRows, { k: '', v: '' }] }
-										);
-									}}>Add mapping row</button
-								>
-							</div>
-						</div>
-					{/each}
-					<button
-						type="button"
-						class="btn"
-						onclick={() => {
-							condEdgeRows = [
-								...condEdgeRows,
-								{ from: '', router: '', mappingRows: [{ k: '', v: '' }] }
-							];
-						}}>Add conditional edge</button
-					>
-				</div>
-
 				<div class="actions">
 					<button type="button" class="btn primary" disabled={saving} onclick={() => save()}>
 						{saving ? 'Saving…' : 'Save'}
@@ -828,19 +644,12 @@
 	.lbl { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: #9aa0a6; }
 	.node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.35rem 0.75rem; }
 	.chk { display: flex; align-items: center; gap: 0.35rem; font-size: 0.9rem; }
-	.map-header { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.5rem; font-size: 0.75rem; color: #9aa0a6; margin: 0.5rem 0 0.25rem; }
-	.map-header.small { font-size: 0.7rem; }
-	.map-header .mid { width: 1.5rem; }
 	.map-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-bottom: 0.35rem; }
 	.arrow { color: #9aa0a6; }
-	.inline { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
-	.cond-card { border: 1px solid #2a2f38; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem; background: #1a1d23; }
-	.nested { margin-top: 0.5rem; padding-left: 0.5rem; border-left: 2px solid #2a2f38; }
 	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; }
 	.btn:hover { border-color: #5f6368; }
 	.btn.sm { font-size: 0.8rem; padding: 0.35rem 0.65rem; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }
-	.btn.danger { border-color: #c5221f; color: #f28b82; }
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.actions { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
 	.cancel { color: #8ab4f8; }
@@ -862,12 +671,10 @@
 	.test-mode-legend { padding: 0 0.35rem; }
 	.test-mode-radios { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; }
 	:global([data-theme="light"]) .panel,
-	:global([data-theme="light"]) .cond-card,
 	:global([data-theme="light"]) .trace-step,
 	:global([data-theme="light"]) .test-mode-fieldset { background: #fff; border-color: #dfe3e8; }
 	:global([data-theme="light"]) .json-pre,
 	:global([data-theme="light"]) .trace-pre { background: #f8fafc; border-color: #dfe3e8; color: #334155; }
-	:global([data-theme="light"]) .nested { border-left-color: #dfe3e8; }
 	:global([data-theme="light"]) .test-section { border-top-color: #dfe3e8; }
 	:global([data-theme="light"]) .btn { background: #f8fafc; border-color: #d1d5db; color: #1f2937; }
 	:global([data-theme="light"]) .btn:hover { border-color: #9ca3af; }

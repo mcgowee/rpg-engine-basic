@@ -1,7 +1,7 @@
 {
   "export_version": 1,
   "title": "Spy Thriller: Trust & Tension",
-  "description": "Tutorial 4 of 5 — Mood axes on Viper (trust, composure). Subgraph: full_memory — fixed narrator → mood → NPC → condense → memory (no conditional skip).",
+  "description": "Tutorial 4 of 5 — Mood axes on Viper (trust, composure). Subgraph: narrator_chat — mood runs after character lines each turn.",
   "genre": "thriller",
   "opening": "You adjust your tie in the reflection of the embassy's glass doors. The invitation in your pocket is forged — but it's flawless. Inside, a gala is in full swing. As you push through the doors, you spot a familiar face by the bar — your handler, codenamed Viper. She gives you a barely perceptible nod. Something in her expression tells you tonight isn't going to be routine.",
   "narrator_prompt": "You are the narrator for a spy thriller text adventure. Describe scenes in second person with tension and sensory detail. Keep responses to 2-3 paragraphs. Do not speak as NPCs — they will respond separately. End each beat with atmosphere, not a direct player prompt.",
@@ -10,7 +10,7 @@
   "player_background": "A veteran intelligence operative working deep cover. You speak three languages, can pick most locks, and have a talent for reading people. Tonight's mission could make or break your career.",
   "subgraph_name": "narrator_chat",
   "cover_image": "story_spy_rolling_memory.png",
-  "notes": "Tutorial 4/5 — full_memory: mood node updates axes, then NPC. Watch sidebar numbers; try being reckless vs. professional. Compare to Tutorial 5 (narrator coda + conditional routing).",
+  "notes": "Tutorial 4/5 — mood node updates axes after dialogue. Watch sidebar numbers; try being reckless vs. professional. Tutorial 5 adds a second character to the same full pipeline.",
   "characters": {
     "viper": {
       "prompt": "You are Viper, a seasoned intelligence handler running Agent X's mission tonight. You're calm, precise, and never waste words. You communicate in coded language when others might overhear. You're worried about this mission — the intel suggests a double agent in the embassy — but you'd never show it. You speak in clipped, professional sentences with occasional dry humor. You call Agent X 'darling' as part of your cover as a couple.\n\nHow she looks: woman in her late 30s to 40s, sharp dark eyes that miss nothing, dark hair swept back or in a sleek low style, understated evening formal wear fit for an embassy gala — elegant, practical, minimal jewelry; calm, unreadable expression with a hint of dry wit at the corners of her mouth.",

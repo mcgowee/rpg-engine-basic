@@ -8,14 +8,14 @@
 		<img src="/images/docs-stories-hero.png" alt="Story creator writing a magical adventure" />
 	</div>
 	<h1>Creating Stories</h1>
-	<p class="lede">How to build your own text adventures — from simple narrator-only stories to multi-character dramas with mood tracking.</p>
+	<p class="lede">How to build your own text adventures — from fast narrator-only-style play to multi-character dramas with mood tracking and gallery-driven scene art.</p>
 
 	<div class="section">
 		<h2>Quick Start</h2>
 		<ol>
 			<li>Go to <a href="/stories/create">Create Story</a></li>
 			<li>Fill in a title, description, and opening text</li>
-			<li>Pick a subgraph (start with <code>conversation</code> — default)</li>
+			<li>Pick a subgraph (new stories default to <code>narrator_chat_lite</code>; use <code>narrator_chat</code> for mood + condense + scene_image)</li>
 			<li>Save and click Play</li>
 		</ol>
 		<p>That's the minimum — a title, opening, and subgraph. Everything else is optional and adds depth.</p>
@@ -32,22 +32,25 @@
 			<dt>Notes</dt><dd>Optional. Explain what the story demonstrates or tips for players.</dd>
 			<dt>Genre</dt><dd>Category tag: mystery, thriller, drama, comedy, sci-fi, horror, fantasy.</dd>
 			<dt>Opening</dt><dd>The first thing the player reads before their first turn. Second person, present tense. Sets the scene and tone.</dd>
+			<dt>NSFW Rating</dt><dd>Content rating dropdown for browse filtering and AI guardrails — not separate tag checkboxes.</dd>
 		</dl>
+
+		<h3>Gallery</h3>
+		<p>
+			<strong>Scene gallery</strong> — optional images keyed by tags, triggers, and captions. The <code>scene_image</code> node (in <code>narrator_chat</code>) can surface matching art in the play sidebar. Generate or attach images here, then save the story.
+		</p>
 
 		<h3>Subgraph</h3>
 		<p>
 			Which graph pipeline runs each turn. This is the most important choice — it determines what the engine does with the player's input.
-			See <a href="/docs/subgraphs">Subgraphs</a> for a full comparison of builtins, or <a href="/docs/engine">Engine Reference</a> for nodes and routers.
+			See <a href="/docs/subgraphs">Subgraphs</a> for builtins, or <a href="/docs/engine">Engine Reference</a> for nodes and state.
 		</p>
 		<div class="tip">
 			<strong>Which subgraph should I pick?</strong>
 			<ul>
-				<li><code>basic_narrator</code> — narrator only. Best for minimal or one-shot stories.</li>
-				<li><code>conversation</code> — narrator + <code>memory</code> (no NPC/condense). Good default; use <code>full_conversation</code> for a rolling AI summary on long arcs.</li>
-				<li><code>full_conversation</code> — adds condense + memory summary. Good for longer stories.</li>
-				<li><code>smart_conversation</code> — adds NPCs that respond in character. Automatically skips NPC step if no characters defined.</li>
-				<li><code>full_memory</code> — narrator → mood → NPC → condense → memory (no narrator coda; linear flow).</li>
-				<li><code>full_story</code> — mood + NPC + narrator coda + condense + memory; skips mood/NPC/coda when no characters. Best default for character-driven stories with mood axes.</li>
+				<li><code>narrator_chat</code> — narrator + character dialogue + bubbles + scene_image + mood + condense + memory.</li>
+				<li><code>narrator_chat_lite</code> — narrator + characters + bubbles + memory (faster; no mood/condense/scene_image).</li>
+				<li><code>chat_direct</code> — no narrator; characters + bubbles + memory only.</li>
 			</ul>
 		</div>
 
@@ -61,7 +64,9 @@
 		</dl>
 
 		<h3>Characters</h3>
-		<p>NPCs that respond in character each turn. Only used if your subgraph includes the <code>npc</code> node (<code>smart_conversation</code> or <code>full_story</code> — or <code>full_memory</code> and similar).</p>
+		<p>
+			Cast members that speak and act each turn via the <code>character_agent</code> node whenever your subgraph includes it (all builtin narrator pipelines do). Use <strong>portrait rules</strong> to swap images by mood or tags.
+		</p>
 		<p>Each character needs:</p>
 		<dl class="field-list">
 			<dt>Key</dt><dd>Snake_case identifier (e.g. <code>old_silas</code>). Used internally.</dd>
@@ -89,7 +94,7 @@
 		<div class="example-box">
 			"Character: Old Silas. Trait: trust (currently 3/10, where 1 = suspicious and 10 = trusting). Player action: I share my own story about the sea. Should trust go UP, DOWN, or SAME?"
 		</div>
-		<p>The LLM returns UP, DOWN, or SAME. The value shifts by 1. The NPC node then includes all axes in the character's prompt so their response reflects their current emotional state.</p>
+		<p>The LLM returns UP, DOWN, or SAME. The value shifts by 1. Character agents read mood axes when generating dialogue so responses reflect emotional state.</p>
 
 		<h3>Tips</h3>
 		<ul>
@@ -138,87 +143,86 @@
 					<tr>
 						<td>The Midnight Lighthouse</td>
 						<td>mystery</td>
-						<td><code>conversation</code></td>
+						<td><code>narrator_chat_lite</code></td>
 						<td>0</td>
-						<td>Narrator + memory; default-style solo arc.</td>
+						<td>Solo arc; narrator + memory without condense/mood.</td>
 					</tr>
 					<tr>
 						<td>The Last Train</td>
 						<td>thriller</td>
-						<td><code>smart_conversation</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>2</td>
-						<td>Two distinct NPC voices.</td>
+						<td>Two distinct character voices + full pipeline.</td>
 					</tr>
 					<tr>
 						<td>Meet Cute (In Theory)</td>
 						<td>romance</td>
-						<td><code>smart_conversation</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>2</td>
-						<td>Rom-com café; same two-NPC tutorial as Last Train, warmer tone.</td>
+						<td>Rom-com café; same cast pattern as Last Train, warmer tone.</td>
 					</tr>
 					<tr>
 						<td>Open Mic Nightmare</td>
 						<td>comedy</td>
-						<td><code>conversation</code></td>
+						<td><code>narrator_chat_lite</code></td>
 						<td>0</td>
-						<td>Pure comedy; narrator + memory for callbacks (no NPCs).</td>
+						<td>Comedy solo; narrator + memory for callbacks.</td>
 					</tr>
 					<tr>
 						<td>The Job Interview</td>
 						<td>drama</td>
-						<td><code>full_story</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>2</td>
-						<td>Mood axes + narrator coda.</td>
+						<td>Mood axes on two interviewers.</td>
 					</tr>
 					<tr>
 						<td>The Interrogation</td>
 						<td>thriller</td>
-						<td><code>full_story</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>1</td>
 						<td>Multiple mood axes on one character.</td>
 					</tr>
 					<tr>
 						<td>Spy Thriller: Narrator Only</td>
 						<td>thriller</td>
-						<td><code>basic_narrator</code></td>
+						<td><code>narrator_chat_lite</code></td>
 						<td>0</td>
-						<td>Tutorial 1/5 — narrator only, no in-graph memory.</td>
+						<td>Tutorial 1/5 — lite pipeline, no condense.</td>
 					</tr>
 					<tr>
 						<td>Spy Thriller: Rolling Memory</td>
 						<td>thriller</td>
-						<td><code>full_conversation</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>0</td>
-						<td>Tutorial 2/5 — condense + rolling AI summary.</td>
+						<td>Tutorial 2/5 — condense + rolling AI summary (solo cast).</td>
 					</tr>
 					<tr>
 						<td>Spy Thriller: Meet the Handler</td>
 						<td>thriller</td>
-						<td><code>smart_conversation</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>1</td>
-						<td>Tutorial 3/5 — NPC dialogue + narrator coda.</td>
+						<td>Tutorial 3/5 — handler speaks after narrator (character_agent).</td>
 					</tr>
 					<tr>
 						<td>Spy Thriller: Trust &amp; Tension</td>
 						<td>thriller</td>
-						<td><code>full_memory</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>1</td>
-						<td>Tutorial 4/5 — mood axes + fixed mood→NPC chain.</td>
+						<td>Tutorial 4/5 — mood axes + character dialogue.</td>
 					</tr>
 					<tr>
 						<td>Spy Thriller: Full Pipeline</td>
 						<td>thriller</td>
-						<td><code>full_story</code></td>
+						<td><code>narrator_chat</code></td>
 						<td>2</td>
-						<td>Tutorial 5/5 — full_story; coda + conditional routing.</td>
+						<td>Tutorial 5/5 — full narrator_chat with two NPCs.</td>
 					</tr>
 				</tbody>
 			</table>
 		</div>
 		<p class="hint">
-			<strong>Fun &amp; tutorials:</strong> <strong>Meet Cute (In Theory)</strong> — PG rom-com, two NPCs (same <code>smart_conversation</code> idea as <strong>The Last Train</strong>). <strong>Open Mic Nightmare</strong> — pure <strong>comedy</strong>, solo, <code>conversation</code> so jokes can callback across turns.
-			<strong>Spy Thriller tutorials (1–5):</strong> same embassy gala premise — <strong>Narrator Only</strong> → <strong>Rolling Memory</strong> → <strong>Meet the Handler</strong> → <strong>Trust &amp; Tension</strong> → <strong>Full Pipeline</strong>
-			(subgraphs <code>basic_narrator</code> → <code>full_conversation</code> → <code>smart_conversation</code> → <code>full_memory</code> → <code>full_story</code>).
+			<strong>Fun &amp; tutorials:</strong> <strong>Meet Cute (In Theory)</strong> — PG rom-com, two characters (same <code>narrator_chat</code> pattern as <strong>The Last Train</strong>). <strong>Open Mic Nightmare</strong> — pure <strong>comedy</strong>, solo, <code>narrator_chat_lite</code> for callbacks without condense.
+			<strong>Spy Thriller tutorials (1–5):</strong> same embassy gala — <strong>Narrator Only</strong> (lite) → <strong>Rolling Memory</strong> (full + condense) → <strong>Meet the Handler</strong> → <strong>Trust &amp; Tension</strong> → <strong>Full Pipeline</strong> (two characters).
 			<a href="https://github.com/mcgowee/rpg-engine-basic/blob/main/docs/BUILTIN_STORIES.md" target="_blank" rel="noopener noreferrer"
 				>Repo table with filenames</a
 			>
@@ -229,46 +233,46 @@
 
 		<div class="story-card">
 			<h3>The Midnight Lighthouse</h3>
-			<p class="meta">Mystery · <code>conversation</code> · No characters</p>
-			<p>Solo exploration. Uses the default <code>conversation</code> graph (narrator + memory). The narrator describes scenes and remembers previous turns.</p>
+			<p class="meta">Mystery · <code>narrator_chat_lite</code> · No characters</p>
+			<p>Solo exploration. <code>narrator_chat_lite</code> stores structured turns without condense or mood. The narrator describes scenes and prior turns stay in history.</p>
 			<p class="try"><strong>Try:</strong> Play several turns, then reference something from earlier. Copy and change the narrator prompt to shift the tone.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>The Last Train</h3>
-			<p class="meta">Thriller · <code>smart_conversation</code> · Diana, Gerald</p>
-			<p>Two NPCs with distinct personalities on a late-night train. Demonstrates multiple characters responding independently.</p>
-			<p class="try"><strong>Try:</strong> Address one character directly and see how both still respond in character. To see <code>route_after_narrator</code> skip the NPC path, copy <strong>Spy Thriller: Meet the Handler</strong>, delete its characters in the editor, and play — same subgraph, fewer nodes run.</p>
+			<p class="meta">Thriller · <code>narrator_chat</code> · Diana, Gerald</p>
+			<p>Two characters with distinct personalities on a late-night train. Demonstrates separate purple bubbles per character after the green narrator beat.</p>
+			<p class="try"><strong>Try:</strong> Address one character directly and watch both still respond in character. Copy the story, remove the cast, and switch to <code>narrator_chat_lite</code> to compare faster solo play.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>Meet Cute (In Theory)</h3>
-			<p class="meta">Romance · <code>smart_conversation</code> · Jamie, Riley</p>
+			<p class="meta">Romance · <code>narrator_chat</code> · Jamie, Riley</p>
 			<p>
-				A dating-app brunch in a busy café: your date (Jamie) and a barista (Riley) who won’t let the moment be boring. Same engine path as <em>The Last Train</em>, but built for laughs and chemistry instead of suspense.
+				A dating-app brunch in a busy café: your date (Jamie) and a barista (Riley) who won’t let the moment be boring. Same <code>narrator_chat</code> path as <em>The Last Train</em>, but built for laughs and chemistry instead of suspense.
 			</p>
 			<p class="try"><strong>Try:</strong> Play for banter first — then copy the story and crank the narrator prompt toward full farce or full earnest romance to see how tone shifts.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>Open Mic Nightmare</h3>
-			<p class="meta">Comedy · <code>conversation</code> · No characters</p>
+			<p class="meta">Comedy · <code>narrator_chat_lite</code> · No characters</p>
 			<p>
-				A doomed five-minute stand-up set: hostile host, pitying crowd, escalating absurdity. No NPCs — comedy comes from the narrator and your choices, with memory so running gags can land.
+				A doomed five-minute stand-up set: hostile host, pitying crowd, escalating absurdity. No cast — comedy comes from the narrator and your choices, with structured history so running gags can land.
 			</p>
 			<p class="try"><strong>Try:</strong> Reference an earlier bit on a later turn and watch the narrator pick it up. Tighten or loosen the narrator prompt to swing from dry wit to full cartoon.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>The Job Interview</h3>
-			<p class="meta">Drama · <code>full_story</code> · Ms. Chen (5), Big Dave (7)</p>
+			<p class="meta">Drama · <code>narrator_chat</code> · Ms. Chen (5), Big Dave (7)</p>
 			<p>Two interviewers with opposite personalities. Demonstrates mood tracking — watch sidebar numbers change based on your answers.</p>
 			<p class="try"><strong>Try:</strong> Give confident vs. evasive answers. Change starting moods and replay to see how it affects the dynamic from turn one.</p>
 		</div>
 
 		<div class="story-card">
 			<h3>The Interrogation</h3>
-			<p class="meta">Thriller · <code>full_story</code> · Marcus Webb (3 axes)</p>
+			<p class="meta">Thriller · <code>narrator_chat</code> · Marcus Webb (3 axes)</p>
 			<p>One suspect with three mood axes: cooperativeness, anxiety, honesty. Demonstrates multi-dimensional mood tracking.</p>
 			<p class="try"><strong>Try:</strong> Build trust slowly, then confront with evidence. Add a new axis like "desperation" and see how it changes responses.</p>
 		</div>
@@ -285,7 +289,7 @@
 				<tr><td>Player Background</td><td>How narrator and NPCs perceive you</td><td>Change "veteran detective" to "nervous teenager"</td></tr>
 				<tr><td>Character Prompt</td><td>NPC personality and speech patterns</td><td>Add "always speaks in rhyme" or a hidden secret</td></tr>
 				<tr><td>Mood Axes</td><td>What emotions are tracked and their range</td><td>Rename "trust" to "guilt" — the LLM evaluates differently</td></tr>
-				<tr><td>Subgraph</td><td>Which nodes run each turn</td><td>Switch to <code>conversation</code> — NPCs disappear</td></tr>
+				<tr><td>Subgraph</td><td>Which nodes run each turn</td><td>Switch to <code>chat_direct</code> or remove characters to drop narrator beats</td></tr>
 			</tbody>
 		</table>
 	</div>

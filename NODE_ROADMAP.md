@@ -2,11 +2,15 @@
 
 ## Current Architecture
 
+Full subgraph (`narrator_chat`):
+
 ```
-narrator → character_agent → response_builder → mood → condense → memory
+narrator → character_agent → response_builder → scene_image → mood → condense → memory
 ```
 
-Narrator describes the world. Character agents respond independently with dialogue + action. Response builder assembles bubbles. Mood tracks emotions. Condense compresses memory. Memory stores structured turns.
+`narrator_chat_lite` omits **scene_image**, **mood**, and **condense**. `chat_direct` starts at **character_agent** (no narrator).
+
+Narrator describes the world. Character agents respond with dialogue + action. Response builder assembles multi-bubble UI payload. Scene image picks sidebar art when present. Mood tracks axes. Condense compresses memory. Memory stores structured turns.
 
 ## Implemented Nodes
 
@@ -15,9 +19,12 @@ Narrator describes the world. Character agents respond independently with dialog
 | **narrator** | Yes (creative) | Describes scene, events, consequences. No character dialogue. | ✅ Done |
 | **character_agent** | Yes (dialogue) | Each character responds with SAY + DO. Independent agents. | ✅ Done |
 | **response_builder** | No | Assembles narrator + character bubbles for frontend. | ✅ Done |
+| **scene_image** | No* | Scene / gallery image selection for play sidebar. | ✅ Done |
 | **mood** | Yes (classification) | Rates each character's emotional axes 1-10 per turn. | ✅ Done |
 | **condense** | Yes (summarization) | Rolling 60-80 word memory summary from structured history. | ✅ Done |
 | **memory** | No | Stores structured turn dict: player, narrator, characters, mood. | ✅ Done |
+
+\*Image side effects may use ComfyUI; no prose LLM in-node.
 
 ---
 

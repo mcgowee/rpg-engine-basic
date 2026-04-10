@@ -83,7 +83,7 @@ def apply_main_graph_to_new_state(state: dict, story_row, conn, user_id: int) ->
     """
     tmpl_id = story_row["main_graph_template_id"]
     if tmpl_id is None:
-        state["_subgraph_name"] = story_row["subgraph_name"] or "conversation"
+        state["_subgraph_name"] = story_row["subgraph_name"] or "narrator_chat_lite"
         return None
 
     phases = fetch_template_phases(conn, int(tmpl_id), user_id)
@@ -152,7 +152,7 @@ def hydrate_runtime_from_story_save(st: dict, story_id: int, story_row) -> None:
 
     st["_story_id"] = story_id
     if not st.get("_main_graph_template_id") and story_row:
-        st["_subgraph_name"] = story_row["subgraph_name"] or "conversation"
+        st["_subgraph_name"] = story_row["subgraph_name"] or "narrator_chat_lite"
 
     if not story_row:
         return
