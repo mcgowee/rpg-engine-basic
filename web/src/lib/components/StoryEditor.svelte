@@ -13,7 +13,7 @@
 
 	let { mode, storyId }: Props = $props();
 
-	let activeTab = $state<'basics' | 'subgraph' | 'shared' | 'characters'>('basics');
+	let activeTab = $state<'basics' | 'subgraph' | 'shared' | 'characters' | 'gallery'>('basics');
 	let loadDone = $state(false);
 	let saving = $state(false);
 	let errors = $state<string[]>([]);
@@ -58,6 +58,66 @@
 		prompt: string;
 	};
 	let sceneGallery = $state<SceneGalleryItem[]>([]);
+	let generatingGalleryImage = $state('');
+	let galleryImageError = $state('');
+
+	async function generateGalleryImage(idx: number) {
+		const item = sceneGallery[idx];
+		if (!item || !storyId || generatingGalleryImage) return;
+		if (!item.prompt.trim()) {
+			galleryImageError = 'Enter a ComfyUI prompt first';
+			return;
+		}
+		generatingGalleryImage = item.id;
+		galleryImageError = '';
+		try {
+			const r = await fetch('/api/ai/generate-scene', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					story_id: storyId,
+					scene_text: item.prompt,
+					prompt: item.prompt,
+				}),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.url) {
+				item.url = j.url;
+				sceneGallery = [...sceneGallery];
+			} else {
+				galleryImageError = j.error ?? 'Generation failed';
+			}
+		} catch {
+			galleryImageError = 'Network error';
+		} finally {
+			generatingGalleryImage = '';
+		}
+	}
+
+	async function buildGalleryPrompt(idx: number) {
+		const item = sceneGallery[idx];
+		if (!item) return;
+		galleryImageError = '';
+		try {
+			const r = await fetch('/api/ai/build-scene-prompt', {
+				method: 'POST', credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					scene_text: `${item.caption || item.id}. Tags: ${item.tags.join(', ')}. Trigger: ${item.trigger}`,
+					style: item.style || 'cinematic',
+				}),
+			});
+			const j = await r.json().catch(() => ({}));
+			if (r.ok && j.prompt) {
+				item.prompt = j.prompt;
+				sceneGallery = [...sceneGallery];
+			} else {
+				galleryImageError = j.error ?? 'Prompt build failed';
+			}
+		} catch {
+			galleryImageError = 'Network error';
+		}
+	}
 	let brokenStoryImages = new SvelteSet<string>();
 	let generatingPortrait = $state('');
 	let portraitError = $state('');
@@ -743,6 +803,7 @@
 		<button type="button" class:active={activeTab === 'subgraph'} onclick={() => activeTab = 'subgraph'}><Icon name="git-branch" size={14} /> Subgraph</button>
 		<button type="button" class:active={activeTab === 'shared'} onclick={() => activeTab = 'shared'}><Icon name="settings" size={14} /> Shared Content</button>
 		<button type="button" class:active={activeTab === 'characters'} onclick={() => activeTab = 'characters'}><Icon name="users" size={14} /> Characters</button>
+		<button type="button" class:active={activeTab === 'gallery'} onclick={() => activeTab = 'gallery'}><Icon name="image" size={14} /> Gallery</button>
 	</div>
 
 	{#if activeTab === 'basics'}
@@ -881,77 +942,6 @@
 					{/if}
 				</div>
 			{/if}
-
-			<div class="field">
-				<strong>Scene Gallery</strong>
-				<span class="hint">Pre-made images triggered during play by tags and keywords. Displayed in the sidebar.</span>
-				{#each sceneGallery as item, idx (item.id || idx)}
-					<div class="gallery-card">
-						<div class="gallery-card-header">
-							<strong>{item.id || `Scene ${idx + 1}`}</strong>
-							<button type="button" class="btn sm danger" onclick={() => {
-								sceneGallery = sceneGallery.filter((_, i) => i !== idx);
-							}}>Remove</button>
-						</div>
-						{#if item.url}
-							<img src={item.url.startsWith('/') ? item.url : `/images/scenes/${item.url}`}
-								alt={item.caption || item.id} class="gallery-thumb" />
-						{/if}
-						<label class="field-sm">
-							<span>ID</span>
-							<input type="text" bind:value={item.id} placeholder="kitchen_morning" />
-						</label>
-						<label class="field-sm">
-							<span>Image URL</span>
-							<input type="text" bind:value={item.url} placeholder="/images/scenes/story_12_kitchen.png" />
-						</label>
-						<label class="field-sm">
-							<span>Tags (comma-separated)</span>
-							<input type="text" value={item.tags.join(', ')}
-								oninput={(e) => {
-									item.tags = (e.currentTarget as HTMLInputElement).value.split(',').map(t => t.trim()).filter(Boolean);
-									sceneGallery = [...sceneGallery];
-								}}
-								placeholder="kitchen, morning, cooking" />
-						</label>
-						<label class="field-sm">
-							<span>Trigger phrase</span>
-							<input type="text" bind:value={item.trigger} placeholder="cooking breakfast together" />
-						</label>
-						<label class="field-sm">
-							<span>Caption</span>
-							<input type="text" bind:value={item.caption} placeholder="Morning light fills the kitchen" />
-						</label>
-						<div class="gallery-card-options">
-							<label class="field-sm inline">
-								<span>Priority</span>
-								<input type="number" bind:value={item.priority} min="0" max="10" style="width:4rem" />
-							</label>
-							<label class="tag-check">
-								<input type="checkbox" bind:checked={item.one_time} />
-								One-time (milestone)
-							</label>
-						</div>
-						<label class="field-sm">
-							<span>ComfyUI prompt (for generation)</span>
-							<textarea rows="2" bind:value={item.prompt} placeholder="Cozy apartment kitchen, morning sunlight..."></textarea>
-						</label>
-					</div>
-				{/each}
-				<button type="button" class="btn sm" onclick={() => {
-					sceneGallery = [...sceneGallery, {
-						id: `scene_${sceneGallery.length + 1}`,
-						url: '',
-						tags: [],
-						trigger: '',
-						priority: 5,
-						one_time: false,
-						caption: '',
-						style: 'cinematic',
-						prompt: '',
-					}];
-				}}>+ Add Scene Image</button>
-			</div>
 
 			<div class="field">
 				<strong>Description</strong>
@@ -1204,6 +1194,116 @@
 		</div>
 	{/if}
 
+	{#if activeTab === 'gallery'}
+		<div class="tab-content">
+			<h2 class="sub">Scene Gallery</h2>
+			<p class="hint">Pre-made images triggered during play by tags and keywords. Displayed in the play sidebar. Save the story after adding images.</p>
+
+			{#if galleryImageError}<p class="err">{galleryImageError}</p>{/if}
+
+			{#each sceneGallery as item, idx (item.id || idx)}
+				<div class="gallery-card">
+					<div class="gallery-card-header">
+						<strong>{item.id || `Scene ${idx + 1}`}</strong>
+						<button type="button" class="btn sm danger" onclick={() => {
+							sceneGallery = sceneGallery.filter((_, i) => i !== idx);
+						}}>Remove</button>
+					</div>
+
+					<div class="gallery-card-body">
+						{#if item.url}
+							<div class="gallery-preview">
+								<img src={item.url.startsWith('/') ? item.url : `/images/scenes/${item.url}`}
+									alt={item.caption || item.id} class="gallery-thumb" />
+							</div>
+						{/if}
+
+						<div class="gallery-fields">
+							<label class="field-sm">
+								<span>ID</span>
+								<input type="text" bind:value={item.id} placeholder="kitchen_morning" />
+							</label>
+							<label class="field-sm">
+								<span>Tags (comma-separated)</span>
+								<input type="text" value={item.tags.join(', ')}
+									oninput={(e) => {
+										item.tags = (e.currentTarget as HTMLInputElement).value.split(',').map(t => t.trim()).filter(Boolean);
+										sceneGallery = [...sceneGallery];
+									}}
+									placeholder="kitchen, morning, cooking" />
+							</label>
+							<label class="field-sm">
+								<span>Trigger phrase</span>
+								<input type="text" bind:value={item.trigger} placeholder="cooking breakfast together" />
+							</label>
+							<label class="field-sm">
+								<span>Caption</span>
+								<input type="text" bind:value={item.caption} placeholder="Morning light fills the kitchen" />
+							</label>
+							<div class="gallery-card-options">
+								<label class="field-sm inline">
+									<span>Priority</span>
+									<input type="number" bind:value={item.priority} min="0" max="10" style="width:4rem" />
+								</label>
+								<label class="tag-check">
+									<input type="checkbox" bind:checked={item.one_time} />
+									One-time (milestone)
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<div class="gallery-prompt-section">
+						<label class="field-sm">
+							<span>Style</span>
+							<select bind:value={item.style} style="font-size:0.85rem">
+								{#each coverStyles as s (s.key)}
+									<option value={s.key}>{s.key}</option>
+								{/each}
+								{#if coverStyles.length === 0}
+									<option value="cinematic">cinematic</option>
+								{/if}
+							</select>
+						</label>
+						<label class="field-sm">
+							<span>Image prompt</span>
+							<textarea rows="2" bind:value={item.prompt} placeholder="Cozy apartment kitchen, morning sunlight..."></textarea>
+						</label>
+						<div class="gallery-btn-row">
+							<button type="button" class="btn sm" onclick={() => buildGalleryPrompt(idx)}>
+								Build Prompt
+							</button>
+							<button type="button" class="btn sm primary"
+								disabled={generatingGalleryImage === item.id || !item.prompt.trim()}
+								onclick={() => generateGalleryImage(idx)}>
+								{#if generatingGalleryImage === item.id}<span class="spinner"></span> Generating...{:else}🎨 Generate{/if}
+							</button>
+						</div>
+					</div>
+
+					<label class="field-sm">
+						<span>Image URL (auto-filled on generate, or paste manually)</span>
+						<input type="text" bind:value={item.url} placeholder="/images/scenes/story_12_kitchen.png" />
+					</label>
+				</div>
+			{/each}
+
+			<button type="button" class="btn" onclick={() => {
+				sceneGallery = [...sceneGallery, {
+					id: `scene_${sceneGallery.length + 1}`,
+					url: '',
+					tags: [],
+					trigger: '',
+					priority: 5,
+					one_time: false,
+					caption: '',
+					style: 'cinematic',
+					prompt: '',
+				}];
+			}}>+ Add Scene Image</button>
+		</div>
+	{/if}
+
 	{#if errors.length > 0}
 		<div class="err-box">{#each errors as e}<p class="err">{e}</p>{/each}</div>
 	{/if}
@@ -1251,8 +1351,13 @@
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
 	.gallery-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
 	.gallery-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-	.gallery-thumb { max-width: 200px; height: auto; border-radius: 6px; border: 1px solid #2a2f38; margin-bottom: 0.5rem; }
+	.gallery-card-body { display: flex; gap: 0.75rem; margin-bottom: 0.5rem; }
+	.gallery-preview { flex-shrink: 0; }
+	.gallery-fields { flex: 1; min-width: 0; }
+	.gallery-thumb { max-width: 180px; height: auto; border-radius: 6px; border: 1px solid #2a2f38; }
 	.gallery-card-options { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+	.gallery-prompt-section { border-top: 1px solid #2a2f38; padding-top: 0.5rem; margin-top: 0.3rem; }
+	.gallery-btn-row { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
 	.field-sm { display: block; margin-bottom: 0.4rem; }
 	.field-sm span { display: block; font-size: 0.78rem; color: #9aa0a6; margin-bottom: 0.15rem; }
 	.field-sm input, .field-sm textarea { width: 100%; box-sizing: border-box; font-size: 0.85rem; }
