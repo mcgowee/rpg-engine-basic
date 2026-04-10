@@ -2984,14 +2984,74 @@ Keep each line under 15 words. No sentences, just tags."""
                     tags[key.rstrip(":")] = line[len(key):].strip().strip('"')
                     break
 
+        # Post-process: strip filler words, character names, and shorten to real tags
+        import re
+
+        # Collect character names to strip
+        char_names_to_strip = set()
+        for ck in (data.get("characters") or {}).keys() if isinstance(data.get("characters"), dict) else []:
+            char_names_to_strip.add(ck.replace("_", " ").title())
+            char_names_to_strip.add(ck)
+        # Also try to get from story
+        if story_id:
+            try:
+                conn2 = get_db()
+                srow = conn2.execute("SELECT characters FROM stories WHERE id = ?", (int(story_id),)).fetchone()
+                conn2.close()
+                if srow and srow["characters"]:
+                    for ck in json.loads(srow["characters"] or "{}").keys():
+                        char_names_to_strip.add(ck.replace("_", " ").title())
+                        char_names_to_strip.add(ck)
+            except Exception:
+                pass
+        # Also strip player name
+        char_names_to_strip.update(["John", "Player", "you", "You"])
+
+        name_pattern = "|".join(re.escape(n) for n in sorted(char_names_to_strip, key=len, reverse=True))
+
+        filler = re.compile(
+            r'\b(with|the|and|from|through|across|beside|that|what|might|happen|next|'
+            r'his|her|their|its|this|of|in|on|at|to|a|an|is|are|was|were|'
+            r'streaming|casting|discarded|faint|gazing|focused|sits?|stands?|leans?|over)\b',
+            re.IGNORECASE,
+        )
+
+        def _clean_tags(text: str) -> str:
+            # Split on commas and semicolons
+            raw_tags = re.split(r'[;,]', text)
+            cleaned = []
+            for tag in raw_tags:
+                tag = tag.strip()
+                if not tag:
+                    continue
+                # Remove character names
+                if name_pattern:
+                    tag = re.sub(name_pattern, '', tag).strip()
+                # Remove filler words
+                tag = filler.sub('', tag).strip()
+                # Collapse whitespace
+                tag = re.sub(r'\s+', ' ', tag).strip()
+                # Skip if too short after cleaning
+                if len(tag) < 3:
+                    continue
+                # Skip tags that are just pronouns or articles left over
+                if tag.lower() in ('him', 'them', 'he', 'she', 'they', 'it', 'man', 'men'):
+                    continue
+                # Truncate long tags
+                words = tag.split()
+                if len(words) > 5:
+                    tag = ' '.join(words[:5])
+                cleaned.append(tag)
+            return ', '.join(cleaned)
+
         # Assemble into a clean image prompt
         parts = []
         for key in ["SETTING", "PEOPLE", "POSE", "MOOD", "DETAILS", "LIGHTING"]:
             if tags.get(key):
-                parts.append(tags[key])
+                parts.append(_clean_tags(tags[key]))
         parts.append(style_suffix)
 
-        assembled = ", ".join(parts)
+        assembled = ", ".join(p for p in parts if p)
 
         return jsonify({
             "prompt": assembled,
