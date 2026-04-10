@@ -198,48 +198,55 @@ def me():
 NODE_DESCRIPTIONS = {
     "narrator": {
         "summary": "Main scene narration via LLM",
-        "description": "Takes the player's message and generates a narrative response. Builds a prompt from the narrator system instructions, game title, player info, characters present, memory summary, and recent history. Uses _subgraph_name (during play) to decide whether a separate NPC node will speak after this beat. This is the core node — every graph needs it.",
+        "description": "Takes the player's message and generates narrative prose (no character dialogue). Writes `_narrator_text` and participates in the shared `response` field for downstream nodes.",
         "llm": True,
         "reads": [
             "message", "narrator", "player", "characters", "history", "memory_summary",
             "game_title", "_subgraph_name",
         ],
-        "writes": ["response"],
+        "writes": ["_narrator_text"],
     },
-    "memory": {
-        "summary": "Records turn in history",
-        "description": "Appends the current turn (player message + narrator response) to the history list and updates the turn count. No LLM call — pure bookkeeping. Graphs without this node still get history appended by the play server after each turn.",
+    "character_agent": {
+        "summary": "Per-character dialogue and action via LLM",
+        "description": "For each character, generates spoken line(s) and a short physical action from personality, history, and mood. Writes `_character_responses` for the response builder.",
+        "llm": True,
+        "reads": ["characters", "message", "player", "history", "memory_summary", "_narrator_text"],
+        "writes": ["_character_responses"],
+    },
+    "response_builder": {
+        "summary": "Assembles play UI bubbles",
+        "description": "No LLM. Merges `_narrator_text` and `_character_responses` into `_bubbles` and a combined `response` string for clients that read a single field.",
         "llm": False,
-        "reads": ["message", "response", "history"],
-        "writes": ["history", "turn_count"],
+        "reads": ["characters", "_narrator_text", "_character_responses"],
+        "writes": ["_bubbles", "response"],
+    },
+    "scene_image": {
+        "summary": "Scene / gallery image for sidebar",
+        "description": "Selects or records scene art (gallery tags, triggers) for the play sidebar. No prose LLM.",
+        "llm": False,
+        "reads": ["story", "characters", "history", "_narrator_text", "_character_responses"],
+        "writes": ["_scene_image", "_active_portraits", "_shown_images"],
+    },
+    "mood": {
+        "summary": "Tracks character mood axes via LLM",
+        "description": "For each character's mood axis, asks the LLM for UP, DOWN, or SAME from the turn context. Multiple axes mean multiple LLM calls.",
+        "llm": True,
+        "reads": ["characters", "message", "history", "memory_summary", "_character_responses"],
+        "writes": ["characters"],
     },
     "condense": {
         "summary": "Rolling memory summary via LLM",
-        "description": "Calls the LLM to compress the story so far into a short summary (under 100 words). Focuses on key facts, relationship changes, and important events. Drops scenery and small talk. The narrator reads this summary for long-term context beyond the raw history window.",
+        "description": "Compresses structured `history` into `memory_summary` (short paragraph). Used for long-term context in narrator and agents.",
         "llm": True,
         "reads": ["history", "memory_summary", "message", "response", "narrator"],
         "writes": ["memory_summary"],
     },
-    "npc": {
-        "summary": "NPC dialogue in character via LLM",
-        "description": "For each character in the story, generates a response in their voice using their personality prompt. Includes the narrator's scene description, the player's message, and the character's current mood. Each character gets their own LLM call. Dialogue is appended to the narrator's response.",
-        "llm": True,
-        "reads": ["characters", "message", "response", "player", "history", "memory_summary"],
-        "writes": ["response"],
-    },
-    "narrator_coda": {
-        "summary": "Closing narrator beat after NPCs speak",
-        "description": "Runs only on graphs that go through npc. Adds a short reactive paragraph and a player prompt (e.g. What do you do?) after character lines, without duplicating NPC dialogue.",
-        "llm": True,
-        "reads": ["response", "narrator", "player", "characters", "game_title"],
-        "writes": ["response"],
-    },
-    "mood": {
-        "summary": "Tracks NPC mood shifts via LLM",
-        "description": "For each character's mood axis, asks the LLM whether it should go UP, DOWN, or SAME based on the player's action. Supports multiple named axes per character (e.g. trust, fear, cooperativeness) with custom low/high labels. Each axis is a separate LLM call. Falls back to a single mood number for legacy characters.",
-        "llm": True,
-        "reads": ["characters", "message", "history", "memory_summary"],
-        "writes": ["characters"],
+    "memory": {
+        "summary": "Records structured turn in history",
+        "description": "Appends a structured dict (player, narrator, characters, mood snapshot) to `history` and updates `turn_count`. No LLM.",
+        "llm": False,
+        "reads": ["message", "history", "_narrator_text", "_character_responses", "characters"],
+        "writes": ["history", "turn_count"],
     },
 }
 
@@ -921,7 +928,7 @@ def create_story():
                 data.get("narrator_model", "default"),
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
-                data.get("subgraph_name", "conversation"),
+                data.get("subgraph_name", "narrator_chat_lite"),
                 tid,
                 json.dumps(characters),
                 data.get("notes", ""),
@@ -1197,7 +1204,7 @@ def import_story():
                 data.get("narrator_model", "default"),
                 data.get("player_name", "Adventurer"),
                 data.get("player_background", ""),
-                data.get("subgraph_name", "conversation"),
+                data.get("subgraph_name", "narrator_chat_lite"),
                 tid,
                 json.dumps(characters),
                 data.get("notes", ""),
@@ -1343,7 +1350,7 @@ def play_start():
         perr = apply_main_graph_to_new_state(state, row, conn, g.user_id)
         if perr:
             return jsonify({"error": perr}), 400
-        sg = state.get("_subgraph_name", "conversation")
+        sg = state.get("_subgraph_name", "narrator_chat_lite")
         if sg not in registry:
             return jsonify({"error": f"Subgraph not available: {sg}"}), 503
 
@@ -1407,7 +1414,7 @@ def play_chat():
 
         state["message"] = message
 
-        subgraph_name = state.get("_subgraph_name", "conversation")
+        subgraph_name = state.get("_subgraph_name", "narrator_chat_lite")
         if subgraph_name not in registry:
             return jsonify({"error": f"Subgraph not available: {subgraph_name}"}), 503
 
@@ -2097,6 +2104,7 @@ def ai_generate_book():
 
         # Generate scene by scene for reliable section breaks
         prose_sections = []
+        content_scenes = []
         prev_context = ""
 
         for i, scene in enumerate(scenes):
@@ -2142,32 +2150,35 @@ Rewrite this turn into 2-3 polished paragraphs. Rules:
                     section_text = section_text[len(prefix):].strip()
 
             if section_text:
+                # Build structured scene object
+                scene_obj = {
+                    "turn": scene.get("turn", 0),
+                    "prose": section_text,
+                }
+                # Attach scene image if available
+                if scene.get("scene_image"):
+                    scene_obj["scene_image"] = scene["scene_image"]
+                # Attach active portraits or defaults
+                if scene.get("active_portraits"):
+                    scene_obj["portraits"] = scene["active_portraits"]
+                else:
+                    # Use default character portraits
+                    for ck, cv in characters.items():
+                        if isinstance(cv, dict) and cv.get("portrait"):
+                            label = ck.replace("_", " ").title()
+                            if "portraits" not in scene_obj:
+                                scene_obj["portraits"] = {}
+                            scene_obj["portraits"][label] = cv["portrait"]
+
                 prose_sections.append(section_text)
+                content_scenes.append(scene_obj)
                 prev_context = section_text[-200:]
 
         prose_text = "\n\n---\n\n".join(prose_sections)
 
-        # Build scene metadata for the frontend
-        scene_metadata = []
-        for scene in scenes:
-            meta = {"turn": scene.get("turn", 0)}
-            if scene.get("scene_image"):
-                meta["scene_image"] = scene["scene_image"]
-            if scene.get("active_portraits"):
-                meta["active_portraits"] = scene["active_portraits"]
-            # Include character portraits from story data
-            char_portraits = {}
-            for ck, cv in characters.items():
-                if isinstance(cv, dict) and cv.get("portrait"):
-                    label = ck.replace("_", " ").title()
-                    char_portraits[label] = cv["portrait"]
-            if char_portraits:
-                meta["portraits"] = char_portraits
-            scene_metadata.append(meta)
-
         return jsonify({
             "prose": prose_text,
-            "scenes": scene_metadata,
+            "content": content_scenes,
         })
     except Exception as e:
         logger.exception("ai/generate-book failed")
@@ -2216,11 +2227,14 @@ def save_book():
     if not prose:
         return jsonify({"error": "prose is required"}), 400
 
+    content = data.get("content", [])
+    content_json = json.dumps(content) if isinstance(content, list) else "[]"
+
     conn = get_db()
     try:
         cur = conn.execute(
-            "INSERT INTO books (story_id, user_id, title, prose) VALUES (?, ?, ?, ?)",
-            (story_id, g.user_id, title, prose),
+            "INSERT INTO books (story_id, user_id, title, prose, content) VALUES (?, ?, ?, ?, ?)",
+            (story_id, g.user_id, title, prose, content_json),
         )
         conn.commit()
         book_id = cur.lastrowid
@@ -2244,11 +2258,16 @@ def get_book(book_id: int):
         conn.close()
     if not row:
         return jsonify({"error": "Not found"}), 404
+    try:
+        content = json.loads(row["content"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        content = []
     return jsonify({
         "id": row["id"],
         "story_id": row["story_id"],
         "title": row["title"],
         "prose": row["prose"],
+        "content": content,
         "genre": row["genre"] or "",
         "cover_image": row["cover_image"] or "",
         "created_at": row["created_at"],
@@ -2267,9 +2286,11 @@ def update_book(book_id: int):
         if not row:
             return jsonify({"error": "Not found"}), 404
         data = request.get_json(silent=True) or {}
+        update_content = data.get("content")
+        content_json = json.dumps(update_content) if update_content is not None else (row["content"] or "[]")
         conn.execute(
-            "UPDATE books SET title = ?, prose = ?, updated_at = datetime('now') WHERE id = ?",
-            (data.get("title", row["title"]), data.get("prose", row["prose"]), book_id),
+            "UPDATE books SET title = ?, prose = ?, content = ?, updated_at = datetime('now') WHERE id = ?",
+            (data.get("title", row["title"]), data.get("prose", row["prose"]), content_json, book_id),
         )
         conn.commit()
     finally:

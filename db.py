@@ -65,7 +65,7 @@ def init_db():
             narrator_model TEXT DEFAULT 'default',
             player_name TEXT DEFAULT 'Adventurer',
             player_background TEXT DEFAULT '',
-            subgraph_name TEXT DEFAULT 'conversation',
+            subgraph_name TEXT DEFAULT 'narrator_chat_lite',
             main_graph_template_id INTEGER REFERENCES main_graph_templates(id),
             characters TEXT DEFAULT '{}',
             scene_gallery TEXT DEFAULT '[]',
@@ -84,6 +84,7 @@ def init_db():
             user_id INTEGER NOT NULL REFERENCES users(id),
             title TEXT NOT NULL,
             prose TEXT NOT NULL,
+            content TEXT DEFAULT '[]',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
         );
@@ -156,6 +157,12 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     if "scene_gallery" not in cols:
         conn.execute("ALTER TABLE stories ADD COLUMN scene_gallery TEXT DEFAULT '[]'")
+        conn.commit()
+
+    # Books: add content JSON column
+    book_cols = {row[1] for row in conn.execute("PRAGMA table_info(books)").fetchall()}
+    if "content" not in book_cols:
+        conn.execute("ALTER TABLE books ADD COLUMN content TEXT DEFAULT '[]'")
         conn.commit()
 
     # Migrate all old subgraphs to narrator_chat architecture.
@@ -412,7 +419,7 @@ def seed_builtin_stories():
                     data.get("narrator_model", "default"),
                     data.get("player_name", "Adventurer"),
                     data.get("player_background", ""),
-                    data.get("subgraph_name", "conversation"),
+                    data.get("subgraph_name", "narrator_chat_lite"),
                     json.dumps(characters) if isinstance(characters, dict) else "{}",
                     data.get("notes", ""),
                     (data.get("cover_image") or "").strip(),

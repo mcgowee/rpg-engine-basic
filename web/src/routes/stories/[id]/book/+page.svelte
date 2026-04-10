@@ -27,8 +27,13 @@
 
 	// Book state
 	let prose = $state('');
-	type SceneMeta = { turn: number; scene_image?: string; active_portraits?: Record<string, string>; portraits?: Record<string, string> };
-	let sceneMeta = $state<SceneMeta[]>([]);
+	type BookScene = {
+		turn: number;
+		prose: string;
+		scene_image?: string;
+		portraits?: Record<string, string>;
+	};
+	let bookContent = $state<BookScene[]>([]);
 	let bookId = $state<number | null>(null);
 	let bookTitle = $state('');
 	let loading = $state(true);
@@ -41,7 +46,12 @@
 	// Saved books for this story
 	let savedBooks = $state<{ id: number; title: string; updated_at: string }[]>([]);
 
-	let sections = $derived(prose ? prose.split(/\n---\n|\n\n---\n\n/).map(s => s.trim()).filter(Boolean) : []);
+	// Fallback: if no structured content, split prose by ---
+	let sections = $derived(
+		bookContent.length > 0
+			? bookContent
+			: (prose ? prose.split(/\n---\n|\n\n---\n\n/).map((s, i) => ({ turn: i, prose: s.trim() } as BookScene)).filter(s => s.prose) : [])
+	);
 
 	// Extract scene images from history
 	let sceneImages = $derived.by((): string[] => {
@@ -135,9 +145,9 @@
 				body: JSON.stringify({ history, opening, title, player_name: playerName, characters, genre, tone }),
 			});
 			const j = await r.json().catch(() => ({}));
-			if (r.ok && j.prose) {
-				prose = j.prose;
-				sceneMeta = Array.isArray(j.scenes) ? j.scenes : [];
+			if (r.ok && (j.prose || j.content)) {
+				prose = j.prose ?? '';
+				bookContent = Array.isArray(j.content) ? j.content : [];
 				bookId = null; // New unsaved prose
 			} else {
 				error = j.error ?? 'Generation failed';
@@ -157,14 +167,14 @@
 				const r = await fetch(`/api/books/${bookId}`, {
 					method: 'PUT', credentials: 'include',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ title: bookTitle, prose }),
+					body: JSON.stringify({ title: bookTitle, prose, content: bookContent }),
 				});
 				if (r.ok) globalToast('Book saved', 'success');
 			} else {
 				const r = await fetch('/api/books', {
 					method: 'POST', credentials: 'include',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ story_id: storyId, title: bookTitle, prose }),
+					body: JSON.stringify({ story_id: storyId, title: bookTitle, prose, content: bookContent }),
 				});
 				const j = await r.json().catch(() => ({}));
 				if (r.ok && j.id) {
@@ -186,6 +196,7 @@
 			if (r.ok) {
 				const j = await r.json();
 				prose = j.prose ?? '';
+				bookContent = Array.isArray(j.content) ? j.content : [];
 				bookId = j.id;
 				bookTitle = j.title ?? title;
 				coverImage = j.cover_image ?? coverImage;
@@ -490,13 +501,12 @@
 		</div>
 
 		<div class="book-prose" transition:fade={{ duration: 300 }}>
-			{#each sections as section, i (i)}
-				{@const meta = sceneMeta[i]}
+			{#each sections as scene, i (i)}
 				<div class="book-scene-block">
-					{#if meta?.scene_image}
+					{#if scene.scene_image}
 						<div class="book-scene-img">
 							<img
-								src={meta.scene_image.startsWith('/') ? meta.scene_image : `/images/scenes/${meta.scene_image}`}
+								src={scene.scene_image.startsWith('/') ? scene.scene_image : `/images/scenes/${scene.scene_image}`}
 								alt="Scene {i + 1}"
 								loading="lazy"
 								decoding="async"
@@ -505,9 +515,9 @@
 					{/if}
 
 					<div class="book-section">
-						{#if meta?.portraits || meta?.active_portraits}
+						{#if scene.portraits}
 							<div class="book-scene-portraits">
-								{#each Object.entries(meta.active_portraits ?? meta.portraits ?? {}) as [name, portrait]}
+								{#each Object.entries(scene.portraits) as [name, portrait]}
 									<div class="book-scene-char">
 										<img
 											src={`/images/portraits/${portrait}`}
@@ -522,7 +532,7 @@
 							</div>
 						{/if}
 
-						{#each section.split('\n') as para}
+						{#each scene.prose.split('\n') as para}
 							{#if para.trim()}
 								<p>{para.trim()}</p>
 							{/if}
