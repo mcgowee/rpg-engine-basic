@@ -1125,7 +1125,7 @@
 
 					{#if mode === 'edit'}
 						<div class="field">
-							<strong>Portrait</strong>
+							<strong>Default Portrait</strong>
 							{#if char.portrait && !isPortraitBroken(idx, char.portrait)}
 								<div class="portrait-preview">
 									<img
@@ -1145,12 +1145,14 @@
 									</div>
 								</div>
 							{/if}
-							<button type="button" class="btn sm"
-								disabled={generatingPortrait === char.key || !char.key.trim()}
-								title="Generate a portrait from this character's personality (requires ComfyUI)"
-								onclick={() => generatePortrait(char.key, idx)}>
-								{#if generatingPortrait === char.key}<span class="spinner"></span> Generating...{:else}🎨 Generate Portrait{/if}
-							</button>
+							<div class="cover-btn-row">
+								<button type="button" class="btn sm"
+									disabled={generatingPortrait === char.key || !char.key.trim()}
+									title="Generate a portrait from this character's personality (requires ComfyUI)"
+									onclick={() => generatePortrait(char.key, idx)}>
+									{#if generatingPortrait === char.key}<span class="spinner"></span> Generating...{:else}🎨 Generate Portrait{/if}
+								</button>
+							</div>
 							{#if portraitError && generatingPortrait === ''}<p class="err" style="font-size:0.85rem">{portraitError}</p>{/if}
 						</div>
 					{/if}
@@ -1185,6 +1187,174 @@
 						{/each}
 						<button type="button" class="btn sm" onclick={() => { char.moods = [...char.moods, { axis: '', low: '', high: '', value: 5 }]; }}>Add axis</button>
 					</div>
+
+					{#if mode === 'edit' && char.moods.length > 0}
+						<div class="field">
+							<strong>Portrait Variants</strong>
+							<span class="hint">Different portraits displayed based on mood state. The scene_image node swaps them during play.</span>
+
+							{#each (char.portrait_rules ?? []) as rule, ri (ri)}
+								{@const variantUrl = (char.portraits ?? {})[rule.use] ?? ''}
+								<div class="variant-card">
+									<div class="variant-header">
+										<input type="text" bind:value={rule.use} placeholder="variant name (e.g. flirty)" class="variant-name-input" />
+										<button type="button" class="btn sm danger" onclick={() => {
+											char.portrait_rules = (char.portrait_rules ?? []).filter((_, i) => i !== ri);
+											characterEntries = [...characterEntries];
+										}}>×</button>
+									</div>
+
+									{#if variantUrl}
+										<div class="variant-preview">
+											<img src={portraitSrc(variantUrl)} alt="{rule.use} variant" class="variant-thumb" />
+										</div>
+									{/if}
+
+									<div class="variant-rules">
+										<span class="hint">Mood ranges — when ALL match, this variant is used:</span>
+										{#each Object.entries(rule.mood ?? {}) as [axis, range], mi (axis)}
+											<div class="variant-mood-row">
+												<select value={axis} onchange={(e) => {
+													const newAxis = (e.currentTarget as HTMLSelectElement).value;
+													const m = { ...(rule.mood ?? {}) };
+													const val = m[axis];
+													delete m[axis];
+													m[newAxis] = val;
+													rule.mood = m;
+													characterEntries = [...characterEntries];
+												}}>
+													{#each char.moods as a (a.axis)}
+														<option value={a.axis}>{a.axis}</option>
+													{/each}
+												</select>
+												<span class="hint" style="display:inline">from</span>
+												<input type="number" min="1" max="10" value={range[0]}
+													oninput={(e) => {
+														const m = { ...(rule.mood ?? {}) };
+														m[axis] = [Number((e.currentTarget as HTMLInputElement).value), range[1]];
+														rule.mood = m;
+														characterEntries = [...characterEntries];
+													}}
+													style="width:3.5rem" />
+												<span class="hint" style="display:inline">to</span>
+												<input type="number" min="1" max="10" value={range[1]}
+													oninput={(e) => {
+														const m = { ...(rule.mood ?? {}) };
+														m[axis] = [range[0], Number((e.currentTarget as HTMLInputElement).value)];
+														rule.mood = m;
+														characterEntries = [...characterEntries];
+													}}
+													style="width:3.5rem" />
+												<button type="button" class="btn sm" onclick={() => {
+													const m = { ...(rule.mood ?? {}) };
+													delete m[axis];
+													rule.mood = m;
+													characterEntries = [...characterEntries];
+												}}>×</button>
+											</div>
+										{/each}
+										<button type="button" class="btn sm" onclick={() => {
+											const available = char.moods.find(a => !Object.keys(rule.mood ?? {}).includes(a.axis));
+											if (available) {
+												rule.mood = { ...(rule.mood ?? {}), [available.axis]: [5, 10] };
+												characterEntries = [...characterEntries];
+											}
+										}}>+ Add mood rule</button>
+									</div>
+
+									<label class="field-sm">
+										<span>Tag triggers (optional, comma-separated)</span>
+										<input type="text" value={(rule.tags ?? []).join(', ')}
+											oninput={(e) => {
+												rule.tags = (e.currentTarget as HTMLInputElement).value.split(',').map(t => t.trim()).filter(Boolean);
+												characterEntries = [...characterEntries];
+											}}
+											placeholder="date, restaurant, dressed up" />
+									</label>
+
+									<label class="field-sm">
+										<span>Image URL</span>
+										<input type="text" value={variantUrl}
+											oninput={(e) => {
+												if (!char.portraits) char.portraits = {};
+												char.portraits[rule.use] = (e.currentTarget as HTMLInputElement).value;
+												characterEntries = [...characterEntries];
+											}}
+											placeholder="story_12_alex_flirty.png" />
+									</label>
+
+									<div class="gallery-btn-row">
+										<button type="button" class="btn sm"
+											disabled={!char.key.trim() || !rule.use.trim()}
+											onclick={async () => {
+												galleryImageError = '';
+												try {
+													const r = await fetch('/api/ai/build-portrait-prompt', {
+														method: 'POST', credentials: 'include',
+														headers: { 'Content-Type': 'application/json' },
+														body: JSON.stringify({
+															story_id: storyId,
+															character_key: char.key,
+															style: 'anime',
+														}),
+													});
+													const j = await r.json().catch(() => ({}));
+													if (r.ok && j.prompt) {
+														const variantPrompt = j.prompt.replace(/portrait/i, `${rule.use} expression portrait`);
+														if (!char.portraits) char.portraits = {};
+														// Store prompt temporarily in a data attribute (generate next)
+														const ta = document.querySelector(`[data-variant-prompt="${char.key}-${rule.use}"]`) as HTMLTextAreaElement;
+														if (ta) ta.value = variantPrompt;
+													}
+												} catch { /* ignore */ }
+											}}>
+											Build Prompt
+										</button>
+										<button type="button" class="btn sm primary"
+											disabled={!char.key.trim() || !rule.use.trim() || generatingPortrait === `${char.key}_${rule.use}`}
+											onclick={async () => {
+												const ta = document.querySelector(`[data-variant-prompt="${char.key}-${rule.use}"]`) as HTMLTextAreaElement;
+												const prompt = ta?.value ?? '';
+												if (!prompt.trim() || !storyId) return;
+												generatingPortrait = `${char.key}_${rule.use}`;
+												try {
+													const r = await fetch('/api/ai/generate-portrait', {
+														method: 'POST', credentials: 'include',
+														headers: { 'Content-Type': 'application/json' },
+														body: JSON.stringify({
+															story_id: storyId,
+															character_key: `${char.key}_${rule.use}`,
+															prompt,
+														}),
+													});
+													const j = await r.json().catch(() => ({}));
+													if (r.ok && j.portrait) {
+														if (!char.portraits) char.portraits = {};
+														char.portraits[rule.use] = j.portrait;
+														characterEntries = [...characterEntries];
+													}
+												} catch { /* ignore */ }
+												finally { generatingPortrait = ''; }
+											}}>
+											{#if generatingPortrait === `${char.key}_${rule.use}`}<span class="spinner"></span>{:else}🎨 Generate{/if}
+										</button>
+									</div>
+									<textarea rows="2" data-variant-prompt="{char.key}-{rule.use}" placeholder="Portrait prompt for this variant..." style="font-size:0.82rem; width:100%; margin-top:0.3rem"></textarea>
+								</div>
+							{/each}
+
+							<button type="button" class="btn sm" onclick={() => {
+								if (!char.portrait_rules) char.portrait_rules = [];
+								const firstAxis = char.moods[0]?.axis ?? 'mood';
+								char.portrait_rules = [...char.portrait_rules, {
+									use: '',
+									mood: { [firstAxis]: [5, 10] },
+									tags: [],
+								}];
+								characterEntries = [...characterEntries];
+							}}>+ Add Variant</button>
+						</div>
+					{/if}
 
 					<button type="button" class="btn sm danger" onclick={() => removeCharacter(idx)}>Remove character</button>
 				</fieldset>
@@ -1349,6 +1519,14 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
+	.variant-card { border: 1px solid #2a2f38; padding: 0.6rem; border-radius: 6px; margin-bottom: 0.6rem; background: #13151a; }
+	.variant-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; }
+	.variant-name-input { font-size: 0.88rem; font-weight: 600; max-width: 12rem; }
+	.variant-preview { margin-bottom: 0.4rem; }
+	.variant-thumb { max-width: 100px; height: auto; border-radius: 6px; border: 1px solid #2a2f38; }
+	.variant-rules { margin-bottom: 0.4rem; }
+	.variant-mood-row { display: flex; gap: 0.3rem; align-items: center; margin-bottom: 0.3rem; flex-wrap: wrap; }
+	.variant-mood-row select { font-size: 0.82rem; width: auto; }
 	.gallery-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
 	.gallery-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
 	.gallery-card-body { display: flex; gap: 0.75rem; margin-bottom: 0.5rem; }
