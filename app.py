@@ -2972,7 +2972,7 @@ Initial tags: {tags_str}
 Generate all of the following for this scene. Return EXACTLY this format:
 
 TAGS: comma-separated keywords for matching (5-8 tags, include location, time of day, mood, objects)
-TRIGGER: a short phrase (3-6 words) that would appear in the story when this scene is active
+TRIGGER: a concrete, literal phrase (2-4 words) describing the situation, like "cooking breakfast" or "first kiss" or "rooftop at night" — NOT literary or poetic, just plain keywords the narrator would use
 CAPTION: one sentence describing the scene for display under the image
 PROMPT: a detailed image generation prompt (40-60 words) describing the visual scene, ending with: {style_suffix}
 

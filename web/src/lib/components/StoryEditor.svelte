@@ -137,6 +137,10 @@
 	}
 	let brokenStoryImages = new SvelteSet<string>();
 	let generatingPortrait = $state('');
+	let portraitStyle = $state('anime');
+	let portraitPromptText = $state('');
+	let buildingPortraitPrompt = $state('');
+	let portraitStyles = $state<{ key: string; description: string }[]>([]);
 	let portraitError = $state('');
 	let brokenPortraits = new SvelteSet<string>();
 
@@ -148,7 +152,7 @@
 
 	// Characters
 	type MoodAxis = { axis: string; low: string; high: string; value: number };
-	type PortraitRule = { mood?: Record<string, [number, number]>; tags?: string[]; use: string; priority?: number };
+	type PortraitRule = { mood?: Record<string, [number, number]>; tags?: string[]; use: string; priority?: number; _prompt?: string };
 	type CharEntry = {
 		key: string; prompt: string; first_line: string; model: string;
 		moods: MoodAxis[]; portrait?: string;
@@ -425,6 +429,8 @@
 	onMount(async () => {
 		loadCoverStyles();
 		loadExistingImages();
+		fetch('/api/ai/portrait-styles', { credentials: 'include' })
+			.then(r => r.json()).then(j => { if (Array.isArray(j.styles)) portraitStyles = j.styles; }).catch(() => {});
 		try {
 			const r = await fetch('/api/subgraphs', { credentials: 'include' });
 			if (r.ok) {
@@ -899,66 +905,6 @@
 					{#if coverError}<p class="err" style="font-size:0.85rem">{coverError}</p>{/if}
 				</div>
 
-				<div class="field">
-					<strong>Story Images</strong>
-					<span class="hint">Generate scene-setting images for this story and save them with the story.</span>
-					<div class="story-image-actions">
-						<button
-							type="button"
-							class="btn sm"
-							disabled={generatingStoryImage}
-							title="Generate a starter image from current story details"
-							onclick={() => generateStoryImage(buildAutoStoryImagePrompt())}
-						>
-							{#if generatingStoryImage}<span class="spinner"></span> Generating...{:else}✨ Auto Generate{/if}
-						</button>
-					</div>
-					<textarea
-						rows="2"
-						placeholder="Manual image prompt (optional)"
-						bind:value={manualStoryImagePrompt}
-					></textarea>
-					<button
-						type="button"
-						class="btn sm"
-						disabled={generatingStoryImage}
-						title="Generate image from this prompt"
-						onclick={() => generateStoryImage(manualStoryImagePrompt.trim())}
-					>
-						{#if generatingStoryImage}<span class="spinner"></span> Generating...{:else}🖼️ Generate from Prompt{/if}
-					</button>
-					{#if storyImageError}<p class="err" style="font-size:0.85rem">{storyImageError}</p>{/if}
-					{#if storyImageOk}<p class="ok" style="font-size:0.85rem">{storyImageOk}</p>{/if}
-
-					{#if storyImages.length > 0}
-						<div class="story-image-grid">
-							{#each storyImages as img, idx (storyImageKey(img, idx))}
-								{@const key = storyImageKey(img, idx)}
-								<div class="story-image-card">
-									{#if !isStoryImageBroken(key)}
-										<img
-											src={storyImageSrc(img.filename)}
-											alt="Story image {idx + 1}"
-											loading="lazy"
-											decoding="async"
-											onerror={() => markStoryImageBroken(key)}
-											onload={() => clearStoryImageBroken(key)}
-										/>
-									{:else}
-										<div class="image-placeholder story-image-placeholder">
-											<Icon name="image" size={18} />
-											<span>Image unavailable</span>
-										</div>
-									{/if}
-									{#if img.prompt}
-										<p class="story-image-prompt">{img.prompt}</p>
-									{/if}
-									<button type="button" class="btn sm danger" onclick={() => removeStoryImage(idx)}>Remove</button>
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
 			{/if}
 
 			<div class="field">
@@ -996,29 +942,6 @@
 				</select>
 			</label>
 
-			{#if nsfwRating !== 'none'}
-				<div class="field">
-					<strong>NSFW Tags</strong>
-					<span class="hint">Select all that apply to this story.</span>
-					<div class="tag-grid">
-						{#each NSFW_TAGS as tag}
-							<label class="tag-check" class:selected={nsfwTags.includes(tag)}>
-								<input type="checkbox"
-									checked={nsfwTags.includes(tag)}
-									onchange={() => {
-										if (nsfwTags.includes(tag)) {
-											nsfwTags = nsfwTags.filter(t => t !== tag);
-										} else {
-											nsfwTags = [...nsfwTags, tag];
-										}
-									}}
-								/>
-								{tag}
-							</label>
-						{/each}
-					</div>
-				</div>
-			{/if}
 
 			<div class="field">
 				<strong>Opening</strong>
@@ -1163,14 +1086,66 @@
 									</div>
 								</div>
 							{/if}
+
+							<label class="field-sm">
+								<span>Style</span>
+								<select bind:value={portraitStyle} style="font-size:0.85rem; width:auto">
+									{#each portraitStyles as s (s.key)}
+										<option value={s.key}>{s.key}</option>
+									{/each}
+									{#if portraitStyles.length === 0}
+										<option value="anime">anime</option>
+									{/if}
+								</select>
+							</label>
+
 							<div class="cover-btn-row">
 								<button type="button" class="btn sm"
+									disabled={buildingPortraitPrompt === char.key || !char.key.trim()}
+									onclick={async () => {
+										buildingPortraitPrompt = char.key;
+										try {
+											const r = await fetch('/api/ai/build-portrait-prompt', {
+												method: 'POST', credentials: 'include',
+												headers: { 'Content-Type': 'application/json' },
+												body: JSON.stringify({ story_id: storyId, character_key: char.key, style: portraitStyle }),
+											});
+											const j = await r.json().catch(() => ({}));
+											if (r.ok && j.prompt) portraitPromptText = j.prompt;
+										} catch { /* ignore */ }
+										finally { buildingPortraitPrompt = ''; }
+									}}>
+									{#if buildingPortraitPrompt === char.key}<span class="spinner"></span> Building...{:else}Build Prompt{/if}
+								</button>
+								<button type="button" class="btn sm primary"
 									disabled={generatingPortrait === char.key || !char.key.trim()}
-									title="Generate a portrait from this character's personality (requires ComfyUI)"
+									title="Generate portrait (requires ComfyUI)"
 									onclick={() => generatePortrait(char.key, idx)}>
-									{#if generatingPortrait === char.key}<span class="spinner"></span> Generating...{:else}🎨 Generate Portrait{/if}
+									{#if generatingPortrait === char.key}<span class="spinner"></span> Generating...{:else}🎨 Generate{/if}
 								</button>
 							</div>
+
+							{#if portraitPromptText}
+								<textarea rows="2" bind:value={portraitPromptText} style="font-size:0.82rem; margin-top:0.3rem"></textarea>
+							{/if}
+
+							<div class="field-sm" style="margin-top:0.4rem">
+								<span>Or select existing image</span>
+								<div class="image-url-row">
+									<select style="flex:1; font-size:0.82rem"
+										value={char.portrait ?? ''}
+										onchange={(e) => {
+											char.portrait = (e.currentTarget as HTMLSelectElement).value;
+											characterEntries = [...characterEntries];
+										}}>
+										<option value="">— select —</option>
+										{#each existingSceneImages.filter(img => img.type === 'portrait') as img (img.url)}
+											<option value={img.filename}>{img.filename}</option>
+										{/each}
+									</select>
+								</div>
+							</div>
+
 							{#if portraitError && generatingPortrait === ''}<p class="err" style="font-size:0.85rem">{portraitError}</p>{/if}
 						</div>
 					{/if}
@@ -1290,74 +1265,83 @@
 											placeholder="date, restaurant, dressed up" />
 									</label>
 
-									<label class="field-sm">
-										<span>Image URL</span>
-										<input type="text" value={variantUrl}
-											oninput={(e) => {
-												if (!char.portraits) char.portraits = {};
-												char.portraits[rule.use] = (e.currentTarget as HTMLInputElement).value;
-												characterEntries = [...characterEntries];
-											}}
-											placeholder="story_12_alex_flirty.png" />
-									</label>
+									<div class="field-sm">
+										<span>Image</span>
+										<div class="image-url-row">
+											<select style="flex:1; font-size:0.82rem"
+												value={variantUrl}
+												onchange={(e) => {
+													if (!char.portraits) char.portraits = {};
+													char.portraits[rule.use] = (e.currentTarget as HTMLSelectElement).value;
+													characterEntries = [...characterEntries];
+												}}>
+												<option value="">— select existing —</option>
+												{#each existingSceneImages.filter(img => img.type === 'portrait') as img (img.url)}
+													<option value={img.filename}>{img.filename}</option>
+												{/each}
+											</select>
+											<span class="hint" style="display:inline; margin:0 0.3rem">or</span>
+											<input type="text" value={variantUrl}
+												oninput={(e) => {
+													if (!char.portraits) char.portraits = {};
+													char.portraits[rule.use] = (e.currentTarget as HTMLInputElement).value;
+													characterEntries = [...characterEntries];
+												}}
+												placeholder="paste URL" style="flex:1; font-size:0.82rem" />
+										</div>
+									</div>
 
 									<div class="gallery-btn-row">
 										<button type="button" class="btn sm"
-											disabled={!char.key.trim() || !rule.use.trim()}
+											disabled={buildingPortraitPrompt === `${char.key}_${rule.use}` || !char.key.trim() || !rule.use.trim()}
 											onclick={async () => {
-												galleryImageError = '';
+												const varKey = `${char.key}_${rule.use}`;
+												buildingPortraitPrompt = varKey;
 												try {
 													const r = await fetch('/api/ai/build-portrait-prompt', {
 														method: 'POST', credentials: 'include',
 														headers: { 'Content-Type': 'application/json' },
-														body: JSON.stringify({
-															story_id: storyId,
-															character_key: char.key,
-															style: 'anime',
-														}),
+														body: JSON.stringify({ story_id: storyId, character_key: char.key, style: portraitStyle }),
 													});
 													const j = await r.json().catch(() => ({}));
 													if (r.ok && j.prompt) {
-														const variantPrompt = j.prompt.replace(/portrait/i, `${rule.use} expression portrait`);
-														if (!char.portraits) char.portraits = {};
-														// Store prompt temporarily in a data attribute (generate next)
-														const ta = document.querySelector(`[data-variant-prompt="${char.key}-${rule.use}"]`) as HTMLTextAreaElement;
-														if (ta) ta.value = variantPrompt;
+														rule._prompt = j.prompt.replace(/portrait/i, `${rule.use} expression portrait`);
+														characterEntries = [...characterEntries];
 													}
 												} catch { /* ignore */ }
+												finally { buildingPortraitPrompt = ''; }
 											}}>
-											Build Prompt
+											{#if buildingPortraitPrompt === `${char.key}_${rule.use}`}<span class="spinner"></span> Building...{:else}Build Prompt{/if}
 										</button>
 										<button type="button" class="btn sm primary"
-											disabled={!char.key.trim() || !rule.use.trim() || generatingPortrait === `${char.key}_${rule.use}`}
+											disabled={generatingPortrait === `${char.key}_${rule.use}` || !char.key.trim() || !rule.use.trim() || !(rule._prompt ?? '').trim()}
 											onclick={async () => {
-												const ta = document.querySelector(`[data-variant-prompt="${char.key}-${rule.use}"]`) as HTMLTextAreaElement;
-												const prompt = ta?.value ?? '';
-												if (!prompt.trim() || !storyId) return;
-												generatingPortrait = `${char.key}_${rule.use}`;
+												const varKey = `${char.key}_${rule.use}`;
+												const prompt = (rule._prompt ?? '').trim();
+												if (!prompt || !storyId) return;
+												generatingPortrait = varKey;
 												try {
 													const r = await fetch('/api/ai/generate-portrait', {
 														method: 'POST', credentials: 'include',
 														headers: { 'Content-Type': 'application/json' },
-														body: JSON.stringify({
-															story_id: storyId,
-															character_key: `${char.key}_${rule.use}`,
-															prompt,
-														}),
+														body: JSON.stringify({ story_id: storyId, character_key: varKey, prompt }),
 													});
 													const j = await r.json().catch(() => ({}));
 													if (r.ok && j.portrait) {
 														if (!char.portraits) char.portraits = {};
 														char.portraits[rule.use] = j.portrait;
 														characterEntries = [...characterEntries];
+														loadExistingImages();
 													}
 												} catch { /* ignore */ }
 												finally { generatingPortrait = ''; }
 											}}>
-											{#if generatingPortrait === `${char.key}_${rule.use}`}<span class="spinner"></span>{:else}🎨 Generate{/if}
+											{#if generatingPortrait === `${char.key}_${rule.use}`}<span class="spinner"></span> Generating...{:else}🎨 Generate{/if}
 										</button>
 									</div>
-									<textarea rows="2" data-variant-prompt="{char.key}-{rule.use}" placeholder="Portrait prompt for this variant..." style="font-size:0.82rem; width:100%; margin-top:0.3rem"></textarea>
+									{#if rule._prompt}
+										<textarea rows="2" bind:value={rule._prompt} placeholder="Portrait prompt for this variant..." style="font-size:0.82rem; width:100%; margin-top:0.3rem"></textarea>
+									{/if}
 								</div>
 							{/each}
 
@@ -1610,12 +1594,6 @@
 	}
 	.cover-placeholder { font-size: 0.8rem; }
 	.portrait-placeholder { font-size: 0.72rem; }
-	.story-image-actions { display: flex; gap: 0.4rem; margin: 0.3rem 0; }
-	.story-image-grid { margin-top: 0.55rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.55rem; }
-	.story-image-card { border: 1px solid #2a2f38; border-radius: 8px; padding: 0.45rem; background: #161a20; display: flex; flex-direction: column; gap: 0.35rem; }
-	.story-image-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; border: 1px solid #2a2f38; display: block; }
-	.story-image-placeholder { width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; border: 1px solid #2a2f38; font-size: 0.72rem; }
-	.story-image-prompt { margin: 0; font-size: 0.76rem; line-height: 1.35; color: #9aa0a6; }
 	.danger { color: #f28b82; border-color: #c5221f; }
 	.sg-rec-box { border: 1px solid #2a2f38; border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1.25rem; background: #1a1d23; }
 	.sg-rec-title { font-size: 0.95rem; display: block; margin-bottom: 0.2rem; }
@@ -1643,17 +1621,11 @@
 	.suggest-item:hover { background: #2a2f38; }
 	.axis-preview { font-weight: 600; margin-right: 0.35rem; }
 	.axis-range { color: #9aa0a6; font-size: 0.82rem; }
-	.tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.45rem; margin-top: 0.35rem; }
-	.tag-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; color: #e8eaed; cursor: pointer; border: 1px solid #2a2f38; border-radius: 999px; padding: 0.38rem 0.62rem; background: #12161c; transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease, transform 0.18s ease; }
-	.tag-check:hover { border-color: #4b5565; background: #1b2129; transform: translateY(-1px); }
-	.tag-check.selected { border-color: #1a73e8; background: #112946; color: #d5e8ff; }
+	.tag-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.88rem; color: #e8eaed; cursor: pointer; }
 	.tag-check input[type="checkbox"] { accent-color: #1a73e8; margin: 0; }
 	:global([data-theme="light"]) .tabs { border-bottom-color: #dfe3e7; }
 	:global([data-theme="light"]) .tabs button { border-color: #d9dde2; background: #f7f8fa; color: #5a6472; }
 	:global([data-theme="light"]) .tabs button:hover { color: #1f2937; border-color: #cdd3db; background: #f2f5f8; }
 	:global([data-theme="light"]) .tabs button.active { color: #fff; background: #1a73e8; border-color: #1a73e8; }
 	:global([data-theme="light"]) .field-meta { border-color: #dfe3e7; background: #fafbfc; }
-	:global([data-theme="light"]) .tag-check { border-color: #d5dbe3; background: #fff; color: #2f3a49; }
-	:global([data-theme="light"]) .tag-check:hover { border-color: #c2cad5; background: #f5f8fc; }
-	:global([data-theme="light"]) .tag-check.selected { border-color: #1a73e8; background: #e8f2ff; color: #164a91; }
 </style>
