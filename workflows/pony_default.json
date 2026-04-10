@@ -1,0 +1,59 @@
+{
+  "name": "pony_default",
+  "description": "Pony Diffusion V6 XL — SDXL-based, character art and NSFW capable",
+  "checkpoint": "ponyDiffusionV6XL.safetensors",
+  "workflow": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "cfg": 7.0,
+        "denoise": 1.0,
+        "latent_image": ["5", 0],
+        "model": ["4", 0],
+        "negative": ["7", 0],
+        "positive": ["6", 0],
+        "sampler_name": "euler_ancestral",
+        "scheduler": "normal",
+        "seed": 0,
+        "steps": 25
+      }
+    },
+    "4": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": { "ckpt_name": "ponyDiffusionV6XL.safetensors" }
+    },
+    "5": {
+      "class_type": "EmptyLatentImage",
+      "inputs": { "batch_size": 1, "height": 640, "width": 1024 }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "clip": ["4", 1], "text": "" }
+    },
+    "7": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": ["4", 1],
+        "text": "score_1, score_2, score_3, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, mutated hands, poorly drawn face, watermark, text, signature, logo"
+      }
+    },
+    "8": {
+      "class_type": "VAEDecode",
+      "inputs": { "samples": ["3", 0], "vae": ["4", 2] }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": { "filename_prefix": "rpg", "images": ["8", 0] }
+    }
+  },
+  "settings": {
+    "cfg": 7.0,
+    "steps": 25,
+    "sampler_name": "euler_ancestral",
+    "scheduler": "normal",
+    "negative_prompt": "score_1, score_2, score_3, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, mutated hands, poorly drawn face, watermark, text, signature, logo",
+    "quality_prefix": "score_9, score_8_up, score_7_up, ",
+    "min_dimension": 1024
+  },
+  "notes": "Pony Diffusion V6 XL uses SDXL architecture. Requires score tags for quality control. Minimum 1024px on longest side. Best with euler_ancestral sampler and cfg 7.0. Good at character portraits, anime style, and NSFW content."
+}

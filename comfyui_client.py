@@ -97,10 +97,29 @@ def is_available() -> bool:
         return False
 
 
+def get_image_model_setting() -> str:
+    """Read the global image model setting. Returns checkpoint key."""
+    try:
+        settings_path = os.path.join(os.path.dirname(__file__), "model_settings.json")
+        if os.path.exists(settings_path):
+            with open(settings_path) as f:
+                import json
+                settings = json.load(f)
+                return settings.get("image_model", "flux")
+    except Exception:
+        pass
+    return "flux"
+
+
 def _pick_checkpoint(nsfw_rating: str = "none") -> str:
-    """Return checkpoint key based on NSFW rating."""
+    """Return checkpoint key. Uses global setting, with NSFW override to Pony."""
+    global_setting = get_image_model_setting()
+    # NSFW stories always use Pony regardless of global setting
     if nsfw_rating in ("mature", "explicit", "extreme"):
         return "pony"
+    # Otherwise use the global setting
+    if global_setting in CHECKPOINTS:
+        return global_setting
     return "flux"
 
 

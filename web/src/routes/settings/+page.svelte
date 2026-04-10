@@ -33,6 +33,11 @@
 	let saving = $state(false);
 	let error = $state('');
 
+	// Image generation
+	let imageModel = $state('flux');
+	let imageModels = $state<{ key: string; name: string; description: string }[]>([]);
+	let comfyuiAvailable = $state(false);
+
 	// All available models flattened
 	let allModels = $derived.by((): { id: string; label: string; provider: string }[] => {
 		const out: { id: string; label: string; provider: string }[] = [];
@@ -97,6 +102,9 @@
 			roles = data.roles ?? roles;
 			defaultModel = data.default ?? '';
 			activeProvider = data.active_provider ?? '';
+			imageModel = data.image_model ?? 'flux';
+			imageModels = Array.isArray(data.image_models) ? data.image_models : [];
+			comfyuiAvailable = Boolean(data.comfyui_available);
 		} catch {
 			error = 'Network error';
 		} finally {
@@ -110,7 +118,7 @@
 			const r = await fetch('/api/settings/models', {
 				method: 'PUT', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ roles }),
+				body: JSON.stringify({ roles, image_model: imageModel }),
 			});
 			if (r.ok) {
 				toast('Model settings saved', 'success');
@@ -209,11 +217,50 @@
 				{/each}
 			</div>
 
-			<div class="save-bar">
-				<button type="button" class="btn primary" disabled={saving} onclick={() => saveRoles()}>
-					<Icon name="save" size={14} /> {saving ? 'Saving…' : 'Save Model Settings'}
-				</button>
+		</div>
+
+		<div class="section">
+			<h2>Image Generation</h2>
+			<p class="hint">Choose which ComfyUI checkpoint model to use for generating cover, portrait, and scene images.</p>
+
+			<div class="image-model-card">
+				<div class="image-model-status">
+					ComfyUI:
+					{#if comfyuiAvailable}
+						<span class="status-badge online">online</span>
+					{:else}
+						<span class="status-badge offline">offline</span>
+					{/if}
+				</div>
+
+				<label class="role-label">
+					<strong>Image Model</strong>
+					<span class="role-desc">The checkpoint used for all image generation. NSFW stories (mature+) automatically use Pony regardless of this setting.</span>
+					<select bind:value={imageModel}>
+						{#each imageModels as m (m.key)}
+							<option value={m.key}>{m.description} — {m.name}</option>
+						{/each}
+						{#if imageModels.length === 0}
+							<option value="flux">Flux — flux1-dev-fp8.safetensors</option>
+							<option value="pony">Pony — ponyDiffusionV6XL.safetensors</option>
+						{/if}
+					</select>
+				</label>
+
+				<div class="image-model-details">
+					{#if imageModel === 'flux'}
+						<p class="hint">Flux Dev FP8 — best for SFW content. Fast, high quality, good at environments and scenes. Default workflow: euler sampler, cfg 1.0, 20 steps.</p>
+					{:else if imageModel === 'pony'}
+						<p class="hint">Pony Diffusion V6 XL — SDXL-based, best for character art and NSFW. Uses score tags for quality. Workflow: euler_ancestral, cfg 7.0, 25 steps, negative prompt for anatomy fixes.</p>
+					{/if}
+				</div>
 			</div>
+		</div>
+
+		<div class="save-bar">
+			<button type="button" class="btn primary" disabled={saving} onclick={() => saveRoles()}>
+				<Icon name="save" size={14} /> {saving ? 'Saving…' : 'Save All Settings'}
+			</button>
 		</div>
 
 		<div class="section">
@@ -261,6 +308,9 @@
 	.role-label select { margin-top: 0.5rem; width: 100%; }
 
 	.save-bar { margin-top: 1.5rem; display: flex; gap: 0.5rem; }
+	.image-model-card { border: 1px solid #2a2f38; border-radius: 8px; padding: 1rem; background: #1a1d23; }
+	.image-model-status { margin-bottom: 0.75rem; font-size: 0.88rem; }
+	.image-model-details { margin-top: 0.5rem; }
 	.btn { padding: 0.45rem 0.85rem; border: 1px solid #3c4043; background: #2a2f38; color: #e8eaed; border-radius: 8px; font: inherit; font-size: 0.85rem; cursor: pointer; }
 	.btn:hover { border-color: #5f6368; }
 	.btn.primary { background: #1a73e8; border-color: #1a73e8; }

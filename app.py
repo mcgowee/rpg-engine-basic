@@ -314,11 +314,22 @@ def list_models():
         "tools": get_model_for_role("tools"),
     }
 
+    # Image model
+    import comfyui_client
+    image_model = comfyui_client.get_image_model_setting()
+    image_models = [
+        {"key": k, "name": v["ckpt_name"], "description": k.title()}
+        for k, v in comfyui_client.CHECKPOINTS.items()
+    ]
+
     return jsonify({
         "providers": providers,
         "roles": roles,
         "default": DEFAULT_MODEL,
         "active_provider": LLM_PROVIDER,
+        "image_model": image_model,
+        "image_models": image_models,
+        "comfyui_available": comfyui_client.is_available(),
     })
 
 
@@ -354,6 +365,19 @@ def save_model_settings():
         return jsonify({"error": "roles must be an object"}), 400
     cleaned = {k: v for k, v in roles.items() if k in VALID_ROLES and isinstance(v, str)}
     save_role_settings(cleaned)
+
+    # Save image model setting if provided
+    image_model = data.get("image_model")
+    if isinstance(image_model, str):
+        import comfyui_client
+        if image_model in comfyui_client.CHECKPOINTS:
+            settings = load_role_settings()
+            settings["image_model"] = image_model
+            import json as _json
+            settings_path = os.path.join(os.path.dirname(__file__), "model_settings.json")
+            with open(settings_path, "w") as f:
+                _json.dump(settings, f, indent=2)
+
     return jsonify({"ok": True})
 
 
