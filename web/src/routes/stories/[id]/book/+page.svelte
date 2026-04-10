@@ -376,7 +376,7 @@
 			{:else}
 				<p>Transform your play session into a polished short story. The AI will rewrite the game transcript into narrative prose.</p>
 				<button type="button" class="btn primary generate-btn" disabled={generating} onclick={() => generate()}>
-					{#if generating}<span class="spinner"></span> Writing your story…{:else}<Icon name="book" size={16} /> Create Story Book{/if}
+					{#if generating}<span class="spinner"></span> Writing {history.length} scenes… (this may take a minute){:else}<Icon name="book" size={16} /> Create Story Book{/if}
 				</button>
 			{/if}
 			{#if error}<p class="err">{error}</p>{/if}

@@ -2068,13 +2068,12 @@ def ai_generate_book():
 
         scenes.append(scene)
 
-    # Build the transcript for the LLM
-    transcript_parts = []
-    for scene in scenes:
+    # Build transcript parts per turn
+    def _build_turn_transcript(scene):
         if scene.get("type") == "opening":
-            transcript_parts.append(f"[Opening]\n{scene['text']}")
+            return f"[Opening]\n{scene['text']}"
         elif scene.get("narrator") or scene.get("characters"):
-            part = f"[Turn {scene.get('turn', '?')}]\n"
+            part = ""
             if scene.get("player"):
                 part += f"Player: {scene['player']}\n"
             if scene.get("narrator"):
@@ -2084,39 +2083,69 @@ def ai_generate_book():
                     part += f"*{label} {resp['action']}*\n"
                 if resp.get("dialogue"):
                     part += f'{label}: "{resp["dialogue"]}"\n'
-            transcript_parts.append(part.strip())
+            return part.strip()
         elif scene.get("text"):
-            transcript_parts.append(f"[Turn {scene.get('turn', '?')}]\n{scene['text']}")
+            # Skip scene image markers
+            text = scene.get("text", "")
+            if text.startswith("[SCENE_IMAGE:"):
+                return ""
+            return text
+        return ""
 
-    transcript = "\n\n---\n\n".join(transcript_parts)
+    try:
+        llm = get_llm(get_model_for_role("creative"))
 
-    prompt = f"""You are a skilled fiction writer. Rewrite the following text RPG play session into a polished short story.
+        # Generate scene by scene for reliable section breaks
+        prose_sections = []
+        prev_context = ""
+
+        for i, scene in enumerate(scenes):
+            turn_transcript = _build_turn_transcript(scene)
+            if not turn_transcript.strip():
+                continue
+
+            if scene.get("type") == "opening":
+                scene_prompt = f"""You are a skilled fiction writer. Write the opening scene for a story.
 
 Title: {title}
 Player character: {player_name}{char_block}{genre_block}{tone_block}
 
-Rules:
-- Write in third person past tense
-- Each [Turn] becomes one scene/section, separated by "---"
-- Replace "Player:" actions with narrative prose about {player_name}
-- Weave narrator descriptions into scene-setting prose
-- Character dialogue should be in quotes with attribution and action woven in
-- Keep the tone and atmosphere of the original
-- Do NOT add events that didn't happen in the play session
-- Each section should be 2-4 short paragraphs
-- Output ONLY the story prose, no title, no commentary
+Opening text:
+{turn_transcript}
 
-Play session transcript:
----
-{transcript}
----
+Rewrite this opening into 2-3 polished paragraphs. Third person past tense. Set the scene and atmosphere.
+Output ONLY the prose, no title, no labels:"""
+            else:
+                scene_prompt = f"""You are a skilled fiction writer. Write the next scene of a story.
 
-Rewritten story:"""
+Title: {title}
+Player character: {player_name}{char_block}{genre_block}{tone_block}
 
-    try:
-        llm = get_llm(get_model_for_role("creative"))
-        raw = llm.invoke(prompt)
-        prose_text = llm_result_to_text(raw).strip()
+Previous context: {prev_context[:300]}
+
+This turn:
+{turn_transcript}
+
+Rewrite this turn into 2-3 polished paragraphs. Rules:
+- Third person past tense
+- Replace "Player:" with narrative prose about {player_name}
+- Character dialogue in quotes with attribution
+- Weave actions and narrator descriptions into prose
+- Output ONLY the prose, no labels, no "---":"""
+
+            raw = llm.invoke(scene_prompt)
+            section_text = llm_result_to_text(raw).strip()
+
+            # Clean up
+            for prefix in ["Scene:", "scene:", "Opening:", "opening:"]:
+                if section_text.startswith(prefix):
+                    section_text = section_text[len(prefix):].strip()
+
+            if section_text:
+                prose_sections.append(section_text)
+                prev_context = section_text[-200:]
+
+        prose_text = "\n\n---\n\n".join(prose_sections)
 
         # Build scene metadata for the frontend
         scene_metadata = []
