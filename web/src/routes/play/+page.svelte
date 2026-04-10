@@ -376,15 +376,36 @@
 		return '';
 	}
 
+	function getRecentContext(): string {
+		// Build rich context from recent transcript entries
+		const parts: string[] = [];
+		const recent = transcript.slice(-6);
+		for (const entry of recent) {
+			if (entry.type === 'player') parts.push(`Player: ${entry.text}`);
+			else if (entry.type === 'narrator') parts.push(`Narrator: ${entry.text}`);
+			else if (entry.type === 'character') {
+				if (entry.action) parts.push(`*${entry.name} ${entry.action}*`);
+				if (entry.text) parts.push(`${entry.name}: "${entry.text}"`);
+			}
+		}
+		return parts.join('\n');
+	}
+
 	async function buildScenePrompt() {
 		const narration = getLastNarration();
 		if (!narration || buildingScenePrompt) return;
 		buildingScenePrompt = true;
+		const fullContext = getRecentContext();
 		try {
 			const r = await fetch('/api/ai/build-scene-prompt', {
 				method: 'POST', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ scene_text: narration, style: sceneStyle }),
+				body: JSON.stringify({
+					scene_text: fullContext,
+					style: sceneStyle,
+					genre: subgraphName ? undefined : undefined, // sent via story context on backend
+					story_id: storyId,
+				}),
 			});
 			const j = await r.json().catch(() => ({}));
 			if (r.ok && j.prompt) {

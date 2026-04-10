@@ -2918,7 +2918,7 @@ PORTRAIT_STYLES = {
 @optional_rate_limit(RATE_LIMIT_AI)
 @login_required
 def ai_build_scene_prompt():
-    """Use LLM to build a scene image prompt from narrator text + style."""
+    """Use LLM to build a scene image prompt from the current play context + style."""
     data = request.get_json(silent=True) or {}
     scene_text = (data.get("scene_text") or "").strip()
     if not scene_text:
@@ -2927,6 +2927,27 @@ def ai_build_scene_prompt():
     style_key = (data.get("style") or "cinematic").strip()
     style_suffix = SCENE_STYLES.get(style_key, SCENE_STYLES["cinematic"])
 
+    # Try to get story context for genre/tone
+    story_context = ""
+    story_id = data.get("story_id")
+    if story_id:
+        try:
+            conn = get_db()
+            row = conn.execute("SELECT genre, tone, description FROM stories WHERE id = ?", (int(story_id),)).fetchone()
+            conn.close()
+            if row:
+                parts = []
+                if row["genre"]:
+                    parts.append(f"Genre: {row['genre']}")
+                if row["tone"]:
+                    parts.append(f"Tone: {row['tone']}")
+                if row["description"]:
+                    parts.append(f"Story: {row['description'][:150]}")
+                if parts:
+                    story_context = "\n".join(parts) + "\n"
+        except Exception:
+            pass
+
     from model_resolver import get_model_for_role
     model = get_model_for_role("creative")
     try:
@@ -2934,19 +2955,22 @@ def ai_build_scene_prompt():
     except Exception as e:
         return jsonify({"error": f"LLM unavailable: {e}"}), 503
 
-    llm_prompt = f"""Write a detailed image generation prompt for a scene illustration.
+    llm_prompt = f"""You are creating an image generation prompt. Read the scene below and describe EXACTLY what a camera would capture in this moment.
 
-Scene description: {scene_text[:500]}
+{story_context}
+What is happening right now:
+{scene_text[:800]}
 
-Visual style: {style_suffix}
+Visual style to use: {style_suffix}
 
-Write a single paragraph image prompt (40-60 words) that captures this scene visually.
-Rules:
-- Describe what the viewer SEES — composition, lighting, colors, environment
-- Do NOT include character names — describe figures by appearance
-- Focus on atmosphere and mood
-- End with the style: {style_suffix}
-- Return ONLY the prompt text
+Write a detailed image prompt (50-80 words). Rules:
+- Describe the SPECIFIC scene happening — who is where, doing what, body positions
+- Include: setting (room, outdoor, time of day), lighting (warm, dim, neon), camera angle
+- Describe people by appearance (hair, build, clothing) NOT by name
+- Include emotional atmosphere (tense, intimate, playful, dangerous)
+- Include small visual details (objects on table, rain on window, steam from cup)
+- End with: {style_suffix}
+- Return ONLY the prompt, no labels
 
 Prompt:"""
 
