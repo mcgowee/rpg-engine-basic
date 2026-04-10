@@ -7,13 +7,14 @@
 		name: string;
 		description: string;
 		nodes: string[];
-		entry_point: { router: string; mapping: Record<string, string> };
 		edges: { from: string; to: string }[];
 		conditional_edges: {
 			from: string;
 			router: string;
 			mapping: Record<string, string>;
 		}[];
+		// Legacy — old graphs may still have this
+		entry_point?: { router: string; mapping: Record<string, string> };
 	};
 
 	let registryNodes = $state<string[]>([]);
@@ -29,9 +30,7 @@
 	let name = $state('');
 	let description = $state('');
 	let selectedNodes = $state<string[]>([]);
-	let entryRouter = $state('');
-	let entryMappingRows = $state<{ k: string; v: string }[]>([{ k: '', v: '' }]);
-	let edgeRows = $state<{ from: string; to: string }[]>([{ from: '', to: '' }]);
+	let edgeRows = $state<{ from: string; to: string }[]>([{ from: '__start__', to: '' }]);
 	let condEdgeRows = $state<
 		{ from: string; router: string; mappingRows: { k: string; v: string }[] }[]
 	>([]);
@@ -66,6 +65,7 @@
 	const nodeOptionsForDropdown = $derived(
 		[...selectedNodes].sort((a, b) => a.localeCompare(b))
 	);
+	const fromOptions = $derived(['__start__', ...nodeOptionsForDropdown]);
 	const toOptions = $derived([...nodeOptionsForDropdown, '__end__']);
 
 	const definitionPreview = $derived.by(() => {
@@ -85,11 +85,6 @@
 	}
 
 	function buildDefinition(): GraphDefinition {
-		const entry_mapping: Record<string, string> = {};
-		for (const row of entryMappingRows) {
-			const k = row.k.trim();
-			if (k) entry_mapping[k] = row.v.trim();
-		}
 		const edges = edgeRows
 			.filter((e) => e.from && e.to)
 			.map((e) => ({ from: e.from, to: e.to }));
@@ -107,7 +102,6 @@
 			name: name.trim(),
 			description: description.trim(),
 			nodes: [...selectedNodes].sort((a, b) => a.localeCompare(b)),
-			entry_point: { router: entryRouter, mapping: entry_mapping },
 			edges,
 			conditional_edges
 		};
@@ -117,18 +111,24 @@
 		name = def.name;
 		description = typeof def.description === 'string' ? def.description : '';
 		selectedNodes = Array.isArray(def.nodes) ? [...def.nodes] : [];
-		entryRouter = def.entry_point?.router ?? '';
-		const em = def.entry_point?.mapping ?? {};
-		const emEntries = Object.entries(em);
-		entryMappingRows =
-			emEntries.length > 0
-				? emEntries.map(([k, v]) => ({ k, v: String(v) }))
-				: [{ k: '', v: '' }];
-		const eds = def.edges ?? [];
+
+		let eds = def.edges ?? [];
+
+		// Convert legacy entry_point to __start__ edge if no __start__ edge exists
+		if (def.entry_point?.mapping && !eds.some(e => e.from === '__start__')) {
+			const mapping = def.entry_point.mapping;
+			// The mapping typically has {"narrator": "actual_first_node"}
+			// We want __start__ → actual_first_node
+			const firstNode = Object.values(mapping)[0];
+			if (firstNode) {
+				eds = [{ from: '__start__', to: firstNode }, ...eds];
+			}
+		}
+
 		edgeRows =
 			eds.length > 0
 				? eds.map((e) => ({ from: e.from, to: e.to }))
-				: [{ from: '', to: '' }];
+				: [{ from: '__start__', to: '' }];
 		const ces = def.conditional_edges ?? [];
 		condEdgeRows = ces.map((ce) => ({
 			from: ce.from,
@@ -144,9 +144,7 @@
 		name = '';
 		description = '';
 		selectedNodes = [];
-		entryRouter = registryRouters[0] ?? '';
-		entryMappingRows = [{ k: '', v: '' }];
-		edgeRows = [{ from: '', to: '' }];
+		edgeRows = [{ from: '__start__', to: '' }];
 		condEdgeRows = [];
 		rowId = null;
 		nameReadOnly = false;
@@ -229,7 +227,7 @@
 				} else {
 					registryRouters = [];
 				}
-				if (!entryRouter && registryRouters.length) entryRouter = registryRouters[0];
+				// Routers no longer used — graphs use __start__/__end__ edges
 			} catch {
 				registryError = 'Network error loading graph registry';
 			} finally {
@@ -494,66 +492,13 @@
 				</div>
 
 				<div class="graph-section">
-					<h2 class="sub">Entry point</h2>
-					<label class="row block">
-						<span class="lbl">Router</span>
-						<select class="inp wide" bind:value={entryRouter}>
-							{#each registryRouters as r (r)}
-								<option value={r}>{r}</option>
-							{/each}
-						</select>
-					</label>
-					<p class="hint">Mapping: router return value → next node (or __end__).</p>
-					<div class="map-header" aria-hidden="true">
-						<span>Router returns</span>
-						<span class="mid"></span>
-						<span>Goes to</span>
-					</div>
-					{#each entryMappingRows as row, i (i)}
-						<div class="map-row">
-							<select class="inp" bind:value={row.k} aria-label="Router returns">
-								<option value="">— router return —</option>
-								{#if row.k && !toOptions.includes(row.k)}
-									<option value={row.k}>{row.k} (not in graph)</option>
-								{/if}
-								{#each toOptions as t (t)}
-									<option value={t}>{t}</option>
-								{/each}
-							</select>
-							<span class="arrow">→</span>
-							<select class="inp" bind:value={row.v} aria-label="Target node">
-								<option value="">— choose —</option>
-								{#each toOptions as t (t)}
-									<option value={t}>{t}</option>
-								{/each}
-							</select>
-							<button
-								type="button"
-								class="btn sm"
-								onclick={() => {
-									entryMappingRows = entryMappingRows.filter((_, j) => j !== i);
-									if (entryMappingRows.length === 0) entryMappingRows = [{ k: '', v: '' }];
-								}}>Remove</button
-							>
-						</div>
-					{/each}
-					<button
-						type="button"
-						class="btn"
-						onclick={() => {
-							entryMappingRows = [...entryMappingRows, { k: '', v: '' }];
-						}}>Add mapping row</button
-					>
-				</div>
-
-				<div class="graph-section">
-					<h2 class="sub">Unconditional edges</h2>
-					<p class="hint">Static edges. Use <code>__end__</code> to stop.</p>
+					<h2 class="sub">Edges</h2>
+					<p class="hint">Use <code>__start__</code> for the first edge and <code>__end__</code> for the last.</p>
 					{#each edgeRows as row, i (i)}
 						<div class="map-row">
 							<select class="inp" bind:value={row.from}>
 								<option value="">— from —</option>
-								{#each nodeOptionsForDropdown as n (n)}
+								{#each fromOptions as n (n)}
 									<option value={n}>{n}</option>
 								{/each}
 							</select>
