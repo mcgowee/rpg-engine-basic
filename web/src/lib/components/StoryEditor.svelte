@@ -315,12 +315,7 @@
 		{ value: 'extreme', label: 'Extreme — no limits' },
 	];
 
-	const NSFW_TAGS = [
-		'romance', 'gay/lesbian', 'bisexual', 'trans', 'oral', 'anal', 'solo',
-		'tentacle', 'furry', 'bondage/bdsm', 'group', 'exhibitionism', 'voyeurism',
-		'dom/sub', 'roleplay-within-roleplay', 'monster/creature', 'mind-control',
-		'size-difference', 'incest', 'non-con',
-	];
+	const NSFW_TAGS = ['romance', 'gay/lesbian', 'explicit'];
 
 	onMount(async () => {
 		try {
