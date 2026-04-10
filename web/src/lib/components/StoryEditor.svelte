@@ -60,6 +60,18 @@
 	let sceneGallery = $state<SceneGalleryItem[]>([]);
 	let generatingGalleryImage = $state('');
 	let galleryImageError = $state('');
+	let existingSceneImages = $state<{ url: string; filename: string; type: string }[]>([]);
+
+	async function loadExistingImages() {
+		if (!storyId) return;
+		try {
+			const r = await fetch(`/api/ai/list-scene-images?story_id=${storyId}`, { credentials: 'include' });
+			if (r.ok) {
+				const j = await r.json();
+				existingSceneImages = Array.isArray(j.images) ? j.images : [];
+			}
+		} catch { /* ignore */ }
+	}
 
 	async function generateGalleryImage(idx: number) {
 		const item = sceneGallery[idx];
@@ -96,23 +108,28 @@
 
 	async function buildGalleryPrompt(idx: number) {
 		const item = sceneGallery[idx];
-		if (!item) return;
+		if (!item || !storyId) return;
 		galleryImageError = '';
 		try {
-			const r = await fetch('/api/ai/build-scene-prompt', {
+			const r = await fetch('/api/ai/build-gallery-item', {
 				method: 'POST', credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					scene_text: `${item.caption || item.id}. Tags: ${item.tags.join(', ')}. Trigger: ${item.trigger}`,
+					story_id: storyId,
+					scene_id: item.id,
+					tags: item.tags,
 					style: item.style || 'cinematic',
 				}),
 			});
 			const j = await r.json().catch(() => ({}));
-			if (r.ok && j.prompt) {
-				item.prompt = j.prompt;
+			if (r.ok) {
+				if (j.tags && Array.isArray(j.tags)) item.tags = j.tags;
+				if (j.trigger) item.trigger = j.trigger;
+				if (j.caption) item.caption = j.caption;
+				if (j.prompt) item.prompt = j.prompt;
 				sceneGallery = [...sceneGallery];
 			} else {
-				galleryImageError = j.error ?? 'Prompt build failed';
+				galleryImageError = j.error ?? 'Build failed';
 			}
 		} catch {
 			galleryImageError = 'Network error';
@@ -407,6 +424,7 @@
 
 	onMount(async () => {
 		loadCoverStyles();
+		loadExistingImages();
 		try {
 			const r = await fetch('/api/subgraphs', { credentials: 'include' });
 			if (r.ok) {
@@ -1451,10 +1469,23 @@
 						</div>
 					</div>
 
-					<label class="field-sm">
-						<span>Image URL (auto-filled on generate, or paste manually)</span>
-						<input type="text" bind:value={item.url} placeholder="/images/scenes/story_12_kitchen.png" />
-					</label>
+					<div class="field-sm">
+						<span>Image</span>
+						<div class="image-url-row">
+							<select style="flex:1; font-size:0.82rem" value={item.url}
+								onchange={(e) => {
+									item.url = (e.currentTarget as HTMLSelectElement).value;
+									sceneGallery = [...sceneGallery];
+								}}>
+								<option value="">— select existing image —</option>
+								{#each existingSceneImages as img (img.url)}
+									<option value={img.url}>{img.filename}</option>
+								{/each}
+							</select>
+							<span class="hint" style="display:inline; margin:0 0.3rem">or</span>
+							<input type="text" bind:value={item.url} placeholder="paste URL" style="flex:1; font-size:0.82rem" />
+						</div>
+					</div>
 				</div>
 			{/each}
 
@@ -1536,6 +1567,7 @@
 	.gallery-card-options { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
 	.gallery-prompt-section { border-top: 1px solid #2a2f38; padding-top: 0.5rem; margin-top: 0.3rem; }
 	.gallery-btn-row { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
+	.image-url-row { display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
 	.field-sm { display: block; margin-bottom: 0.4rem; }
 	.field-sm span { display: block; font-size: 0.78rem; color: #9aa0a6; margin-bottom: 0.15rem; }
 	.field-sm input, .field-sm textarea { width: 100%; box-sizing: border-box; font-size: 0.85rem; }

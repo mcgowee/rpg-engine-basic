@@ -2888,6 +2888,119 @@ def list_portrait_styles():
     return jsonify({"styles": [{"key": k, "description": v} for k, v in PORTRAIT_STYLES.items()]})
 
 
+@app.route("/ai/list-scene-images", methods=["GET"])
+@login_required
+def list_scene_image_files():
+    """List existing scene image files for this story."""
+    story_id = request.args.get("story_id", "")
+    scenes_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "scenes")
+    portraits_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "portraits")
+
+    images = []
+    # Scene images
+    if os.path.isdir(scenes_dir):
+        for f in sorted(os.listdir(scenes_dir)):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                url = f"/images/scenes/{f}"
+                # Optionally filter by story_id
+                if story_id and f"story_{story_id}" not in f and f"scene_{story_id}" not in f:
+                    continue
+                images.append({"url": url, "filename": f, "type": "scene"})
+    # Portrait images
+    if os.path.isdir(portraits_dir):
+        for f in sorted(os.listdir(portraits_dir)):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                url = f"/images/portraits/{f}"
+                if story_id and f"story_{story_id}" not in f:
+                    continue
+                images.append({"url": url, "filename": f, "type": "portrait"})
+    return jsonify({"images": images})
+
+
+@app.route("/ai/build-gallery-item", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_build_gallery_item():
+    """Use LLM to build trigger, caption, tags, and image prompt for a gallery scene."""
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+
+    scene_id = (data.get("scene_id") or "").strip()
+    tags_input = data.get("tags") or []
+    style_key = (data.get("style") or "cinematic").strip()
+    style_suffix = SCENE_STYLES.get(style_key, SCENE_STYLES.get("cinematic", "cinematic"))
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Story not found"}), 404
+
+    title = row["title"] or "Untitled"
+    genre_val = row["genre"] or "fantasy"
+    tone = row["tone"] or ""
+    description = row["description"] or ""
+    opening = (row["opening"] or "")[:200]
+
+    from model_resolver import get_model_for_role
+    model = get_model_for_role("creative")
+    try:
+        llm = get_llm(model)
+    except Exception as e:
+        return jsonify({"error": f"LLM unavailable: {e}"}), 503
+
+    tags_str = ", ".join(tags_input) if tags_input else scene_id.replace("_", ", ")
+
+    llm_prompt = f"""You are helping create a scene image for an interactive story.
+
+Story: {title}
+Genre: {genre_val}
+Tone: {tone}
+Description: {description}
+Opening: {opening}
+
+Scene ID: {scene_id}
+Initial tags: {tags_str}
+
+Generate all of the following for this scene. Return EXACTLY this format:
+
+TAGS: comma-separated keywords for matching (5-8 tags, include location, time of day, mood, objects)
+TRIGGER: a short phrase (3-6 words) that would appear in the story when this scene is active
+CAPTION: one sentence describing the scene for display under the image
+PROMPT: a detailed image generation prompt (40-60 words) describing the visual scene, ending with: {style_suffix}
+
+Return ONLY the four lines above, no other text."""
+
+    try:
+        raw = llm_result_to_text(llm.invoke(llm_prompt)).strip()
+
+        result = {"scene_id": scene_id}
+        for line in raw.split("\n"):
+            line = line.strip()
+            if line.upper().startswith("TAGS:"):
+                result["tags"] = [t.strip() for t in line[5:].split(",") if t.strip()]
+            elif line.upper().startswith("TRIGGER:"):
+                result["trigger"] = line[8:].strip().strip('"')
+            elif line.upper().startswith("CAPTION:"):
+                result["caption"] = line[8:].strip().strip('"')
+            elif line.upper().startswith("PROMPT:"):
+                prompt_text = line[7:].strip().strip('"')
+                if style_suffix.split(",")[0].lower() not in prompt_text.lower():
+                    prompt_text = f"{prompt_text}, {style_suffix}"
+                result["prompt"] = prompt_text
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Generation failed: {e}"}), 500
+
+
 @app.route("/ai/generate-scene", methods=["POST"])
 @optional_rate_limit(RATE_LIMIT_AI)
 @login_required
