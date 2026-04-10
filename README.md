@@ -1,4 +1,10 @@
-# RPG Engine Basic
+# RPG Engine
+
+**Copyright (c) 2026 Earl McGowen. All Rights Reserved.**
+
+This is proprietary software. See [LICENSE](LICENSE) for terms. See [TERMS_OF_SERVICE.md](TERMS_OF_SERVICE.md) for platform usage terms.
+
+---
 
 A **text RPG authoring and play platform**: authors define stories (opening, narrator instructions, player, NPCs), pick a **conversation subgraph** (LangGraph), and players chat turn-by-turn with LLM-backed narration, optional NPC lines, mood tracking, and rolling memory summaries. A **SvelteKit** front end proxies to a **Flask** API; state lives in **SQLite** with optional **ComfyUI** image generation for covers, portraits, and scene art.
 
@@ -95,4 +101,6 @@ Open the dev URL Vite prints (often `http://localhost:5173`). API calls go to `/
 - [NODE_STATUS.md](NODE_STATUS.md) — implemented nodes and builtins snapshot.
 - [NODE_ROADMAP.md](NODE_ROADMAP.md) — node ideas and future work.
 - [SECURITY.md](SECURITY.md) — trust boundaries, rate limits, production cookies.
+- [LICENSE](LICENSE) — Proprietary license, all rights reserved.
+- [TERMS_OF_SERVICE.md](TERMS_OF_SERVICE.md) — Platform usage terms.
 - [deploy/](deploy/) — systemd and VPS notes (see also `deploy.sh`).
