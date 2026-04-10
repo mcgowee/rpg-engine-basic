@@ -377,15 +377,23 @@
 	}
 
 	function getRecentContext(): string {
-		// Build rich context from recent transcript entries
+		// Get ONLY the most recent turn (last narrator + character bubbles)
+		// Walk backwards to find the last complete turn
 		const parts: string[] = [];
-		const recent = transcript.slice(-6);
-		for (const entry of recent) {
-			if (entry.type === 'player') parts.push(`Player: ${entry.text}`);
-			else if (entry.type === 'narrator') parts.push(`Narrator: ${entry.text}`);
-			else if (entry.type === 'character') {
-				if (entry.action) parts.push(`*${entry.name} ${entry.action}*`);
-				if (entry.text) parts.push(`${entry.name}: "${entry.text}"`);
+		let foundNarrator = false;
+		for (let i = transcript.length - 1; i >= 0; i--) {
+			const entry = transcript[i];
+			if (entry.type === 'narrator') {
+				parts.unshift(`Narrator: ${entry.text}`);
+				foundNarrator = true;
+				// Also grab the player message right before this narrator
+				if (i > 0 && transcript[i - 1].type === 'player') {
+					parts.unshift(`Player: ${transcript[i - 1].text}`);
+				}
+				break;
+			} else if (entry.type === 'character') {
+				if (entry.action) parts.unshift(`*${entry.name} ${entry.action}*`);
+				if (entry.text) parts.unshift(`${entry.name}: "${entry.text}"`);
 			}
 		}
 		return parts.join('\n');

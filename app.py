@@ -2956,22 +2956,22 @@ def ai_build_scene_prompt():
     except Exception as e:
         return jsonify({"error": f"LLM unavailable: {e}"}), 503
 
-    llm_prompt = f"""Extract visual elements from this scene for an image generator.
+    llm_prompt = f"""Extract visual elements from this scene. ONLY use details explicitly mentioned in the text below — do NOT invent or assume anything.
 
 {story_context}
-Scene:
+TEXT:
 {scene_text[:800]}
 
-Reply with EXACTLY these 6 lines, short comma-separated tags for each:
+Reply with EXACTLY these 6 lines. Each line: 3-8 words, comma-separated tags ONLY from the text above.
 
-SETTING: (location, time of day, e.g. "dimly lit bedroom, night, rain on window")
-PEOPLE: (describe by appearance ONLY, e.g. "tall dark-haired man, shorter lean man, faces close")
-POSE: (body positions/actions, e.g. "standing face to face, hand on cheek")
-MOOD: (emotional atmosphere, e.g. "intimate, tense, anticipation")
-DETAILS: (small objects/textures, e.g. "coffee cup on nightstand, rumpled sheets")
-LIGHTING: (light source and quality, e.g. "warm bedside lamp, soft shadows")
+SETTING: (exact location and time mentioned)
+PEOPLE: (appearance details mentioned — hair, build, clothing)
+POSE: (exact body positions and actions described)
+MOOD: (emotional words used in the text)
+DETAILS: (specific objects mentioned — cards, cups, games, furniture)
+LIGHTING: (lighting described or implied by time of day)
 
-Keep each line under 15 words. No sentences, just tags."""
+CRITICAL: Only extract what the text says. Do not add laptops if text says cards. Do not add afternoon if text says evening."""
 
     try:
         raw_response = llm_result_to_text(llm.invoke(llm_prompt)).strip()
