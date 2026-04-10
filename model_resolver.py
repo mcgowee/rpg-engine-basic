@@ -7,7 +7,7 @@ import json
 import os
 
 MODEL_SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "model_settings.json")
-VALID_ROLES = {"creative", "dialogue", "classification", "summarization", "tools"}
+VALID_ROLES = {"creative", "dialogue", "classification", "summarization", "tools", "image_prompt"}
 
 
 def _load_settings() -> dict:

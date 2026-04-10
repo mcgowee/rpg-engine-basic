@@ -23,10 +23,11 @@
 		classification: string;
 		summarization: string;
 		tools: string;
+		image_prompt: string;
 	};
 
 	let providers = $state<Record<string, ProviderInfo>>({});
-	let roles = $state<RoleDefaults>({ creative: '', dialogue: '', classification: '', summarization: '', tools: '' });
+	let roles = $state<RoleDefaults>({ creative: '', dialogue: '', classification: '', summarization: '', tools: '', image_prompt: '' });
 	let defaultModel = $state('');
 	let activeProvider = $state('');
 	let loading = $state(true);
@@ -90,6 +91,11 @@
 			label: 'AI Tools',
 			description: 'Improve, instruct, suggest, generate story, generate book',
 			examples: 'Smart instruction-following model — needs to output JSON and structured text',
+		},
+		image_prompt: {
+			label: 'Image Prompts',
+			description: 'Builds image generation prompts from scene context — extracts visual tags for ComfyUI',
+			examples: 'Small concise model works best — needs to output short tags not prose (1B-3B ideal)',
 		},
 	};
 

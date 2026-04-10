@@ -312,6 +312,7 @@ def list_models():
         "classification": get_model_for_role("classification"),
         "summarization": get_model_for_role("summarization"),
         "tools": get_model_for_role("tools"),
+        "image_prompt": get_model_for_role("image_prompt"),
     }
 
     # Image model
@@ -2756,7 +2757,7 @@ def ai_build_cover_prompt():
     char_line = f"Characters: {', '.join(c.replace('_', ' ').title() for c in char_names)}" if char_names else ""
 
     from model_resolver import get_model_for_role
-    model = get_model_for_role("creative")
+    model = get_model_for_role("image_prompt")
     try:
         llm = get_llm(model)
     except Exception as e:
@@ -2949,7 +2950,7 @@ def ai_build_scene_prompt():
             pass
 
     from model_resolver import get_model_for_role
-    model = get_model_for_role("creative")
+    model = get_model_for_role("image_prompt")
     try:
         llm = get_llm(model)
     except Exception as e:
@@ -3101,7 +3102,7 @@ def ai_build_portrait_prompt():
     genre_val = row["genre"] or "fantasy"
 
     from model_resolver import get_model_for_role
-    model = get_model_for_role("creative")
+    model = get_model_for_role("image_prompt")
     try:
         llm = get_llm(model)
     except Exception as e:
@@ -3212,7 +3213,7 @@ def ai_build_gallery_item():
     opening = (row["opening"] or "")[:200]
 
     from model_resolver import get_model_for_role
-    model = get_model_for_role("creative")
+    model = get_model_for_role("image_prompt")
     try:
         llm = get_llm(model)
     except Exception as e:
