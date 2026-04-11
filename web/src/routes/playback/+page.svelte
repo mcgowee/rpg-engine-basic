@@ -15,6 +15,8 @@
 		bubble_count: number;
 		time_seconds: number;
 		response_length: number;
+		scene_image: { url: string; caption: string } | null;
+		active_portraits: Record<string, string>;
 	};
 
 	// Setup
@@ -51,6 +53,7 @@
 	let openingText = $state('');
 	let gameTitle = $state('');
 	let subgraphName = $state('');
+	let characterNames = $state<string[]>([]);
 	let playerName = $state('');
 	let playerBackground = $state('');
 	let totalTime = $state(0);
@@ -335,6 +338,10 @@
 			subgraphName = String(state.subgraph_name ?? '');
 			playerName = String((state.player as Record<string, unknown>)?.name ?? 'the player');
 			playerBackground = String((state.player as Record<string, unknown>)?.background ?? '');
+			const chars = state.characters;
+			if (chars && typeof chars === 'object') {
+				characterNames = Object.keys(chars as Record<string, unknown>).map(k => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+			}
 		}
 
 		playState = 'playing';
@@ -367,6 +374,7 @@
 					previous_actions: prevActions,
 					turn_number: i + 1,
 					total_turns: numTurns,
+					character_names: characterNames,
 				});
 				if (genData.error) {
 					const errMsg = String(genData.error);
@@ -396,6 +404,24 @@
 
 			const bubblesRaw = data.bubbles;
 			const bubbleCount = Array.isArray(bubblesRaw) ? bubblesRaw.length : 0;
+
+			// Scene image
+			const si = data.scene_image;
+			let sceneImg: { url: string; caption: string } | null = null;
+			if (si && typeof si === 'object' && !Array.isArray(si)) {
+				const siObj = si as Record<string, unknown>;
+				if (siObj.url) sceneImg = { url: String(siObj.url), caption: String(siObj.caption ?? '') };
+			}
+
+			// Active portraits
+			const ap = data.active_portraits;
+			const portraits: Record<string, string> = {};
+			if (ap && typeof ap === 'object' && !Array.isArray(ap)) {
+				for (const [k, v] of Object.entries(ap as Record<string, unknown>)) {
+					if (typeof v === 'string') portraits[k] = v;
+				}
+			}
+
 			const turn: TurnResult = {
 				turn: i + 1,
 				message: msg,
@@ -405,6 +431,8 @@
 				bubble_count: bubbleCount,
 				time_seconds: Math.round(turnTime * 100) / 100,
 				response_length: String(data.response ?? '').length,
+				scene_image: sceneImg,
+				active_portraits: portraits,
 			};
 			turns = [...turns, turn];
 			await scrollToBottom();
@@ -494,6 +522,21 @@
 
 				const bubblesRaw = data.bubbles;
 				const bubbleCount = Array.isArray(bubblesRaw) ? bubblesRaw.length : 0;
+
+				const si = data.scene_image;
+				let sceneImg: { url: string; caption: string } | null = null;
+				if (si && typeof si === 'object' && !Array.isArray(si)) {
+					const siObj = si as Record<string, unknown>;
+					if (siObj.url) sceneImg = { url: String(siObj.url), caption: String(siObj.caption ?? '') };
+				}
+				const ap = data.active_portraits;
+				const portraits: Record<string, string> = {};
+				if (ap && typeof ap === 'object' && !Array.isArray(ap)) {
+					for (const [k, v] of Object.entries(ap as Record<string, unknown>)) {
+						if (typeof v === 'string') portraits[k] = v;
+					}
+				}
+
 				results.push({
 					turn: i + 1,
 					message: msg,
@@ -503,6 +546,8 @@
 					bubble_count: bubbleCount,
 					time_seconds: Math.round(turnTime * 100) / 100,
 					response_length: String(data.response ?? '').length,
+					scene_image: sceneImg,
+					active_portraits: portraits,
 				});
 			}
 
@@ -1407,6 +1452,24 @@
 							</div>
 							<div class="entry narrator" transition:fade={{ duration: 200 }}>
 								<div class="entry-label">Response · {turn.time_seconds}s · {turn.response_length} chars</div>
+								{#if Object.keys(turn.active_portraits).length > 0 || turn.scene_image}
+									<div class="entry-images">
+										{#each Object.entries(turn.active_portraits) as [charKey, src] (charKey)}
+											<div class="entry-portrait">
+												<img src="/images/portraits/{src}" alt={charKey.replace(/_/g, ' ')} />
+												<span class="portrait-label">{charKey.replace(/_/g, ' ')}</span>
+											</div>
+										{/each}
+										{#if turn.scene_image}
+											<div class="entry-scene">
+												<img src={turn.scene_image.url} alt={turn.scene_image.caption || 'Scene'} />
+												{#if turn.scene_image.caption}
+													<span class="scene-caption">{turn.scene_image.caption}</span>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/if}
 								<div class="entry-text">{turn.response}</div>
 								{#if Object.keys(turn.moods).length > 0}
 									<div class="entry-moods">
@@ -1552,6 +1615,13 @@
 	.entry-text { font-size: 0.92rem; line-height: 1.6; white-space: pre-wrap; }
 	.entry-moods { margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 	.entry-guidance { margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 4px; font-size: 0.78rem; color: #c58af9; white-space: pre-wrap; }
+	.entry-images { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+	.entry-portrait { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; }
+	.entry-portrait img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid #2a2f38; }
+	.portrait-label { font-size: 0.68rem; color: #9aa0a6; text-transform: capitalize; }
+	.entry-scene { display: flex; flex-direction: column; gap: 0.2rem; }
+	.entry-scene img { max-width: 200px; max-height: 120px; border-radius: 6px; object-fit: cover; border: 1px solid #2a2f38; }
+	.scene-caption { font-size: 0.68rem; color: #9aa0a6; font-style: italic; }
 	.guidance-label { font-weight: 600; color: #8a6abf; }
 	.mood-chip { font-size: 0.77rem; color: #d3d8df; background: #111722; border: 1px solid #2b3442; border-radius: 999px; padding: 0.22rem 0.5rem; display: inline-flex; align-items: center; gap: 0.32rem; }
 	.mood-val { margin-left: 0.12rem; font-weight: 700; }

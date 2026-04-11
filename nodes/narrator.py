@@ -26,9 +26,41 @@ def narrator_node(state: dict) -> dict:
     story_context = build_story_context(state)
     story_line = f"{story_context}\n" if story_context else ""
 
-    # Character names for the "do not speak for" instruction
+    # Character names and brief descriptions for context
     char_names = [k.replace("_", " ").title() for k in characters.keys()]
     char_list = ", ".join(char_names) if char_names else "any characters"
+
+    # Build character appearance lines so narrator knows gender/look
+    char_desc_lines = []
+    for key, char in characters.items():
+        if not isinstance(char, dict):
+            continue
+        label = key.replace("_", " ").title()
+        prompt_text = (char.get("prompt") or "").strip()
+        # Extract appearance from "How she/he/they look(s):" section if present
+        desc = ""
+        for marker in ["How she looks:", "How he looks:", "How they look:",
+                        "Appearance:", "Description:"]:
+            idx = prompt_text.lower().find(marker.lower())
+            if idx >= 0:
+                desc = prompt_text[idx + len(marker):].strip()
+                # Take first sentence or up to 120 chars
+                for end in [". ", "\n"]:
+                    eidx = desc.find(end)
+                    if eidx > 0:
+                        desc = desc[:eidx + 1] if end == ". " else desc[:eidx]
+                        break
+                if len(desc) > 150:
+                    desc = desc[:147].rsplit(" ", 1)[0] + "..."
+                break
+        if desc:
+            char_desc_lines.append(f"- {label}: {desc}")
+        else:
+            # Fallback: grab first sentence of prompt for basic context
+            first = prompt_text.split(".")[0].strip() if prompt_text else ""
+            if first:
+                char_desc_lines.append(f"- {label}: {first}.")
+    char_block = "\n".join(char_desc_lines) if char_desc_lines else ""
 
     # Previous narrator entries — for continuity
     prev_narrator = get_recent_narrator(history, count=3)
@@ -53,22 +85,29 @@ def narrator_node(state: dict) -> dict:
         logger.error(f"Narrator: failed to get LLM: {e}")
         return {"_narrator_text": "[System error: Could not connect to LLM.]"}
 
-    prompt = f"""You are the narrator for a story. Describe what happens in the world.
+    # Use story-specific narrator prompt if available
+    custom_prompt = (state.get("narrator_prompt") or "").strip()
+    system_intro = custom_prompt if custom_prompt else "You are the narrator for a story. Describe what happens in the world."
+
+    prompt = f"""{system_intro}
 
 {story_line}Game: {state.get("game_title", "Untitled")}
 Player: {player.get("name", "Adventurer")} — {player.get("background", "")}
 Characters present: {char_list}
+{char_block}
 
 {summary_block}{narrator_block}{dialogue_block}
 Player: {message}
 
 Describe what happens next. Rules:
-- Second person, present tense ("You walk into the room...")
-- Describe environment, physical events, consequences of player actions
+- Second person, present tense
+- Show the RESULT of what the player just did — what changed, what they discover, how others react
 - CRITICAL: Do NOT write dialogue or quoted speech for {char_list}. They speak separately.
 - You may describe their body language, expressions, and physical reactions
 - 2-4 sentences, concise and atmospheric
-- If this is a response to player action, show the result of that action
+- Do NOT re-describe the player entering the room or arriving — the scene is already in progress
+- Do NOT repeat descriptions from previous narration — advance the story forward
+- AVOID these overused phrases: "deadly game", "deadly dance", "tension escalates", "charged with anticipation", "covert game of espionage". Use fresh, specific language instead.
 
 Narration:"""
 

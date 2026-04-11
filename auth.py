@@ -19,6 +19,16 @@ def login_required(f):
         user_id = session.get("user_id")
         if not user_id:
             return jsonify({"error": "Login required"}), 401
+        # Verify user still exists in the database (handles DB rebuilds)
+        from db import get_db
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            session.clear()
+            return jsonify({"error": "Session expired — please log in again"}), 401
         g.user_id = user_id
         return f(*args, **kwargs)
     return wrapper

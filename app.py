@@ -1430,6 +1430,7 @@ def _build_state_from_story(row) -> dict:
             "nsfw_tags": nsfw_tags,
             "scene_images": scene_gallery,
         },
+        "narrator_prompt": row["narrator_prompt"] or "",
         "game_title": row["title"],
         "opening": row["opening"] or "",
         "paused": False,
@@ -1517,7 +1518,10 @@ def play_start():
 
         game_session_cache.set(session_key, state)
 
-        _upsert_save(conn, story_id, g.user_id, 0, state)
+        try:
+            _upsert_save(conn, story_id, g.user_id, 0, state)
+        except sqlite3.IntegrityError:
+            logger.warning("play_start: save failed for user_id=%s story_id=%s (FK constraint)", g.user_id, story_id)
         conn.execute(
             "UPDATE stories SET play_count = play_count + 1 WHERE id = ?", (story_id,)
         )
@@ -1626,7 +1630,10 @@ def play_chat():
         try:
             advance_phase_after_turn(result, message, conn, g.user_id)
             result["_subgraph_name"] = result.get("_subgraph_name", subgraph_name)
-            _upsert_save(conn, story_id, g.user_id, 0, result)
+            try:
+                _upsert_save(conn, story_id, g.user_id, 0, result)
+            except sqlite3.IntegrityError:
+                logger.warning("play_chat: save failed for user_id=%s (FK constraint)", g.user_id)
             conn.commit()
         finally:
             conn.close()
@@ -1723,7 +1730,10 @@ def play_save():
         return jsonify({"error": "No active game"}), 400
     conn = get_db()
     try:
-        _upsert_save(conn, story_id, g.user_id, slot, cached)
+        try:
+            _upsert_save(conn, story_id, g.user_id, slot, cached)
+        except sqlite3.IntegrityError:
+            logger.warning("save_game: save failed for user_id=%s (FK constraint)", g.user_id)
         conn.commit()
     finally:
         conn.close()
@@ -2677,45 +2687,94 @@ def ai_generate_player_action():
     previous_actions = data.get("previous_actions", [])
     turn_number = data.get("turn_number", 1)
     total_turns = data.get("total_turns", 5)
+    character_names = data.get("character_names", [])
 
     if not scene:
         return jsonify({"error": "scene is required"}), 400
 
-    prev_block = ""
+    # Build forbidden actions list — extract key verbs/phrases from ALL previous actions
+    forbidden = ""
     if previous_actions:
-        prev_lines = [f"Turn {i+1}: {a}" for i, a in enumerate(previous_actions[-5:])]
-        prev_block = f"\nYour previous actions (DO NOT repeat any of these):\n" + "\n".join(prev_lines)
+        # Show recent actions in full
+        recent = previous_actions[-3:]
+        recent_lines = [f"- {a}" for a in recent]
+        # Extract short summaries of older actions to catch repeats
+        older_summaries = []
+        for a in previous_actions[:-3]:
+            # Take first 40 chars as a fingerprint
+            short = a[:40].rstrip()
+            if short.endswith("..."):
+                short = short[:-3]
+            older_summaries.append(short)
+        parts = ["DO NOT repeat these previous actions:"]
+        if older_summaries:
+            parts.append("Earlier: " + " / ".join(older_summaries))
+        parts.append("Recent:")
+        parts.extend(recent_lines)
+        parts.append("Your action must be COMPLETELY DIFFERENT from ALL of the above.")
+        forbidden = "\n".join(parts)
 
     bg_block = f"\nYour character: {player_background}" if player_background else ""
     title_block = f"\nStory: {game_title}" if game_title else ""
 
-    # Force variety based on turn number
+    # Force variety based on turn number — each turn gets a specific ACTION TYPE
     variety_hints = [
-        "Take a bold physical action.",
-        "Say something provocative or unexpected to someone.",
-        "Investigate something specific you noticed.",
-        "Make a decision that changes the situation.",
-        "Confront someone or challenge something directly.",
-        "Try to leave, move, or change location.",
-        "Reveal something personal or take an emotional risk.",
-        "Do something sneaky, subtle, or clever.",
-        "React physically — grab, push, run, hide.",
-        "Ask a pointed question that demands an answer.",
+        "PHYSICALLY DO something — grab an object, open a door, pick a lock, plant a device.",
+        "SAY something confrontational to {char} — accuse, challenge, or provoke them.",
+        "SEARCH or EXAMINE something specific — a document, a pocket, a briefcase, a room.",
+        "MAKE A DECISION that changes things — agree to a deal, refuse an order, tell a lie.",
+        "DEMAND ANSWERS from {char} — corner them, block their exit, force a response.",
+        "LEAVE this area — go to a different room, follow someone, sneak away.",
+        "TAKE A RISK — reveal your identity, make a threat, place a dangerous bet.",
+        "DO SOMETHING SNEAKY — plant evidence, swap drinks, pick a pocket, hide something.",
+        "ESCALATE THE SITUATION — pull a weapon, slam a table, make a scene, break something.",
+        "MAKE A MOVE to end this — betray someone, expose the truth, trigger your exit plan.",
     ]
     turn_idx = max(0, (turn_number - 1)) % len(variety_hints)
-    variety_hint = variety_hints[turn_idx]
+    # Fill in a random character name if the hint references {char}
+    hint_char = character_names[(turn_number - 1) % len(character_names)] if character_names else "someone"
+    variety_hint = variety_hints[turn_idx].replace("{char}", hint_char)
 
-    prompt = f"""What does {player_name} do next? ONE short sentence starting with "I".{title_block}{bg_block}
+    # Pacing hint for story arc
+    if total_turns > 1:
+        pct = turn_number / total_turns
+        if pct <= 0.3:
+            pacing = "EARLY — gather intel, test the waters."
+        elif pct <= 0.7:
+            pacing = "MIDDLE — escalate, take risks, make things happen."
+        else:
+            pacing = "CLIMAX — force a confrontation, go all in."
+    else:
+        pacing = ""
 
-Hint: {variety_hint}
+    chars_block = ""
+    if character_names:
+        chars_block = f"\nCharacters: {', '.join(character_names)}"
 
-Scene: {scene[:400]}
-{prev_block}
+    # Build forbidden verbs from previous actions to force variety
+    forbidden = ""
+    if previous_actions:
+        prev_lines = [f"- {a}" for a in previous_actions[-5:]]
+        forbidden = "\nDO NOT repeat these previous actions:\n" + "\n".join(prev_lines) + "\nYour action must be COMPLETELY DIFFERENT from all of the above.\n"
 
-{player_name}'s action (one sentence, must be DIFFERENT from all previous actions):"""
+    prompt = f"""TASK: Write what {player_name} does next. ONE sentence starting with "I".{title_block}{bg_block}{chars_block}
+
+Scene:
+{scene[:600]}
+{forbidden}
+>>> YOU MUST: {variety_hint} <<<
+{f"Story phase: {pacing}" if pacing else ""}
+
+Rules:
+- ONE sentence only, starting with "I"
+- Must follow the YOU MUST directive above
+- Be specific: name the person, object, or place
+- Do NOT just walk over and talk — DO something
+
+{player_name}:"""
 
     try:
-        llm = get_llm(get_model_for_role("tools"))
+        llm = get_llm(get_model_for_role("creative"))
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw).strip()
         # Take first sentence only — split on period, question mark, or exclamation
@@ -3744,7 +3803,10 @@ def ai_generate_scene():
         game_session_cache.set(session_key, state)
         conn = get_db()
         try:
-            _upsert_save(conn, story_id, g.user_id, 0, state)
+            try:
+                _upsert_save(conn, story_id, g.user_id, 0, state)
+            except sqlite3.IntegrityError:
+                logger.warning("generate_scene: save failed for user_id=%s (FK constraint)", g.user_id)
             conn.commit()
         finally:
             conn.close()

@@ -59,7 +59,7 @@ def response_builder_node(state: dict) -> dict:
         action = (resp.get("action") or "").strip()
         dialogue = (resp.get("dialogue") or "").strip()
         if action:
-            parts.append(f"*{action}*")
+            parts.append(f"*{label} {action}*")
         if dialogue:
             parts.append(f'{label}: "{dialogue}"')
 

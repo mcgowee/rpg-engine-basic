@@ -51,6 +51,18 @@ def character_agent_node(state: dict) -> dict:
         char_history = get_character_history(history, npc_key, count=6)
         convo_block = "\n".join(char_history) if char_history else ""
 
+        # Extract this character's recent lines to prevent repetition
+        recent_dialogue = []
+        for turn in history[-4:]:
+            if isinstance(turn, dict):
+                chars = turn.get("characters") or {}
+                char_resp = chars.get(npc_key)
+                if isinstance(char_resp, dict) and char_resp.get("dialogue"):
+                    recent_dialogue.append(char_resp["dialogue"][:60])
+        antirepeat = ""
+        if recent_dialogue:
+            antirepeat = "\nDo NOT repeat or closely rephrase these recent lines:\n" + "\n".join(f"- \"{d}\"" for d in recent_dialogue[-3:]) + "\n"
+
         # Mood context
         moods = npc.get("moods")
         mood_block = ""
@@ -85,18 +97,18 @@ You are having a conversation with {player_name}. {player.get("background", "")}
 {mood_block}
 {summary_block}Recent conversation:
 {convo_block}
-
+{antirepeat}
 The narrator describes: {narrator_text}
 
 {player_name}: {message}
 
 Respond as {label}. Provide TWO things:
-1. SAY: What you say out loud (1-3 sentences, natural and in character)
-2. DO: A brief physical action (5-15 words — body language, gesture, movement)
+1. SAY: What you say out loud (1-3 sentences, natural and in character). IMPORTANT: Do NOT start with "Ah," or repeat phrases from the conversation above. Vary your sentence structure.
+2. DO: A brief physical action in THIRD PERSON (5-15 words — body language, gesture, movement). Write "{label} does..." not "I do..."
 
 Format your response EXACTLY like this:
 SAY: your spoken words here
-DO: brief physical action here"""
+DO: {label} does something here"""
 
         try:
             raw = llm_result_to_text(llm.invoke(prompt)).strip()
@@ -147,7 +159,11 @@ def _parse_say_do(raw: str, label: str) -> tuple[str, str]:
 
     # Clean up action
     action = action.replace("*", "").strip()
-    if action.startswith(f"{label} "):
+    # Convert first-person "I verb" to third-person "verbs"
+    if re.match(r'^I [a-z]', action):
+        action = action[2:]  # strip "I ", response_builder prefixes the name
+    # Strip character name prefix (response_builder adds name separately)
+    if action.lower().startswith(f"{label.lower()} "):
         action = action[len(label) + 1:].strip()
     # Truncate long actions
     if len(action) > 150:
