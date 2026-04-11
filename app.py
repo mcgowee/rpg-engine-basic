@@ -231,7 +231,7 @@ NODE_DESCRIPTIONS = {
         "summary": "Scene / gallery image for sidebar",
         "description": "Selects or records scene art (gallery tags, triggers) for the play sidebar. No prose LLM.",
         "llm": False,
-        "reads": ["story", "_narrator_text", "_character_responses"],
+        "reads": ["story", "_narrator_text", "_character_responses", "memory_summary"],
         "writes": ["_scene_image", "_shown_images"],
     },
     "mood": {
@@ -3643,11 +3643,36 @@ def ai_generate_scene():
         scene_excerpt = scene_text[:500]
         prompt = f"{scene_excerpt}, RPG scene illustration, atmospheric, cinematic lighting, detailed environment, moody"
     nsfw_rating = (data.get("nsfw_rating") or "none").strip()
+
+    # Check if any characters have LoRAs — if so, inject trigger words and use LoRA workflow
+    char_lora = None
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT characters FROM stories WHERE id = ?", (story_id,)).fetchone()
+        if row:
+            characters = json.loads(row["characters"] or "{}")
+            for char_key, char_data in characters.items():
+                if isinstance(char_data, dict) and char_data.get("lora") and char_data.get("trigger_word"):
+                    char_lora = {
+                        "lora": char_data["lora"],
+                        "trigger_word": char_data["trigger_word"],
+                        "lora_strength": float(char_data.get("lora_strength", 0.85)),
+                    }
+                    # Inject trigger word into prompt if not already present
+                    tw = char_lora["trigger_word"]
+                    if tw.lower() not in prompt.lower():
+                        prompt = f"{tw}, {prompt}"
+                    break  # Use the first character with a LoRA (single LoRA for now)
+    finally:
+        conn.close()
+
+    use_lora = char_lora is not None
+    workflow_name = "LoRA" if use_lora else ("PonyForRPG" if comfyui_client._pick_checkpoint(nsfw_rating) == "pony" else "FluxForRPG")
+    model_name = comfyui_client.IPADAPTER_CHECKPOINT if use_lora else comfyui_client.CHECKPOINTS[comfyui_client._pick_checkpoint(nsfw_rating)]["ckpt_name"]
+
     image_id: int | None = None
     conn = get_db()
     try:
-        ckpt_key = comfyui_client._pick_checkpoint(nsfw_rating)
-        ckpt_name = comfyui_client.CHECKPOINTS[ckpt_key]["ckpt_name"]
         image_id = create_image_record(
             conn,
             kind="scene",
@@ -3656,8 +3681,8 @@ def ai_generate_scene():
             owner_id=story_id,
             owner_key=None,
             prompt=prompt,
-            workflow_name="PonyForRPG" if ckpt_key == "pony" else "FluxForRPG",
-            model_name=ckpt_name,
+            workflow_name=workflow_name,
+            model_name=model_name,
             width=1024,
             height=576,
         )
@@ -3673,7 +3698,14 @@ def ai_generate_scene():
     prefix = f"scene_{story_id}_{timestamp}"
     local_filename = f"{prefix}.png"
 
-    comfyui_filename = comfyui_client.generate_image(prompt, width=1024, height=576, prefix=prefix, nsfw_rating=nsfw_rating)
+    if use_lora:
+        comfyui_filename = comfyui_client.generate_with_lora(
+            prompt, lora_name=char_lora["lora"],
+            width=1024, height=576, prefix=prefix,
+            lora_strength=char_lora["lora_strength"],
+        )
+    else:
+        comfyui_filename = comfyui_client.generate_image(prompt, width=1024, height=576, prefix=prefix, nsfw_rating=nsfw_rating)
     if not comfyui_filename:
         if image_id is not None:
             conn = get_db()
@@ -4043,6 +4075,283 @@ def ai_generate_character_variants():
         "results": results,
         "total": len(results),
         "success": sum(1 for r in results if r.get("ok")),
+    })
+
+
+# --- LoRA training data ---
+
+# 18 diverse prompts for SDXL LoRA training. {trigger} is replaced with the trigger word.
+# Covers: expressions, poses, framing, lighting, angles.
+LORA_TRAINING_PROMPTS = [
+    # Close-up faces — expressions
+    ("{trigger}, close-up portrait, neutral expression, front facing, soft studio lighting, plain background", "closeup_neutral"),
+    ("{trigger}, close-up portrait, happy smiling, front facing, warm natural lighting, plain background", "closeup_happy"),
+    ("{trigger}, close-up portrait, angry scowling, furrowed brows, front facing, dramatic lighting, plain background", "closeup_angry"),
+    ("{trigger}, close-up portrait, sad melancholic, downcast eyes, front facing, soft lighting, plain background", "closeup_sad"),
+    ("{trigger}, close-up portrait, surprised wide eyes, raised eyebrows, front facing, bright lighting, plain background", "closeup_surprised"),
+    # Head and shoulders — angles
+    ("{trigger}, head and shoulders portrait, three-quarter view, looking slightly left, soft lighting, plain background", "shoulders_3q_left"),
+    ("{trigger}, head and shoulders portrait, three-quarter view, looking slightly right, natural lighting, plain background", "shoulders_3q_right"),
+    ("{trigger}, head and shoulders portrait, slight profile view, looking away, cinematic rim lighting, dark background", "shoulders_profile"),
+    ("{trigger}, head and shoulders portrait, looking up, hopeful expression, golden hour lighting, plain background", "shoulders_lookup"),
+    ("{trigger}, head and shoulders portrait, looking down, thoughtful, soft overhead lighting, plain background", "shoulders_lookdown"),
+    # Upper body — variety
+    ("{trigger}, upper body portrait, arms crossed, confident stance, studio lighting, plain background", "upper_crossed"),
+    ("{trigger}, upper body portrait, casual relaxed pose, leaning slightly, natural daylight, simple background", "upper_relaxed"),
+    ("{trigger}, upper body portrait, sitting at a table, resting chin on hand, warm indoor lighting", "upper_sitting"),
+    # Full body
+    ("{trigger}, full body portrait, standing straight, casual clothing, studio lighting, plain white background", "full_standing"),
+    ("{trigger}, full body portrait, walking pose, natural stride, outdoor daylight, blurred background", "full_walking"),
+    # Lighting variety
+    ("{trigger}, portrait, dramatic side lighting, high contrast, dark moody background", "light_dramatic"),
+    ("{trigger}, portrait, soft diffused lighting, overcast day, muted colors, head and shoulders", "light_soft"),
+    ("{trigger}, portrait, golden hour warm sunlight, glowing skin, head and shoulders, outdoor", "light_golden"),
+]
+
+
+@app.route("/ai/generate-lora-training-data", methods=["POST"])
+@optional_rate_limit(RATE_LIMIT_AI)
+@login_required
+def ai_generate_lora_training_data():
+    """Generate a diverse set of captioned images for SDXL LoRA training using FaceID."""
+    import comfyui_client
+
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    character_key = (data.get("character_key") or "").strip()
+    if not character_key:
+        return jsonify({"error": "character_key is required"}), 400
+    trigger_word = (data.get("trigger_word") or "").strip()
+    if not trigger_word:
+        return jsonify({"error": "trigger_word is required (e.g. 'alexchar')"}), 400
+    reference_filename = (data.get("reference") or "").strip()
+    if not reference_filename:
+        return jsonify({"error": "reference filename is required"}), 400
+
+    weight = float(data.get("weight", 0.85))
+
+    if not comfyui_client.is_available():
+        return jsonify({"error": "ComfyUI not available"}), 503
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM stories WHERE id = ? AND user_id = ?", (story_id, g.user_id)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+
+        characters = json.loads(row["characters"] or "{}")
+        char_data = characters.get(character_key)
+        if not char_data or not isinstance(char_data, dict):
+            return jsonify({"error": f"Character '{character_key}' not found"}), 404
+
+        portraits_dir = os.path.join(os.path.dirname(__file__), "web", "static", "images", "portraits")
+        ref_path = os.path.join(portraits_dir, reference_filename)
+        if not os.path.exists(ref_path):
+            return jsonify({"error": "Reference image not found on disk"}), 404
+
+        # Create training data output directory
+        training_dir = os.path.join(
+            os.path.dirname(__file__), "training_data",
+            f"story_{story_id}_{character_key}",
+        )
+        os.makedirs(training_dir, exist_ok=True)
+
+        # Copy reference image as first training image
+        import shutil
+        ref_dest = os.path.join(training_dir, "00_reference.png")
+        shutil.copy2(ref_path, ref_dest)
+        with open(os.path.join(training_dir, "00_reference.txt"), "w") as f:
+            f.write(f"{trigger_word}, portrait, front facing, neutral expression, head and shoulders, detailed face")
+
+        results = []
+        for i, (prompt_template, label) in enumerate(LORA_TRAINING_PROMPTS):
+            prompt = prompt_template.replace("{trigger}", trigger_word)
+            prefix = f"lora_{story_id}_{character_key}_{label}"
+
+            comfyui_filename = comfyui_client.generate_with_face_ref(
+                prompt=prompt,
+                ref_image_path=ref_path,
+                width=768,
+                height=1024,
+                prefix=prefix,
+                weight=weight,
+            )
+            if not comfyui_filename:
+                results.append({"label": label, "ok": False, "error": "Generation failed"})
+                continue
+
+            # Save image to training directory with sequential naming
+            local_filename = f"{i+1:02d}_{label}.png"
+            local_path = os.path.join(training_dir, local_filename)
+            if comfyui_client.download_image(comfyui_filename, local_path):
+                # Write caption file (kohya format: same name, .txt extension)
+                caption_path = os.path.join(training_dir, f"{i+1:02d}_{label}.txt")
+                with open(caption_path, "w") as f:
+                    f.write(prompt)
+                results.append({"label": label, "ok": True, "filename": local_filename})
+            else:
+                results.append({"label": label, "ok": False, "error": "Download failed"})
+
+        success_count = sum(1 for r in results if r.get("ok"))
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "training_dir": training_dir,
+        "trigger_word": trigger_word,
+        "results": results,
+        "total": len(results) + 1,  # +1 for reference image
+        "success": success_count + 1,
+    })
+
+
+@app.route("/ai/lora-training-data/<int:story_id>/<character_key>", methods=["GET"])
+@login_required
+def ai_get_lora_training_data(story_id: int, character_key: str):
+    """List generated training images for a character."""
+    training_dir = os.path.join(
+        os.path.dirname(__file__), "training_data",
+        f"story_{story_id}_{character_key}",
+    )
+    if not os.path.isdir(training_dir):
+        return jsonify({"images": [], "training_dir": None})
+
+    images = []
+    for fname in sorted(os.listdir(training_dir)):
+        if not fname.endswith(".png"):
+            continue
+        caption_file = os.path.join(training_dir, fname.rsplit(".", 1)[0] + ".txt")
+        caption = ""
+        if os.path.exists(caption_file):
+            with open(caption_file) as f:
+                caption = f.read().strip()
+        images.append({
+            "filename": fname,
+            "caption": caption,
+            "url": f"/ai/lora-training-image/{story_id}/{character_key}/{fname}",
+        })
+
+    return jsonify({"images": images, "training_dir": training_dir})
+
+
+@app.route("/ai/lora-training-image/<int:story_id>/<character_key>/<filename>", methods=["GET"])
+@login_required
+def ai_serve_lora_training_image(story_id: int, character_key: str, filename: str):
+    """Serve a training image file."""
+    # Sanitize filename to prevent directory traversal
+    safe_name = os.path.basename(filename)
+    training_dir = os.path.join(
+        os.path.dirname(__file__), "training_data",
+        f"story_{story_id}_{character_key}",
+    )
+    file_path = os.path.join(training_dir, safe_name)
+    if not os.path.isfile(file_path):
+        return jsonify({"error": "Not found"}), 404
+    from flask import send_file
+    return send_file(file_path, mimetype="image/png")
+
+
+@app.route("/ai/export-lora-training", methods=["POST"])
+@login_required
+def ai_export_lora_training():
+    """Copy selected training images to kohya_ss folder structure for manual training."""
+    data = request.get_json(silent=True) or {}
+    try:
+        story_id = int(data.get("story_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "story_id is required"}), 400
+    character_key = (data.get("character_key") or "").strip()
+    if not character_key:
+        return jsonify({"error": "character_key is required"}), 400
+    trigger_word = (data.get("trigger_word") or "").strip()
+    if not trigger_word:
+        return jsonify({"error": "trigger_word is required"}), 400
+    selected = data.get("selected", [])
+    if not selected or not isinstance(selected, list):
+        return jsonify({"error": "selected list of filenames is required"}), 400
+
+    training_dir = os.path.join(
+        os.path.dirname(__file__), "training_data",
+        f"story_{story_id}_{character_key}",
+    )
+    if not os.path.isdir(training_dir):
+        return jsonify({"error": "No training data found. Generate it first."}), 404
+
+    # kohya folder structure: ~/kohya_ss/training/{charKey}/img/10_{trigger}/
+    kohya_base = os.path.expanduser("~/kohya_ss/training")
+    kohya_img_dir = os.path.join(kohya_base, character_key, "img", f"10_{trigger_word}")
+    kohya_model_dir = os.path.join(kohya_base, character_key, "model")
+    kohya_log_dir = os.path.join(kohya_base, character_key, "log")
+    os.makedirs(kohya_img_dir, exist_ok=True)
+    os.makedirs(kohya_model_dir, exist_ok=True)
+    os.makedirs(kohya_log_dir, exist_ok=True)
+
+    import shutil
+    copied = 0
+    for fname in selected:
+        safe_name = os.path.basename(fname)
+        src = os.path.join(training_dir, safe_name)
+        if not os.path.isfile(src):
+            continue
+        shutil.copy2(src, os.path.join(kohya_img_dir, safe_name))
+        # Copy matching caption file
+        caption_src = os.path.join(training_dir, safe_name.rsplit(".", 1)[0] + ".txt")
+        if os.path.isfile(caption_src):
+            shutil.copy2(caption_src, os.path.join(kohya_img_dir, safe_name.rsplit(".", 1)[0] + ".txt"))
+        copied += 1
+
+    num_images = copied
+    repeats = 10
+    steps_per_epoch = num_images * repeats
+    target_steps = 1800
+    epochs = max(1, round(target_steps / steps_per_epoch)) if steps_per_epoch > 0 else 10
+
+    training_command = (
+        f"cd ~/kohya_ss && source venv/bin/activate && "
+        f"accelerate launch --num_cpu_threads_per_process=2 sd-scripts/sdxl_train_network.py "
+        f"--pretrained_model_name_or_path=/home/mcgowee/ComfyUI/models/checkpoints/juggernautXL_v8Rundiffusion.safetensors "
+        f"--train_data_dir={os.path.join(kohya_base, character_key, 'img')} "
+        f"--output_dir={kohya_model_dir} "
+        f"--logging_dir={kohya_log_dir} "
+        f"--output_name={character_key}_lora "
+        f"--network_module=networks.lora "
+        f"--network_dim=32 "
+        f"--network_alpha=16 "
+        f"--resolution=1024 "
+        f"--train_batch_size=1 "
+        f"--max_train_epochs={epochs} "
+        f"--learning_rate=1e-4 "
+        f"--unet_lr=1e-4 "
+        f"--text_encoder_lr=5e-5 "
+        f"--lr_scheduler=cosine "
+        f"--lr_warmup_steps=100 "
+        f"--optimizer_type=AdamW8bit "
+        f"--mixed_precision=fp16 "
+        f"--save_precision=fp16 "
+        f"--gradient_checkpointing "
+        f"--cache_latents "
+        f"--seed=42 "
+        f"--caption_extension=.txt "
+        f"--enable_bucket "
+        f"--min_bucket_reso=512 "
+        f"--max_bucket_reso=1536 "
+    )
+
+    return jsonify({
+        "ok": True,
+        "kohya_dir": kohya_img_dir,
+        "copied": copied,
+        "selected": len(selected),
+        "epochs": epochs,
+        "steps_estimate": steps_per_epoch * epochs,
+        "training_command": training_command,
+        "output_model": os.path.join(kohya_model_dir, f"{character_key}_lora.safetensors"),
     })
 
 

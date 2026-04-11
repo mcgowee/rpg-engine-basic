@@ -8,6 +8,8 @@
 
 	const SAVE_SLOT_COUNT = 5;
 
+	const expressionHintTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
 	type TranscriptEntry = {
 		type: 'player' | 'narrator' | 'character' | 'scene-image';
 		text: string;
@@ -40,7 +42,12 @@
 	let memorySummary = $state('');
 	let turnCount = $state(0);
 	let currentSceneImage = $state<{ url: string; caption: string } | null>(null);
+	let brokenSceneImage = $state(false);
 	let activePortraits = $state<Record<string, string>>({});
+	/** Brief sidebar label when expression filename changes (e.g. → surprised) */
+	let expressionTransitionHint = $state<Record<string, string>>({});
+	/** Incremented per character to retrigger portrait pulse animation */
+	let portraitPulseTick = $state<Record<string, number>>({});
 	let paused = $state(false);
 	let saves = $state<SaveRow[]>([]);
 	let message = $state('');
@@ -104,6 +111,7 @@
 	}
 
 	function applyStatus(data: Record<string, unknown>) {
+		const prevActive = { ...activePortraits };
 		gameTitle = String(data.game_title ?? '');
 		turnCount = Number(data.turn_count ?? 0) || 0;
 		paused = Boolean(data.paused);
@@ -114,6 +122,7 @@
 		if (data.subgraph_name) {
 			subgraphName = String(data.subgraph_name);
 		}
+		let lookupChars: CharDisplay[] = characters;
 		const chars = data.characters;
 		if (chars && typeof chars === 'object' && !Array.isArray(chars)) {
 			const charsObj = chars as Record<string, Record<string, unknown>>;
@@ -149,6 +158,7 @@
 				}
 			}
 			characters = parsed;
+			lookupChars = parsed;
 		}
 		// Scene image from scene_image node
 		const si = data.scene_image;
@@ -158,11 +168,41 @@
 				url: String(siObj.url ?? ''),
 				caption: String(siObj.caption ?? ''),
 			};
+			brokenSceneImage = false;
 		}
-		// Active portraits from scene_image node
+		// Active portraits (expression_picker + restored from save via /play/status)
 		const ap = data.active_portraits;
 		if (ap && typeof ap === 'object' && !Array.isArray(ap)) {
-			activePortraits = ap as Record<string, string>;
+			const next = { ...(ap as Record<string, string>) };
+			activePortraits = next;
+			for (const ck of Object.keys(next)) {
+				const newB = portraitBasename(next[ck] || '');
+				const oldB = portraitBasename(prevActive[ck] || '');
+				if (!newB || !oldB || newB === oldB) continue;
+				const ch = lookupChars.find((c) => c.key === ck);
+				let label = '';
+				if (ch?.portraits) {
+					for (const [vk, vf] of Object.entries(ch.portraits)) {
+						if (portraitBasename(vf) === newB) {
+							label = vk;
+							break;
+						}
+					}
+				}
+				expressionTransitionHint = {
+					...expressionTransitionHint,
+					[ck]: label ? `→ ${label}` : '→',
+				};
+				portraitPulseTick = { ...portraitPulseTick, [ck]: (portraitPulseTick[ck] ?? 0) + 1 };
+				const prevT = expressionHintTimers[ck];
+				if (prevT) clearTimeout(prevT);
+				expressionHintTimers[ck] = setTimeout(() => {
+					const rest = { ...expressionTransitionHint };
+					delete rest[ck];
+					expressionTransitionHint = rest;
+					delete expressionHintTimers[ck];
+				}, 2000);
+			}
 		}
 	}
 
@@ -619,7 +659,7 @@
 	<div class="layout">
 		{#if hasCharacters || currentSceneImage}
 			<aside class="portrait-sidebar">
-				{#if currentSceneImage?.url}
+				{#if currentSceneImage?.url && !brokenSceneImage}
 					<div class="scene-image-card">
 						<img
 							src={currentSceneImage.url.startsWith('/') ? currentSceneImage.url : `/images/scenes/${currentSceneImage.url}`}
@@ -627,6 +667,7 @@
 							class="scene-sidebar-img"
 							loading="lazy"
 							decoding="async"
+							onerror={() => { brokenSceneImage = true; }}
 						/>
 						{#if currentSceneImage.caption}
 							<span class="scene-caption">{currentSceneImage.caption}</span>
@@ -637,16 +678,18 @@
 					{@const activePortrait = portraitBasename(activePortraits[char.key] || char.portrait || '')}
 					<div class="portrait-card">
 						{#if activePortrait && !isPortraitBroken(activePortrait)}
-							<img
-								src={portraitImageSrc(activePortrait)}
-								alt={char.label}
-								class="portrait-img"
-								loading="lazy"
-								decoding="async"
-								title="Current expression"
-								onerror={() => markPortraitBroken(activePortrait ?? '')}
-								onload={() => clearPortraitBroken(activePortrait ?? '')}
-							/>
+							{#key portraitPulseTick[char.key] ?? 0}
+								<img
+									src={portraitImageSrc(activePortrait)}
+									alt={char.label}
+									class="portrait-img portrait-pulse-mount"
+									loading="lazy"
+									decoding="async"
+									title="Current expression"
+									onerror={() => markPortraitBroken(activePortrait ?? '')}
+									onload={() => clearPortraitBroken(activePortrait ?? '')}
+								/>
+							{/key}
 						{:else}
 							<div class="portrait-placeholder">
 								<Icon name="user" size={32} />
@@ -654,32 +697,8 @@
 							</div>
 						{/if}
 						<span class="portrait-name">{char.label}</span>
-						{#if char.portraits && Object.keys(char.portraits).length > 0}
-							<div class="portrait-variants" aria-label="Expression variants">
-								<span class="variants-caption">Variants</span>
-								<div class="portrait-variants-strip">
-									{#each Object.entries(char.portraits).sort(([a], [b]) => a.localeCompare(b)) as [vkey, vfile] (vkey)}
-										{@const file = portraitBasename(vfile || '')}
-										{@const isActive = Boolean(file && activePortrait && file === activePortrait)}
-										<div class="portrait-variant-chip" class:active={isActive} title="{vkey}{isActive ? ' (current)' : ''}">
-											{#if file && !isPortraitBroken(file)}
-												<img
-													src={portraitImageSrc(file)}
-													alt={vkey}
-													loading="lazy"
-													decoding="async"
-													class="portrait-variant-img"
-													onerror={() => markPortraitBroken(file)}
-													onload={() => clearPortraitBroken(file)}
-												/>
-											{:else}
-												<div class="portrait-variant-fallback">{vkey.slice(0, 1)}</div>
-											{/if}
-											<span class="portrait-variant-label">{vkey}</span>
-										</div>
-									{/each}
-								</div>
-							</div>
+						{#if expressionTransitionHint[char.key]}
+							<span class="expression-hint" transition:fade={{ duration: 120 }}>{expressionTransitionHint[char.key]}</span>
 						{/if}
 					</div>
 				{/each}
@@ -911,6 +930,18 @@
 	.portrait-sidebar { width: 118px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.25rem; overflow-y: auto; max-height: calc(100vh - 2rem); }
 	.portrait-card { text-align: center; }
 	.portrait-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #2a2f38; display: block; aspect-ratio: 2 / 3; }
+	@keyframes sidebar-portrait-pulse {
+		from { filter: brightness(1.12); box-shadow: 0 0 0 1px #1a73e8; }
+		to { filter: brightness(1); box-shadow: none; }
+	}
+	.portrait-pulse-mount { animation: sidebar-portrait-pulse 0.55s ease-out; }
+	.expression-hint {
+		display: block;
+		font-size: 0.72rem;
+		color: #a8c7fa;
+		margin-top: 0.2rem;
+		text-align: center;
+	}
 	.portrait-placeholder {
 		width: 100%;
 		aspect-ratio: 2 / 3;
@@ -926,14 +957,6 @@
 		font-size: 0.68rem;
 	}
 	.portrait-name { display: block; font-size: 0.72rem; color: #9aa0a6; margin-top: 0.25rem; line-height: 1.2; }
-	.variants-caption { display: block; font-size: 0.62rem; color: #7f8896; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.4rem; text-align: left; }
-	.portrait-variants { margin-top: 0.15rem; text-align: left; width: 100%; }
-	.portrait-variants-strip { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.2rem; }
-	.portrait-variant-chip { width: 36px; text-align: center; }
-	.portrait-variant-chip.active .portrait-variant-img { outline: 2px solid #1a73e8; outline-offset: 1px; }
-	.portrait-variant-img { width: 36px; height: 54px; object-fit: cover; border-radius: 4px; border: 1px solid #2a2f38; display: block; }
-	.portrait-variant-fallback { width: 36px; height: 54px; border-radius: 4px; border: 1px solid #2a2f38; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; color: #7f8896; background: #161a20; }
-	.portrait-variant-label { display: block; font-size: 0.58rem; color: #7f8896; margin-top: 0.1rem; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 36px; }
 	.sidebar-char-variants { margin-top: 0.45rem; }
 	.sidebar-char-variant-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.2rem; }
 	.sidebar-char-variant { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; font-size: 0.65rem; color: #9aa0a6; max-width: 52px; }

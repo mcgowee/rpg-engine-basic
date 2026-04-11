@@ -86,19 +86,20 @@ def expression_picker_node(state: dict) -> dict:
                     break
         prev_line = f"\nPrevious expression: {prev_variant}" if prev_variant else ""
 
-        prompt = f"""Pick the facial expression that best matches what {label} is feeling RIGHT NOW in this scene.
+        prompt = f"""You are choosing a portrait image for a character in a visual novel.
+Pick the facial expression that best shows what {label}'s FACE looks like RIGHT NOW.
 
-Available expressions: {', '.join(variant_keys)}
+Available portrait images: {', '.join(variant_keys)}
 
 What just happened:
 {turn_block}
 {"" if not mood_block else f"""
-{label}'s current mood:
+{label}'s emotional state (for context only — pick based on the SCENE, not the numbers):
 {mood_block}
 """}{prev_line}
 
-Pick the single best expression for {label}'s face in this moment.
-Reply with ONLY the expression name, nothing else:"""
+Based on the scene above, which portrait image should be displayed for {label}?
+Reply with ONLY one word from the list above:"""
 
         char_model = char.get("model", "")
         model = get_model_for_role("classification", character_override=char_model)

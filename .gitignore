@@ -34,6 +34,11 @@ Thumbs.db
 # Generated images (too many, too large for git)
 web/static/images/scenes/
 web/static/images/story/
+web/static/images/portraits/face_*
+web/static/images/portraits/test_*
+
+# LoRA training data
+training_data/
 
 # Cursor
 .cursor/

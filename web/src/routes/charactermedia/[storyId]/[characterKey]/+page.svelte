@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import CharacterPortraitWizard from '$lib/components/CharacterPortraitWizard.svelte';
+	import LoraTrainingDataSection from '$lib/components/LoraTrainingDataSection.svelte';
 	import { charEntryFromStoryPayload, type CharEntry } from '$lib/characterTypes';
 	import Icon from '$lib/components/Icon.svelte';
 
@@ -126,13 +127,19 @@
 			character={character}
 			onCharacterChange={onCharacterChange}
 		/>
+
+		<LoraTrainingDataSection
+			storyId={storyId}
+			characterKey={character.key}
+			referencePortrait={character.portrait}
+		/>
 	{/if}
 </section>
 
 <style>
 	.page {
 		padding: 1rem;
-		max-width: 720px;
+		max-width: 960px;
 	}
 	.head {
 		display: flex;
