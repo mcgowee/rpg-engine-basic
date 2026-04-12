@@ -1,6 +1,7 @@
 """SQLite database — schema and seed data."""
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -72,6 +73,7 @@ def init_db():
             notes TEXT DEFAULT '',
             cover_image TEXT DEFAULT '',
             story_images TEXT DEFAULT '[]',
+            map TEXT DEFAULT '{}',
             is_public BOOLEAN DEFAULT 0,
             play_count INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
@@ -125,6 +127,21 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_images_owner ON images(owner_type, owner_id, owner_key);
         CREATE INDEX IF NOT EXISTS idx_images_kind_status ON images(kind, status);
+
+        CREATE TABLE IF NOT EXISTS friction_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT (datetime('now')),
+            story_id INTEGER,
+            session_id TEXT,
+            event_type TEXT NOT NULL,
+            player_input TEXT DEFAULT '',
+            context TEXT DEFAULT '',
+            error_detail TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_friction_logs_event ON friction_logs(event_type);
+        CREATE INDEX IF NOT EXISTS idx_friction_logs_ts ON friction_logs(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_friction_logs_story ON friction_logs(story_id);
     """)
     conn.commit()
     migrate_schema(conn)
@@ -157,6 +174,9 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
     if "scene_gallery" not in cols:
         conn.execute("ALTER TABLE stories ADD COLUMN scene_gallery TEXT DEFAULT '[]'")
+        conn.commit()
+    if "map" not in cols:
+        conn.execute("ALTER TABLE stories ADD COLUMN map TEXT DEFAULT '{}'")
         conn.commit()
 
     # Books: add content JSON column
@@ -227,6 +247,25 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     )
     conn.commit()
 
+    # Friction logs table for self-improvement signals.
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS friction_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT (datetime('now')),
+            story_id INTEGER,
+            session_id TEXT,
+            event_type TEXT NOT NULL,
+            player_input TEXT DEFAULT '',
+            context TEXT DEFAULT '',
+            error_detail TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_friction_logs_event ON friction_logs(event_type);
+        CREATE INDEX IF NOT EXISTS idx_friction_logs_ts ON friction_logs(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_friction_logs_story ON friction_logs(story_id);
+    """)
+    conn.commit()
+
 
 def seed_builtin_subgraphs():
     """Seed builtin subgraph definitions from graphs/*.json files."""
@@ -283,9 +322,17 @@ def sync_builtin_subgraphs_from_disk() -> None:
                 "SELECT id FROM subgraphs WHERE name = ? AND is_builtin = 1",
                 (name,),
             ).fetchone()
-            if not row:
-                continue
             description = definition.get("description", "")
+            if not row:
+                # New builtin subgraph on disk — insert it
+                system_user = conn.execute("SELECT id FROM users WHERE uid = 'system'").fetchone()
+                if system_user:
+                    conn.execute(
+                        """INSERT INTO subgraphs (user_id, name, description, definition, is_builtin)
+                           VALUES (?, ?, ?, ?, 1)""",
+                        (system_user["id"], name, description, json.dumps(definition)),
+                    )
+                continue
             conn.execute(
                 """UPDATE subgraphs SET definition = ?, description = ?,
                        updated_at = datetime('now')
@@ -428,3 +475,36 @@ def seed_builtin_stories():
         conn.commit()
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Friction logging
+# ---------------------------------------------------------------------------
+
+def log_friction(
+    event_type: str,
+    story_id: int | None = None,
+    session_id: str | None = None,
+    player_input: str = "",
+    context: str = "",
+    error_detail: str = "",
+) -> None:
+    """Record a friction event for self-improvement analysis.
+
+    Never raises — friction logging must not break the request that triggered it.
+    """
+    try:
+        conn = get_db()
+        try:
+            conn.execute(
+                """INSERT INTO friction_logs
+                   (story_id, session_id, event_type, player_input, context, error_detail)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (story_id, session_id, event_type,
+                 player_input[:1000], context[:2000], error_detail[:5000]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logging.getLogger(__name__).warning("Failed to write friction log", exc_info=True)

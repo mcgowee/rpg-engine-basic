@@ -6,6 +6,7 @@ import os
 import sqlite3
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.request
 import uuid
@@ -33,6 +34,7 @@ from config import (
 from db import (
     get_db,
     init_db,
+    log_friction,
     seed_builtin_stories,
     seed_builtin_subgraphs,
     sync_builtin_story_characters_from_disk,
@@ -77,8 +79,26 @@ class _RequestExtraFilter(logging.Filter):
 
 logger.addFilter(_RequestExtraFilter())
 
+# Friction detection — confusion patterns
+CONFUSION_PATTERNS = {"?", "what", "huh", "idk", "i don't understand"}
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+
+@app.errorhandler(500)
+def _handle_500(exc):
+    story_id = getattr(g, "log_story_id", None) if has_request_context() else None
+    user_id = getattr(g, "user_id", None) if has_request_context() else None
+    session_id = f"session_{story_id}_{user_id}" if story_id and user_id else None
+    log_friction(
+        event_type="error_500",
+        story_id=story_id,
+        session_id=session_id,
+        context=request.path if has_request_context() else "",
+        error_detail=traceback.format_exc(),
+    )
+    return jsonify({"error": "Internal server error"}), 500
 
 
 def _rate_limit_key():
@@ -233,6 +253,13 @@ NODE_DESCRIPTIONS = {
         "llm": False,
         "reads": ["story", "_narrator_text", "_character_responses", "memory_summary"],
         "writes": ["_scene_image", "_shown_images"],
+    },
+    "progression": {
+        "summary": "NPC-driven stage progression — advances when player earns it",
+        "description": "Tracks relationship/story stages per character. Advances only when the player's actions meet the stage criteria (LLM evaluation). Falls back to mood thresholds if no criteria defined.",
+        "llm": True,
+        "reads": ["characters", "turn_count", "message", "_narrator_text", "_character_responses", "_progression_state"],
+        "writes": ["_progression", "_progression_state", "_narrator_progression"],
     },
     "mood": {
         "summary": "Tracks character mood axes via LLM",
@@ -886,6 +913,10 @@ def _story_row_to_dict(r, include_content=False) -> dict:
             d["characters"] = json.loads(r["characters"] or "{}")
         except (json.JSONDecodeError, TypeError):
             d["characters"] = {}
+        try:
+            d["map"] = json.loads(r["map"] or "{}") if "map" in r.keys() else {}
+        except (json.JSONDecodeError, TypeError):
+            d["map"] = {}
     return d
 
 
@@ -941,12 +972,15 @@ def create_story():
         nsfw_tags = data.get("nsfw_tags", [])
         if not isinstance(nsfw_tags, list):
             nsfw_tags = []
+        map_data = data.get("map", {})
+        if not isinstance(map_data, dict):
+            map_data = {}
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, main_graph_template_id, characters, notes, story_images)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes, story_images, map)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -965,6 +999,7 @@ def create_story():
                 json.dumps(characters),
                 data.get("notes", ""),
                 "[]",
+                json.dumps(map_data),
             ),
         )
         conn.commit()
@@ -1027,13 +1062,18 @@ def update_story(story_id: int):
             scene_gallery_json = json.dumps(update_scene_gallery if isinstance(update_scene_gallery, list) else [])
         else:
             scene_gallery_json = row["scene_gallery"] if "scene_gallery" in row.keys() else "[]"
+        update_map = data.get("map")
+        if update_map is not None:
+            map_json = json.dumps(update_map if isinstance(update_map, dict) else {})
+        else:
+            map_json = row["map"] if "map" in row.keys() else "{}"
         conn.execute(
             """UPDATE stories SET title = ?, description = ?, genre = ?, tone = ?,
                   nsfw_rating = ?, nsfw_tags = ?, opening = ?,
                   narrator_prompt = ?, narrator_model = ?, player_name = ?,
                   player_background = ?, subgraph_name = ?, main_graph_template_id = ?,
                   characters = ?, notes = ?, story_images = ?, scene_gallery = ?,
-                  updated_at = datetime('now')
+                  map = ?, updated_at = datetime('now')
                WHERE id = ?""",
             (
                 data.get("title", row["title"]),
@@ -1053,6 +1093,7 @@ def update_story(story_id: int):
                 data.get("notes", row["notes"]),
                 story_images_json,
                 scene_gallery_json,
+                map_json,
                 story_id,
             ),
         )
@@ -1227,8 +1268,8 @@ def copy_story(story_id: int):
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
-                  subgraph_name, main_graph_template_id, characters, notes, story_images)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  subgraph_name, main_graph_template_id, characters, notes, story_images, map)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 row["title"],
@@ -1247,6 +1288,7 @@ def copy_story(story_id: int):
                 row["characters"] or "{}",
                 row["notes"] or "",
                 row["story_images"] if "story_images" in row.keys() else "[]",
+                row["map"] if "map" in row.keys() else "{}",
             ),
         )
         conn.commit()
@@ -1306,6 +1348,12 @@ def export_story(story_id: int):
         "notes": row["notes"] or "",
         "cover_image": row["cover_image"] or "",
     }
+    try:
+        map_data = json.loads(row["map"] or "{}") if "map" in row.keys() else {}
+    except (json.JSONDecodeError, TypeError):
+        map_data = {}
+    if map_data:
+        export["map"] = map_data
     slug = row["title"].lower().replace(" ", "_")[:50]
     return Response(
         json.dumps(export, indent=2, ensure_ascii=False),
@@ -1344,13 +1392,16 @@ def import_story():
         import_scene_gallery = data.get("scene_gallery", [])
         if not isinstance(import_scene_gallery, list):
             import_scene_gallery = []
+        import_map = data.get("map", {})
+        if not isinstance(import_map, dict):
+            import_map = {}
         cur = conn.execute(
             """INSERT INTO stories (user_id, title, description, genre, tone,
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
                   subgraph_name, main_graph_template_id, characters, scene_gallery,
-                  notes, cover_image)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  notes, cover_image, map)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -1370,6 +1421,7 @@ def import_story():
                 json.dumps(import_scene_gallery),
                 data.get("notes", ""),
                 (data.get("cover_image") or "").strip(),
+                json.dumps(import_map),
             ),
         )
         conn.commit()
@@ -1411,6 +1463,12 @@ def _build_state_from_story(row) -> dict:
         scene_gallery = json.loads(row["scene_gallery"] or "[]")
     except (json.JSONDecodeError, TypeError):
         pass
+    map_data = {}
+    try:
+        map_data = json.loads(row["map"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+    characters = json.loads(row["characters"] or "{}")
     return {
         "message": "",
         "response": "",
@@ -1420,7 +1478,13 @@ def _build_state_from_story(row) -> dict:
             "name": row["player_name"] or "Adventurer",
             "background": row["player_background"] or "",
         },
-        "characters": json.loads(row["characters"] or "{}"),
+        "characters": characters,
+        "_all_characters": characters if map_data.get("locations") else {},
+        "map": map_data,
+        "_location": {},
+        "_location_state": {},
+        "_task_narrator_hint": "",
+        "_narrator_location_hint": "",
         "story": {
             "title": row["title"],
             "genre": row["genre"] or "",
@@ -1540,6 +1604,9 @@ def play_start():
             "memory_summary": state.get("memory_summary", ""),
             "player": state.get("player", {}),
             "subgraph_name": state.get("_subgraph_name", ""),
+            "location": state.get("_location", {}),
+            "location_state": state.get("_location_state", {}),
+            "map": state.get("map", {}),
         },
     })
 
@@ -1577,6 +1644,20 @@ def play_chat():
                 "paused": True,
             })
 
+        # --- Friction detection (non-blocking) ---
+        _hist = state.get("history") or []
+        _last_narrator = ""
+        if _hist and isinstance(_hist[-1], dict):
+            _last_narrator = _hist[-1].get("narrator", "")
+        if _hist and isinstance(_hist[-1], dict) and _hist[-1].get("player", "").strip().lower() == message.lower():
+            log_friction(event_type="repeated_input", story_id=story_id,
+                         session_id=session_key, player_input=message, context=_last_narrator)
+        _norm = message.lower().strip().rstrip("?!.")
+        if _norm in CONFUSION_PATTERNS or message.strip() == "?":
+            log_friction(event_type="player_confused", story_id=story_id,
+                         session_id=session_key, player_input=message, context=_last_narrator)
+        # --- End friction detection ---
+
         state["message"] = message
 
         subgraph_name = state.get("_subgraph_name", "narrator_chat_lite")
@@ -1593,10 +1674,19 @@ def play_chat():
                 story_id,
                 getattr(g, "user_id", "-"),
             )
+            log_friction(event_type="error_500", story_id=story_id,
+                         session_id=session_key, player_input=message,
+                         context=_last_narrator, error_detail=traceback.format_exc())
             return jsonify({"error": f"Internal error: {e}"}), 500
 
         if not isinstance(result, dict):
             result = dict(state)
+
+        # Detect empty narrator response
+        _nt = (result.get("_narrator_text") or "").strip()
+        if not _nt or _nt == "...":
+            log_friction(event_type="empty_narrator", story_id=story_id,
+                         session_id=session_key, player_input=message, context=_last_narrator)
 
         # Ensure history is recorded even if subgraph has no memory node
         history = list(result.get("history") or state.get("history") or [])
@@ -1654,6 +1744,10 @@ def play_chat():
             "subgraph_name": result.get("_subgraph_name", ""),
             "scene_image": result.get("_scene_image"),
             "active_portraits": result.get("_active_portraits", {}),
+            "progression_state": result.get("_progression_state", {}),
+            "location": result.get("_location", {}),
+            "location_state": result.get("_location_state", {}),
+            "map": result.get("map", {}),
         })
     finally:
         adv_lock.release()
@@ -1706,6 +1800,10 @@ def play_status():
         "subgraph_name": state.get("_subgraph_name", ""),
         "save_slots": save_slots,
         "active_portraits": state.get("_active_portraits") or {},
+        "progression_state": state.get("_progression_state") or {},
+        "location": state.get("_location") or {},
+        "location_state": state.get("_location_state") or {},
+        "map": state.get("map") or {},
     }
     if state.get("opening"):
         payload["opening"] = state["opening"]
@@ -1847,15 +1945,13 @@ def _strip_markdown_json_fences(text: str) -> str:
     s = text.strip()
     if not s.startswith("```"):
         return s
-    s = s[3:]
-    if s.lower().startswith("json"):
-        s = s[4:].lstrip()
-    if s.startswith("\n"):
-        s = s[1:]
+    # Remove opening fence line (```json or ``` or ```JSON etc.)
+    first_nl = s.find("\n")
+    if first_nl >= 0:
+        s = s[first_nl + 1:]
     else:
-        idx = s.find("\n")
-        if idx >= 0:
-            s = s[idx + 1:]
+        s = s[3:]
+    # Remove closing fence
     fence = s.rfind("```")
     if fence >= 0:
         s = s[:fence]
@@ -1892,12 +1988,13 @@ Output a single JSON object (no markdown, no code fences, no commentary) with th
 Respond with ONLY valid JSON."""
 
     try:
-        llm = get_llm(get_model_for_role("tools"))
+        llm = get_llm(get_model_for_role("creative"))
         raw = llm.invoke(prompt)
         text = llm_result_to_text(raw)
         cleaned = _strip_markdown_json_fences(text)
         story = json.loads(cleaned)
     except json.JSONDecodeError as e:
+        logger.warning("ai/generate-story: JSON parse failed: %s — raw: %s", e, text[:300] if 'text' in dir() else '(no text)')
         return jsonify({"error": "The model did not return valid JSON. Try again.", "detail": str(e)}), 422
     except Exception as e:
         logger.exception("ai/generate-story failed")
@@ -4469,6 +4566,776 @@ def health():
         body["ollama"] = ollama_ok
     status = 200 if db_ok else 503
     return jsonify(body), status
+
+
+# ---------------------------------------------------------------------------
+# Internal API (static API key auth, no session/cookie)
+# ---------------------------------------------------------------------------
+
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+
+
+def _require_internal_key():
+    """Check X-Internal-Key header. Returns an error response or None."""
+    if not INTERNAL_API_KEY:
+        return jsonify({"error": "INTERNAL_API_KEY not configured"}), 503
+    key = request.headers.get("X-Internal-Key", "")
+    if key != INTERNAL_API_KEY:
+        return jsonify({"error": "Invalid or missing X-Internal-Key"}), 401
+    return None
+
+
+def _story_owner_id(conn, story_id: int) -> int | None:
+    row = conn.execute("SELECT user_id FROM stories WHERE id = ?", (story_id,)).fetchone()
+    return row["user_id"] if row else None
+
+
+@app.route("/internal/health", methods=["GET"])
+def internal_health():
+    err = _require_internal_key()
+    if err:
+        return err
+    db_ok = False
+    try:
+        c = get_db()
+        try:
+            c.execute("SELECT 1")
+            db_ok = True
+        finally:
+            c.close()
+    except Exception:
+        pass
+    ollama_ok: bool | None = None
+    if LLM_PROVIDER == "ollama":
+        ollama_ok = False
+        try:
+            base = OLLAMA_HOST.rstrip("/")
+            urllib.request.urlopen(f"{base}/api/tags", timeout=2)
+            ollama_ok = True
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
+    body = {"ok": db_ok, "database": db_ok, "llm_provider": LLM_PROVIDER}
+    if ollama_ok is not None:
+        body["ollama"] = ollama_ok
+    return jsonify(body), 200 if db_ok else 503
+
+
+@app.route("/internal/stories", methods=["GET"])
+def internal_list_stories():
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM stories ORDER BY updated_at DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    return jsonify([_story_row_to_dict(r) for r in rows])
+
+
+@app.route("/internal/stories/<int:story_id>/state", methods=["GET"])
+def internal_story_state(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        owner_id = _story_owner_id(conn, story_id)
+        if owner_id is None:
+            return jsonify({"error": "Story not found"}), 404
+
+        session_key = _play_session_key(story_id, owner_id)
+        state = _ensure_play_session(session_key, story_id, owner_id)
+        if state is None:
+            return jsonify({"error": "No active game"}), 404
+
+        save_rows = conn.execute(
+            "SELECT slot, saved_at, state FROM saves WHERE story_id = ? AND user_id = ? ORDER BY slot",
+            (story_id, owner_id),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    save_slots = []
+    for sr in save_rows:
+        try:
+            sd = json.loads(sr["state"])
+            turns = sd.get("turn_count", 0)
+        except Exception:
+            turns = 0
+        save_slots.append({"slot": sr["slot"], "timestamp": sr["saved_at"], "turns": turns})
+
+    payload = {
+        "response": state.get("response", ""),
+        "history": state.get("history", []),
+        "game_title": state.get("game_title", ""),
+        "turn_count": state.get("turn_count", 0),
+        "paused": state.get("paused", False),
+        "characters": state.get("characters", {}),
+        "memory_summary": state.get("memory_summary", ""),
+        "player": state.get("player", {}),
+        "subgraph_name": state.get("_subgraph_name", ""),
+        "save_slots": save_slots,
+        "active_portraits": state.get("_active_portraits") or {},
+        "progression_state": state.get("_progression_state") or {},
+        "location": state.get("_location") or {},
+        "location_state": state.get("_location_state") or {},
+        "map": state.get("map") or {},
+    }
+    if state.get("opening"):
+        payload["opening"] = state["opening"]
+    return jsonify(payload)
+
+
+@app.route("/internal/stories/<int:story_id>/chat", methods=["POST"])
+def internal_story_chat(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+
+    conn = get_db()
+    try:
+        owner_id = _story_owner_id(conn, story_id)
+    finally:
+        conn.close()
+    if owner_id is None:
+        return jsonify({"error": "Story not found"}), 404
+
+    session_key = _play_session_key(story_id, owner_id)
+
+    adv_lock = _get_adventure_lock(session_key)
+    if not adv_lock.acquire(timeout=CHAT_LOCK_TIMEOUT_S):
+        return jsonify({"error": "Another turn is still in progress."}), 429
+
+    try:
+        state = _ensure_play_session(session_key, story_id, owner_id)
+        if state is None:
+            return jsonify({"error": "No active game. Start a new game first."}), 400
+
+        if state.get("paused"):
+            return jsonify({
+                "response": "The game is paused. Unpause to continue playing.",
+                "game_title": state.get("game_title", ""),
+                "turn_count": state.get("turn_count", 0),
+                "paused": True,
+            })
+
+        # --- Friction detection (non-blocking) ---
+        _hist = state.get("history") or []
+        _last_narrator = ""
+        if _hist and isinstance(_hist[-1], dict):
+            _last_narrator = _hist[-1].get("narrator", "")
+        if _hist and isinstance(_hist[-1], dict) and _hist[-1].get("player", "").strip().lower() == message.lower():
+            log_friction(event_type="repeated_input", story_id=story_id,
+                         session_id=session_key, player_input=message, context=_last_narrator)
+        _norm = message.lower().strip().rstrip("?!.")
+        if _norm in CONFUSION_PATTERNS or message.strip() == "?":
+            log_friction(event_type="player_confused", story_id=story_id,
+                         session_id=session_key, player_input=message, context=_last_narrator)
+        # --- End friction detection ---
+
+        state["message"] = message
+
+        subgraph_name = state.get("_subgraph_name", "narrator_chat_lite")
+        if subgraph_name not in registry:
+            return jsonify({"error": f"Subgraph not available: {subgraph_name}"}), 503
+
+        compiled = registry.require(subgraph_name)
+        try:
+            result = compiled.invoke(state)
+        except Exception as e:
+            logger.exception(
+                "internal/chat graph invoke failed story_id=%s",
+                story_id,
+            )
+            log_friction(event_type="error_500", story_id=story_id,
+                         session_id=session_key, player_input=message,
+                         context=_last_narrator, error_detail=traceback.format_exc())
+            return jsonify({"error": f"Internal error: {e}"}), 500
+
+        if not isinstance(result, dict):
+            result = dict(state)
+
+        # Detect empty narrator response
+        _nt = (result.get("_narrator_text") or "").strip()
+        if not _nt or _nt == "...":
+            log_friction(event_type="empty_narrator", story_id=story_id,
+                         session_id=session_key, player_input=message, context=_last_narrator)
+
+        history = list(result.get("history") or state.get("history") or [])
+        last_is_current = (
+            history
+            and isinstance(history[-1], dict)
+            and history[-1].get("player") == message
+        )
+        if not last_is_current:
+            char_responses = result.get("_character_responses") or {}
+            turn_entry = {
+                "player": message,
+                "narrator": (result.get("_narrator_text") or "").strip(),
+                "characters": {
+                    k: {"dialogue": v.get("dialogue", ""), "action": v.get("action", "")}
+                    for k, v in char_responses.items()
+                    if isinstance(v, dict)
+                },
+                "mood": {},
+            }
+            history.append(turn_entry)
+            result["history"] = history
+        if "turn_count" not in result or result["turn_count"] == state.get("turn_count", 0):
+            result["turn_count"] = len(history)
+
+        result["_story_id"] = story_id
+
+        conn = get_db()
+        try:
+            advance_phase_after_turn(result, message, conn, owner_id)
+            result["_subgraph_name"] = result.get("_subgraph_name", subgraph_name)
+            try:
+                _upsert_save(conn, story_id, owner_id, 0, result)
+            except sqlite3.IntegrityError:
+                logger.warning("internal_chat: save failed for story_id=%s (FK constraint)", story_id)
+            conn.commit()
+        finally:
+            conn.close()
+
+        game_session_cache.set(session_key, result)
+
+        return jsonify({
+            "response": result.get("response", ""),
+            "bubbles": result.get("_bubbles", []),
+            "narrator_text": result.get("_narrator_text", ""),
+            "character_responses": result.get("_character_responses", {}),
+            "game_title": result.get("game_title", ""),
+            "turn_count": result.get("turn_count", 0),
+            "paused": result.get("paused", False),
+            "characters": result.get("characters", {}),
+            "memory_summary": result.get("memory_summary", ""),
+            "player": result.get("player", {}),
+            "subgraph_name": result.get("_subgraph_name", ""),
+            "scene_image": result.get("_scene_image"),
+            "active_portraits": result.get("_active_portraits", {}),
+            "progression_state": result.get("_progression_state", {}),
+            "location": result.get("_location", {}),
+            "location_state": result.get("_location_state", {}),
+            "map": result.get("map", {}),
+        })
+    finally:
+        adv_lock.release()
+
+
+@app.route("/internal/stories/<int:story_id>/saves", methods=["GET"])
+def internal_story_saves(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        owner_id = _story_owner_id(conn, story_id)
+        if owner_id is None:
+            return jsonify({"error": "Story not found"}), 404
+        rows = conn.execute(
+            "SELECT slot, saved_at, state FROM saves WHERE story_id = ? AND user_id = ? ORDER BY slot",
+            (story_id, owner_id),
+        ).fetchall()
+    finally:
+        conn.close()
+    slots = []
+    for r in rows:
+        try:
+            sd = json.loads(r["state"])
+            turns = sd.get("turn_count", 0)
+        except Exception:
+            turns = 0
+        slots.append({"slot": r["slot"], "timestamp": r["saved_at"], "turns": turns})
+    return jsonify({"slots": slots})
+
+
+@app.route("/internal/stories", methods=["POST"])
+def internal_create_story():
+    err = _require_internal_key()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+    characters = data.get("characters", {})
+    if not isinstance(characters, dict):
+        characters = {}
+    map_data = data.get("map", {})
+    if not isinstance(map_data, dict):
+        map_data = {}
+    user_id = 1
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            """INSERT INTO stories (user_id, title, description, genre, tone,
+                  nsfw_rating, nsfw_tags, opening,
+                  narrator_prompt, narrator_model, player_name, player_background,
+                  subgraph_name, main_graph_template_id, characters, notes, story_images, map)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                title,
+                data.get("description", ""),
+                data.get("genre", ""),
+                data.get("tone", ""),
+                "none",
+                "[]",
+                data.get("opening", ""),
+                data.get("narrator_prompt", ""),
+                data.get("narrator_model", "default"),
+                data.get("player_name", "Adventurer"),
+                data.get("player_background", ""),
+                data.get("subgraph_name", "narrator_chat_lite"),
+                None,
+                json.dumps(characters),
+                data.get("notes", ""),
+                "[]",
+                json.dumps(map_data),
+            ),
+        )
+        conn.commit()
+        new_id = cur.lastrowid
+    finally:
+        conn.close()
+    return jsonify({"id": new_id, "title": title}), 201
+
+
+@app.route("/internal/stories/<int:story_id>/start", methods=["POST"])
+def internal_start_game(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+        user_id = row["user_id"]
+        state = _build_state_from_story(row)
+        opening = (row["opening"] or "").strip()
+        if opening:
+            state["response"] = opening
+        session_key = _play_session_key(story_id, user_id)
+        state["_story_id"] = story_id
+        perr = apply_main_graph_to_new_state(state, row, conn, user_id)
+        if perr:
+            return jsonify({"error": perr}), 400
+        sg = state.get("_subgraph_name", "narrator_chat_lite")
+        if sg not in registry:
+            return jsonify({"error": f"Subgraph not available: {sg}"}), 503
+        game_session_cache.set(session_key, state)
+        try:
+            _upsert_save(conn, story_id, user_id, 0, state)
+        except sqlite3.IntegrityError:
+            logger.warning("internal_start: save failed story_id=%s", story_id)
+        conn.execute(
+            "UPDATE stories SET play_count = play_count + 1 WHERE id = ?", (story_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({
+        "session_id": session_key,
+        "story_id": story_id,
+        "response": state.get("response", ""),
+        "turn_count": 0,
+        "subgraph_name": state.get("_subgraph_name", ""),
+    })
+
+
+@app.route("/internal/stories/<int:story_id>/reset", methods=["POST"])
+def internal_reset_game(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+        user_id = row["user_id"]
+        session_key = _play_session_key(story_id, user_id)
+        # Clear saves and cache
+        conn.execute("DELETE FROM saves WHERE story_id = ? AND user_id = ?", (story_id, user_id))
+        conn.commit()
+        game_session_cache.delete(session_key)
+        # Re-initialize
+        state = _build_state_from_story(row)
+        opening = (row["opening"] or "").strip()
+        if opening:
+            state["response"] = opening
+        state["_story_id"] = story_id
+        perr = apply_main_graph_to_new_state(state, row, conn, user_id)
+        if perr:
+            return jsonify({"error": perr}), 400
+        sg = state.get("_subgraph_name", "narrator_chat_lite")
+        if sg not in registry:
+            return jsonify({"error": f"Subgraph not available: {sg}"}), 503
+        game_session_cache.set(session_key, state)
+        try:
+            _upsert_save(conn, story_id, user_id, 0, state)
+        except sqlite3.IntegrityError:
+            logger.warning("internal_reset: save failed story_id=%s", story_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({
+        "session_id": session_key,
+        "story_id": story_id,
+        "response": state.get("response", ""),
+        "turn_count": 0,
+        "subgraph_name": state.get("_subgraph_name", ""),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Self-improvement pipeline routes
+# ---------------------------------------------------------------------------
+
+@app.route("/internal/stories/<int:story_id>/config", methods=["GET"])
+def internal_story_config(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Story not found"}), 404
+    return jsonify(_story_row_to_dict(row, include_content=True))
+
+
+@app.route("/internal/stories/<int:story_id>", methods=["PATCH"])
+def internal_patch_story(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Story not found"}), 404
+
+        data = request.get_json(silent=True) or {}
+        updatable = [
+            "narrator_prompt", "narrator_model", "opening",
+            "player_name", "player_background", "title",
+            "description", "genre", "tone",
+        ]
+        sets = []
+        vals = []
+        updated_fields = []
+        for field in updatable:
+            if field in data:
+                sets.append(f"{field} = ?")
+                vals.append(data[field])
+                updated_fields.append(field)
+
+        # characters_merge: deep-merge into existing characters dict
+        if "characters_merge" in data and isinstance(data["characters_merge"], dict):
+            try:
+                existing = json.loads(row["characters"] or "{}")
+            except (json.JSONDecodeError, TypeError):
+                existing = {}
+            for char_key, patch in data["characters_merge"].items():
+                if char_key in existing and isinstance(patch, dict):
+                    existing[char_key].update(patch)
+                elif isinstance(patch, dict):
+                    existing[char_key] = patch
+            sets.append("characters = ?")
+            vals.append(json.dumps(existing))
+            updated_fields.append("characters_merge")
+
+        # Full characters replacement
+        if "characters" in data and isinstance(data["characters"], dict):
+            sets.append("characters = ?")
+            vals.append(json.dumps(data["characters"]))
+            updated_fields.append("characters")
+
+        if not sets:
+            return jsonify({"ok": True, "updated_fields": []})
+
+        sets.append("updated_at = datetime('now')")
+        vals.append(story_id)
+        conn.execute(
+            f"UPDATE stories SET {', '.join(sets)} WHERE id = ?",
+            vals,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "updated_fields": updated_fields})
+
+
+@app.route("/internal/stories/<int:story_id>/diagnose", methods=["POST"])
+def internal_diagnose_story(story_id):
+    err = _require_internal_key()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    hours = data.get("hours", 48)
+    target = data.get("target", "auto")
+    character_id = data.get("character_id")
+
+    conn = get_db()
+    try:
+        # Load story config
+        story_row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        if not story_row:
+            return jsonify({"error": "Story not found"}), 404
+
+        # Load friction logs
+        friction_rows = conn.execute(
+            """SELECT * FROM friction_logs
+               WHERE story_id = ? AND timestamp >= datetime('now', ?)
+               ORDER BY timestamp DESC LIMIT 20""",
+            (story_id, f"-{hours} hours"),
+        ).fetchall()
+
+        # Load recent game history from save
+        save_row = conn.execute(
+            "SELECT state FROM saves WHERE story_id = ? ORDER BY saved_at DESC LIMIT 1",
+            (story_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    friction_list = [dict(r) for r in friction_rows]
+    if not friction_list:
+        return jsonify({
+            "story_id": story_id,
+            "friction_summary": {"total_events": 0, "by_type": {}},
+            "diagnosis": "No friction events found in the last {} hours.".format(hours),
+            "prescription": None,
+            "requires_developer": False,
+            "error_events": [],
+        })
+
+    # Summarize friction
+    by_type = {}
+    error_events = []
+    for evt in friction_list:
+        by_type[evt["event_type"]] = by_type.get(evt["event_type"], 0) + 1
+        if evt["event_type"] == "error_500":
+            error_events.append(evt)
+
+    # Parse story config
+    narrator_prompt = story_row["narrator_prompt"] or ""
+    try:
+        characters = json.loads(story_row["characters"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        characters = {}
+
+    # Parse recent history
+    history = []
+    if save_row:
+        try:
+            save_state = json.loads(save_row["state"])
+            history = (save_state.get("history") or [])[-10:]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Build character summary
+    char_lines = []
+    for key, ch in characters.items():
+        prompt_preview = (ch.get("prompt") or "")[:200]
+        moods = ch.get("moods") or []
+        mood_str = ", ".join(f"{m.get('name','?')}={m.get('value','?')}" for m in moods) if moods else "none"
+        char_lines.append(f"- {ch.get('label', key)}: prompt='{prompt_preview}...' moods=[{mood_str}]")
+
+    # Build history summary
+    hist_lines = []
+    for i, turn in enumerate(history):
+        if not isinstance(turn, dict):
+            continue
+        player = (turn.get("player") or "")[:100]
+        narrator = (turn.get("narrator") or "")[:200]
+        chars = turn.get("characters") or {}
+        char_parts = []
+        for ck, cv in chars.items():
+            if isinstance(cv, dict):
+                char_parts.append(f"{ck}: \"{(cv.get('dialogue') or '')[:80]}\"")
+        hist_lines.append(f"Turn {i+1}: Player: {player}\n  Narrator: {narrator}")
+        if char_parts:
+            hist_lines.append(f"  Characters: {'; '.join(char_parts)}")
+
+    # Build friction event details
+    event_lines = []
+    for evt in friction_list:
+        if evt["event_type"] == "error_500":
+            continue
+        event_lines.append(
+            f"- [{evt['event_type']}] player_input=\"{evt['player_input'][:80]}\" "
+            f"context=\"{evt['context'][:150]}...\""
+        )
+
+    # Determine target hint
+    target_hint = ""
+    if target == "narrator":
+        target_hint = "Focus your diagnosis on the narrator_prompt."
+    elif target == "character" and character_id:
+        target_hint = f"Focus your diagnosis on character '{character_id}'."
+
+    meta_prompt = f"""You are an RPG game design analyst. Diagnose player experience problems and prescribe specific prompt improvements.
+
+## Story Configuration
+Title: {story_row['title']}
+Genre: {story_row['genre']}
+Tone: {story_row['tone'] or 'not set'}
+Subgraph: {story_row['subgraph_name']}
+
+## Current Narrator Prompt
+{narrator_prompt}
+
+## Characters
+{chr(10).join(char_lines) if char_lines else 'No characters (narrator-only story)'}
+
+## Player
+Name: {story_row['player_name']}
+Background: {story_row['player_background']}
+
+## Recent Game History (last {len(history)} turns)
+{chr(10).join(hist_lines) if hist_lines else 'No turns played yet'}
+
+## Friction Events ({len(friction_list)} events in last {hours}h)
+Counts by type: {json.dumps(by_type)}
+
+### Event Details
+{chr(10).join(event_lines) if event_lines else 'Only error_500 events (no player-facing friction)'}
+
+{target_hint}
+
+## Your Task
+1. DIAGNOSE: Identify the root cause pattern. What about the current prompts or game configuration is causing these friction signals? Be specific — cite particular friction events and the narrator/character responses that preceded them.
+
+2. PRESCRIBE: Write an improved prompt that addresses the diagnosed issue.
+   - If the problem is with narration quality (empty_narrator, player_confused after narrator responses), fix the narrator_prompt.
+   - If the problem is with a specific character's responses, fix that character's prompt.
+   - Keep ALL existing instructions intact — only ADD or REFINE instructions that address the diagnosed issue.
+   - The fix should be minimal and targeted, not a full rewrite.
+
+3. If error_500 events are present, note them but do NOT try to fix them — they require developer attention to the code, not prompt changes.
+
+Respond in this EXACT JSON format (no markdown fences, no extra text):
+{{"diagnosis": "2-3 sentence explanation of the root cause pattern", "target": "narrator_prompt" or "character_prompt", "character_id": null or "character_key", "proposed_value": "the complete improved prompt text", "rationale": "1-2 sentences explaining what you changed and why", "confidence": "high" or "medium" or "low", "requires_developer": true or false}}"""
+
+    # Call LLM
+    try:
+        llm = get_llm()
+        raw = llm_result_to_text(llm.invoke(meta_prompt))
+    except Exception as e:
+        logger.exception("diagnose LLM call failed story_id=%s", story_id)
+        return jsonify({"error": f"LLM call failed: {e}"}), 500
+
+    # Parse JSON response
+    prescription = None
+    diagnosis_text = raw
+    try:
+        # Strip markdown fences if present
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
+        parsed = json.loads(cleaned)
+        diagnosis_text = parsed.get("diagnosis", raw)
+        current_value = ""
+        if parsed.get("target") == "narrator_prompt":
+            current_value = narrator_prompt
+        elif parsed.get("target") == "character_prompt" and parsed.get("character_id"):
+            ch = characters.get(parsed["character_id"]) or {}
+            current_value = ch.get("prompt", "")
+        prescription = {
+            "target": parsed.get("target", "narrator_prompt"),
+            "character_id": parsed.get("character_id"),
+            "current_value": current_value,
+            "proposed_value": parsed.get("proposed_value", ""),
+            "rationale": parsed.get("rationale", ""),
+            "confidence": parsed.get("confidence", "medium"),
+        }
+        if parsed.get("requires_developer"):
+            pass  # handled below
+    except (json.JSONDecodeError, KeyError):
+        logger.warning("diagnose: LLM returned non-JSON for story_id=%s", story_id)
+
+    return jsonify({
+        "story_id": story_id,
+        "friction_summary": {
+            "total_events": len(friction_list),
+            "by_type": by_type,
+            "has_errors": bool(error_events),
+        },
+        "diagnosis": diagnosis_text,
+        "prescription": prescription,
+        "requires_developer": bool(error_events),
+        "error_events": error_events[:5],
+    })
+
+
+# ---------------------------------------------------------------------------
+# Friction log query routes
+# ---------------------------------------------------------------------------
+
+@app.route("/internal/logs/friction", methods=["GET"])
+def internal_friction_logs():
+    err = _require_internal_key()
+    if err:
+        return err
+    hours = int(request.args.get("hours", 48))
+    story_id = request.args.get("story_id")
+    conn = get_db()
+    try:
+        if story_id:
+            rows = conn.execute(
+                """SELECT * FROM friction_logs
+                   WHERE timestamp >= datetime('now', ?)
+                   AND story_id = ?
+                   ORDER BY timestamp DESC LIMIT 200""",
+                (f"-{hours} hours", int(story_id)),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM friction_logs
+                   WHERE timestamp >= datetime('now', ?)
+                   ORDER BY timestamp DESC LIMIT 200""",
+                (f"-{hours} hours",),
+            ).fetchall()
+    finally:
+        conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/internal/logs/errors", methods=["GET"])
+def internal_error_logs():
+    err = _require_internal_key()
+    if err:
+        return err
+    hours = int(request.args.get("hours", 48))
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT * FROM friction_logs
+               WHERE event_type = 'error_500'
+               AND timestamp >= datetime('now', ?)
+               ORDER BY timestamp DESC LIMIT 200""",
+            (f"-{hours} hours",),
+        ).fetchall()
+    finally:
+        conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 # ---------------------------------------------------------------------------
