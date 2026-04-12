@@ -1665,6 +1665,7 @@ def play_chat():
             return jsonify({"error": f"Subgraph not available: {subgraph_name}"}), 503
 
         compiled = registry.require(subgraph_name)
+        _t0 = time.monotonic()
         try:
             result = compiled.invoke(state)
         except Exception as e:
@@ -1678,6 +1679,7 @@ def play_chat():
                          session_id=session_key, player_input=message,
                          context=_last_narrator, error_detail=traceback.format_exc())
             return jsonify({"error": f"Internal error: {e}"}), 500
+        _elapsed = time.monotonic() - _t0
 
         if not isinstance(result, dict):
             result = dict(state)
@@ -1687,6 +1689,22 @@ def play_chat():
         if not _nt or _nt == "...":
             log_friction(event_type="empty_narrator", story_id=story_id,
                          session_id=session_key, player_input=message, context=_last_narrator)
+
+        # Detect slow turn (>30s)
+        if _elapsed > 30:
+            log_friction(event_type="slow_turn", story_id=story_id,
+                         session_id=session_key, player_input=message,
+                         error_detail=f"{_elapsed:.1f}s")
+
+        # Detect character fallback responses
+        _char_resp = result.get("_character_responses") or {}
+        for _ck, _cv in _char_resp.items():
+            if isinstance(_cv, dict):
+                _dial = (_cv.get("dialogue") or "").strip()
+                if _dial in ("", "..."):
+                    log_friction(event_type="empty_character", story_id=story_id,
+                                 session_id=session_key, player_input=message,
+                                 context=f"character={_ck}", error_detail=_dial)
 
         # Ensure history is recorded even if subgraph has no memory node
         history = list(result.get("history") or state.get("history") or [])
@@ -4747,6 +4765,7 @@ def internal_story_chat(story_id):
             return jsonify({"error": f"Subgraph not available: {subgraph_name}"}), 503
 
         compiled = registry.require(subgraph_name)
+        _t0 = time.monotonic()
         try:
             result = compiled.invoke(state)
         except Exception as e:
@@ -4758,6 +4777,7 @@ def internal_story_chat(story_id):
                          session_id=session_key, player_input=message,
                          context=_last_narrator, error_detail=traceback.format_exc())
             return jsonify({"error": f"Internal error: {e}"}), 500
+        _elapsed = time.monotonic() - _t0
 
         if not isinstance(result, dict):
             result = dict(state)
@@ -4767,6 +4787,22 @@ def internal_story_chat(story_id):
         if not _nt or _nt == "...":
             log_friction(event_type="empty_narrator", story_id=story_id,
                          session_id=session_key, player_input=message, context=_last_narrator)
+
+        # Detect slow turn (>30s)
+        if _elapsed > 30:
+            log_friction(event_type="slow_turn", story_id=story_id,
+                         session_id=session_key, player_input=message,
+                         error_detail=f"{_elapsed:.1f}s")
+
+        # Detect character fallback responses
+        _char_resp = result.get("_character_responses") or {}
+        for _ck, _cv in _char_resp.items():
+            if isinstance(_cv, dict):
+                _dial = (_cv.get("dialogue") or "").strip()
+                if _dial in ("", "..."):
+                    log_friction(event_type="empty_character", story_id=story_id,
+                                 session_id=session_key, player_input=message,
+                                 context=f"character={_ck}", error_detail=_dial)
 
         history = list(result.get("history") or state.get("history") or [])
         last_is_current = (
