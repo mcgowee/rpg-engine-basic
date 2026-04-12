@@ -1,9 +1,14 @@
 """Graph builder — constructs LangGraph from JSON definitions."""
 
 from langgraph.graph import StateGraph, START, END
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 from nodes import NODE_REGISTRY
+
+
+def _overwrite(old, new):
+    """Always replace — ensures empty dicts clear previous values."""
+    return new
 
 
 class State(TypedDict):
@@ -19,7 +24,7 @@ class State(TypedDict):
     memory_summary: str
 
     # Story data
-    characters: dict
+    characters: Annotated[dict, _overwrite]
     story: dict
     player: dict
     game_title: str
@@ -29,13 +34,24 @@ class State(TypedDict):
 
     # Internal node communication
     _narrator_text: str
-    _character_responses: dict
+    _character_responses: Annotated[dict, _overwrite]
     _bubbles: list
     _scene_image: dict
     _active_portraits: dict
     _shown_images: list
+    _progression: dict
+    _progression_state: dict
+    _narrator_progression: str
     _subgraph_name: str
     _story_id: int
+
+    # Quest/location system
+    map: dict
+    _all_characters: dict
+    _location: dict
+    _location_state: dict
+    _task_narrator_hint: str
+    _narrator_location_hint: str
 
 
 def _normalize_node(value: str):

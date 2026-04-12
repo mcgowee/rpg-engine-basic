@@ -89,13 +89,29 @@ def narrator_node(state: dict) -> dict:
     custom_prompt = (state.get("narrator_prompt") or "").strip()
     system_intro = custom_prompt if custom_prompt else "You are the narrator for a story. Describe what happens in the world."
 
+    # Progression pacing hints
+    narrator_prog = (state.get("_narrator_progression") or "").strip()
+    progression_block = f"\nScene atmosphere:\n{narrator_prog}\n" if narrator_prog else ""
+
+    # Location context (quest system)
+    location_hint = (state.get("_narrator_location_hint") or "").strip()
+    just_arrived = "just arrived" in location_hint.lower()
+    location_block = f"\nLocation context:\n{location_hint}\n" if location_hint else ""
+
+    # Arrival rule: when the player just moved to a new location, tell the
+    # narrator to describe it; otherwise keep the "scene already in progress" rule
+    if just_arrived:
+        arrival_rule = "- The player just arrived at a NEW location. Describe this place vividly — focus on the new surroundings, NOT the previous location"
+    else:
+        arrival_rule = "- Do NOT re-describe the player entering the room or arriving — the scene is already in progress"
+
     prompt = f"""{system_intro}
 
 {story_line}Game: {state.get("game_title", "Untitled")}
 Player: {player.get("name", "Adventurer")} — {player.get("background", "")}
 Characters present: {char_list}
 {char_block}
-
+{progression_block}{location_block}
 {summary_block}{narrator_block}{dialogue_block}
 Player: {message}
 
@@ -105,7 +121,7 @@ Describe what happens next. Rules:
 - CRITICAL: Do NOT write dialogue or quoted speech for {char_list}. They speak separately.
 - You may describe their body language, expressions, and physical reactions
 - 2-4 sentences, concise and atmospheric
-- Do NOT re-describe the player entering the room or arriving — the scene is already in progress
+{arrival_rule}
 - Do NOT repeat descriptions from previous narration — advance the story forward
 - AVOID these overused phrases: "deadly game", "deadly dance", "tension escalates", "charged with anticipation", "covert game of espionage". Use fresh, specific language instead.
 

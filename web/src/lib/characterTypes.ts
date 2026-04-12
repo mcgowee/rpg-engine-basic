@@ -9,6 +9,18 @@ export type PortraitRule = {
 	priority?: number;
 };
 
+export type ProgressionConfig = {
+	stages: string[];
+	min_turns_per_stage: number[];
+	advance_when: Record<string, string>;
+	advance_threshold: Record<string, number>;
+	stage_directives: Record<string, string>;
+	stage_narrator_hints: Record<string, string>;
+	initiator: boolean;
+	style: string;
+	pace: string;
+};
+
 export type CharEntry = {
 	key: string;
 	prompt: string;
@@ -20,6 +32,7 @@ export type CharEntry = {
 	portrait_rules?: PortraitRule[];
 	face_ref?: Record<string, string>;
 	face_extra_details?: string;
+	progression?: ProgressionConfig;
 };
 
 export function charEntryFromStoryPayload(key: string, val: unknown): CharEntry | null {
@@ -44,6 +57,26 @@ export function charEntryFromStoryPayload(key: string, val: unknown): CharEntry 
 		}
 		if (Object.keys(face_ref).length === 0) face_ref = undefined;
 	}
+	let progression: ProgressionConfig | undefined;
+	if (v.progression && typeof v.progression === 'object' && !Array.isArray(v.progression)) {
+		const p = v.progression as Record<string, unknown>;
+		progression = {
+			stages: Array.isArray(p.stages) ? (p.stages as string[]) : [],
+			min_turns_per_stage: Array.isArray(p.min_turns_per_stage) ? (p.min_turns_per_stage as number[]) : [],
+			advance_when: (p.advance_when && typeof p.advance_when === 'object' && !Array.isArray(p.advance_when))
+				? (p.advance_when as Record<string, string>) : {},
+			advance_threshold: (p.advance_threshold && typeof p.advance_threshold === 'object' && !Array.isArray(p.advance_threshold))
+				? (p.advance_threshold as Record<string, number>) : {},
+			stage_directives: (p.stage_directives && typeof p.stage_directives === 'object' && !Array.isArray(p.stage_directives))
+				? (p.stage_directives as Record<string, string>) : {},
+			stage_narrator_hints: (p.stage_narrator_hints && typeof p.stage_narrator_hints === 'object' && !Array.isArray(p.stage_narrator_hints))
+				? (p.stage_narrator_hints as Record<string, string>) : {},
+			initiator: Boolean(p.initiator ?? false),
+			style: String(p.style ?? ''),
+			pace: String(p.pace ?? ''),
+		};
+	}
+
 	return {
 		key,
 		prompt: String(v.prompt ?? ''),
@@ -55,6 +88,7 @@ export function charEntryFromStoryPayload(key: string, val: unknown): CharEntry 
 		portrait_rules: Array.isArray(v.portrait_rules) ? (v.portrait_rules as PortraitRule[]) : [],
 		face_ref,
 		face_extra_details: String(v.face_extra_details ?? '').trim() || undefined,
+		progression,
 	};
 }
 

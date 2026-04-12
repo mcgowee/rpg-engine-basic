@@ -104,9 +104,25 @@
 			<div class="graph-card">
 				<h3>narrator_chat</h3>
 				<p class="flow">
-					<code>narrator → character_agent → response_builder → scene_image → mood → condense → memory → __end__</code>
+					<code>narrator → character_agent → response_builder → mood → expression_picker → scene_image → condense → memory → __end__</code>
 				</p>
-				<p>Full pipeline: bubbles, sidebar scene image when configured, mood axes, rolling summary.</p>
+				<p>Full pipeline: bubbles, mood axes, LLM portrait variants, sidebar scene image, rolling summary.</p>
+			</div>
+
+			<div class="graph-card">
+				<h3>narrator_chat_classic</h3>
+				<p class="flow">
+					<code>narrator → character_agent → response_builder → mood → scene_image → condense → memory → __end__</code>
+				</p>
+				<p>Like full but no expression_picker — uses static portraits only.</p>
+			</div>
+
+			<div class="graph-card">
+				<h3>narrator_chat_progression</h3>
+				<p class="flow">
+					<code>progression → narrator → character_agent → response_builder → mood → expression_picker → scene_image → condense → memory → __end__</code>
+				</p>
+				<p>Stage-gated NPC arcs prepended to the full narrator_chat pipeline.</p>
 			</div>
 
 			<div class="graph-card">
@@ -114,7 +130,7 @@
 				<p class="flow">
 					<code>narrator → character_agent → response_builder → memory → __end__</code>
 				</p>
-				<p>Faster turns — no mood, condense, or scene_image node.</p>
+				<p>Faster turns — no mood, condense, expression_picker, or scene_image.</p>
 			</div>
 
 			<div class="graph-card">

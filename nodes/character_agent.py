@@ -22,7 +22,7 @@ def character_agent_node(state: dict) -> dict:
     """Generate dialogue + action for each character independently."""
     characters = state.get("characters") or {}
     if not characters:
-        return {}
+        return {"_character_responses": {}}
 
     narrator_text = (state.get("_narrator_text") or "").strip()
     message = (state.get("message") or "").strip()
@@ -91,10 +91,14 @@ def character_agent_node(state: dict) -> dict:
             logger.error(f"Character agent: failed to get LLM for {npc_key}: {e}")
             continue
 
+        # Progression directive (if progression node is active)
+        progression_data = (state.get("_progression") or {}).get(npc_key, "")
+        progression_block = f"\n--- PROGRESSION ---\n{progression_data}\n---\n" if progression_data else ""
+
         prompt = f"""{npc_prompt}
 {story_line}
 You are having a conversation with {player_name}. {player.get("background", "")}
-{mood_block}
+{mood_block}{progression_block}
 {summary_block}Recent conversation:
 {convo_block}
 {antirepeat}

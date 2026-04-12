@@ -5,7 +5,7 @@
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
 	import { coverImagePosition } from '$lib/coverDisplay';
-	import type { CharEntry, MoodAxis, PortraitRule } from '$lib/characterTypes';
+	import type { CharEntry, MoodAxis, PortraitRule, ProgressionConfig } from '$lib/characterTypes';
 	import { charEntriesFromStoryCharacters } from '$lib/characterTypes';
 
 	type Props = {
@@ -15,7 +15,7 @@
 
 	let { mode, storyId }: Props = $props();
 
-	let activeTab = $state<'basics' | 'subgraph' | 'shared' | 'characters' | 'gallery'>('basics');
+	let activeTab = $state<'basics' | 'subgraph' | 'shared' | 'characters' | 'gallery' | 'locations' | 'quest'>('basics');
 	let loadDone = $state(false);
 	let saving = $state(false);
 	let errors = $state<string[]>([]);
@@ -58,6 +58,21 @@
 	let sceneGallery = $state<SceneGalleryItem[]>([]);
 	let generatingGalleryImage = $state('');
 	let galleryImageError = $state('');
+
+	// Map / quest locations
+	type MapLocation = {
+		key: string;
+		name: string;
+		narrator_hint: string;
+		opening_text: string;
+		characters: string[];
+		task: string;
+		task_criteria: string;
+		min_turns: number;
+	};
+	let mapLocations = $state<MapLocation[]>([]);
+	let mapStart = $state('');
+	let mapOrder = $state<string[]>([]);
 	let existingSceneImages = $state<{ url: string; filename: string; type: string }[]>([]);
 
 	async function loadExistingImages() {
@@ -165,6 +180,7 @@
 			if (c.face_ref && Object.keys(c.face_ref).length > 0) entry.face_ref = c.face_ref;
 			const fed = (c.face_extra_details ?? '').trim();
 			if (fed) entry.face_extra_details = fed;
+			if (c.progression && c.progression.stages.length > 0) entry.progression = c.progression;
 			out[k] = entry;
 		}
 		return out;
@@ -370,12 +386,53 @@
 					}
 					storyImages = normalizeStoryImages(s.story_images);
 					sceneGallery = Array.isArray(s.scene_gallery) ? s.scene_gallery : [];
+					// Load map / quest locations
+					if (s.map && typeof s.map === 'object' && !Array.isArray(s.map)) {
+						const m = s.map as Record<string, unknown>;
+						mapStart = String(m.start ?? '');
+						mapOrder = Array.isArray(m.order) ? m.order.map(String) : [];
+						const locs = m.locations as Record<string, Record<string, unknown>> | undefined;
+						if (locs) {
+							mapLocations = Object.entries(locs).map(([k, v]) => ({
+								key: k,
+								name: String(v.name ?? k),
+								narrator_hint: String(v.narrator_hint ?? ''),
+								opening_text: String(v.opening_text ?? ''),
+								characters: Array.isArray(v.characters) ? v.characters.map(String) : [],
+								task: String(v.task ?? ''),
+								task_criteria: String(v.task_criteria ?? ''),
+								min_turns: Number(v.min_turns ?? 2),
+							}));
+						}
+					}
 				}
 			} catch { /* ignore */ }
 		}
 
 		loadDone = true;
 	});
+
+	function buildMapData(): Record<string, unknown> {
+		if (mapLocations.length === 0) return {};
+		const locs: Record<string, Record<string, unknown>> = {};
+		for (const loc of mapLocations) {
+			locs[loc.key] = {
+				name: loc.name,
+				narrator_hint: loc.narrator_hint,
+				opening_text: loc.opening_text,
+				characters: loc.characters,
+				task: loc.task,
+				task_criteria: loc.task_criteria,
+				min_turns: loc.min_turns,
+			};
+		}
+		const order = mapOrder.length > 0 ? mapOrder : mapLocations.map(l => l.key);
+		return {
+			start: mapStart || order[0] || '',
+			order,
+			locations: locs,
+		};
+	}
 
 	async function save() {
 		errors = [];
@@ -401,6 +458,7 @@
 				story_images: storyImages,
 				notes: notes.trim(),
 				scene_gallery: sceneGallery,
+				map: buildMapData(),
 			};
 			const url = mode === 'edit' ? `/api/stories/${storyId}` : '/api/stories';
 			const method = mode === 'edit' ? 'PUT' : 'POST';
@@ -688,6 +746,8 @@
 		<button type="button" class:active={activeTab === 'shared'} onclick={() => activeTab = 'shared'}><Icon name="settings" size={14} /> Shared Content</button>
 		<button type="button" class:active={activeTab === 'characters'} onclick={() => activeTab = 'characters'}><Icon name="users" size={14} /> Characters</button>
 		<button type="button" class:active={activeTab === 'gallery'} onclick={() => activeTab = 'gallery'}><Icon name="image" size={14} /> Gallery</button>
+		<button type="button" class:active={activeTab === 'locations'} onclick={() => activeTab = 'locations'}><Icon name="compass" size={14} /> Locations</button>
+		<button type="button" class:active={activeTab === 'quest'} onclick={() => activeTab = 'quest'}><Icon name="zap" size={14} /> Quest</button>
 	</div>
 
 	{#if activeTab === 'basics'}
@@ -1001,6 +1061,158 @@
 						<button type="button" class="btn sm" onclick={() => { char.moods = [...char.moods, { axis: '', low: '', high: '', value: 5 }]; }}>Add axis</button>
 					</div>
 
+					<div class="field">
+						<div class="field-head">
+							<strong>Progression Stages</strong>
+							<span class="hint-inline">(optional)</span>
+						</div>
+						<span class="hint">NPC-driven stage progression. The character advances through stages based on turn count and mood thresholds. Requires narrator_chat_progression subgraph.</span>
+
+						{#if char.progression}
+							<div class="progression-editor">
+								<div class="prog-field">
+									<label>Stages <span class="hint-inline">(comma-separated)</span>
+									<input type="text"
+										value={char.progression.stages.join(', ')}
+										oninput={(e) => {
+											if (!char.progression) return;
+											char.progression.stages = (e.currentTarget as HTMLInputElement).value.split(',').map(s => s.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
+										}}
+										placeholder="meet, chat, flirt, kiss, ..."
+									/>
+									</label>
+								</div>
+								<div class="prog-field">
+									<label>Min turns per stage <span class="hint-inline">(comma-separated numbers)</span>
+									<input type="text"
+										value={char.progression.min_turns_per_stage.join(', ')}
+										oninput={(e) => {
+											if (!char.progression) return;
+											char.progression.min_turns_per_stage = (e.currentTarget as HTMLInputElement).value.split(',').map(s => Number(s.trim()) || 1);
+										}}
+										placeholder="2, 3, 3, 2, ..."
+									/>
+									</label>
+								</div>
+								<div class="prog-field">
+									<span class="prog-label">Advance criteria <span class="hint-inline">(what the player must do/say to advance past each stage)</span></span>
+									{#each char.progression.stages as stageName, si (stageName)}
+										{#if si < char.progression.stages.length - 1}
+											<div class="criteria-row">
+												<span class="criteria-stage">{stageName}</span>
+												<input type="text"
+													value={char.progression.advance_when[stageName] ?? ''}
+													oninput={(e) => {
+														if (!char.progression) return;
+														char.progression.advance_when = { ...char.progression.advance_when, [stageName]: (e.currentTarget as HTMLInputElement).value };
+													}}
+													placeholder="What must the player do or say to leave this stage?"
+												/>
+											</div>
+										{/if}
+									{/each}
+								</div>
+								<div class="prog-field">
+									<span class="prog-label">Advance thresholds <span class="hint-inline">(fallback — mood axis: minimum value, used if no criteria above)</span></span>
+									{#each Object.entries(char.progression.advance_threshold) as [axis, val], ti (axis)}
+										<div class="threshold-row">
+											<input type="text" value={axis} class="axis-input"
+												oninput={(e) => {
+													if (!char.progression) return;
+													const newKey = (e.currentTarget as HTMLInputElement).value.trim();
+													const entries = Object.entries(char.progression.advance_threshold);
+													entries[ti] = [newKey, val];
+													char.progression.advance_threshold = Object.fromEntries(entries);
+												}}
+												placeholder="mood axis"
+											/>
+											<span class="axis-arrow">&ge;</span>
+											<input type="number" min="1" max="10" value={val} class="axis-value"
+												oninput={(e) => {
+													if (!char.progression) return;
+													char.progression.advance_threshold[axis] = Number((e.currentTarget as HTMLInputElement).value) || 5;
+												}}
+											/>
+											<button type="button" class="btn sm danger" onclick={() => {
+												if (!char.progression) return;
+												const next = { ...char.progression.advance_threshold };
+												delete next[axis];
+												char.progression.advance_threshold = next;
+											}}>&times;</button>
+										</div>
+									{/each}
+									<button type="button" class="btn sm" onclick={() => {
+										if (!char.progression) return;
+										char.progression.advance_threshold = { ...char.progression.advance_threshold, '': 5 };
+									}}>Add threshold</button>
+								</div>
+								<div class="prog-field">
+									<span class="prog-label">NPC directives <span class="hint-inline">(what the NPC should do/feel at each stage — overrides engine defaults)</span></span>
+									{#each char.progression.stages as stageName (stageName)}
+										<div class="criteria-row">
+											<span class="criteria-stage">{stageName}</span>
+											<input type="text"
+												value={char.progression.stage_directives[stageName] ?? ''}
+												oninput={(e) => {
+													if (!char.progression) return;
+													char.progression.stage_directives = { ...char.progression.stage_directives, [stageName]: (e.currentTarget as HTMLInputElement).value };
+												}}
+												placeholder="How the NPC should behave in this stage"
+											/>
+										</div>
+									{/each}
+								</div>
+								<div class="prog-field">
+									<span class="prog-label">Narrator hints <span class="hint-inline">(scene atmosphere the narrator should create at each stage — overrides engine defaults)</span></span>
+									{#each char.progression.stages as stageName (stageName)}
+										<div class="criteria-row">
+											<span class="criteria-stage">{stageName}</span>
+											<input type="text"
+												value={char.progression.stage_narrator_hints[stageName] ?? ''}
+												oninput={(e) => {
+													if (!char.progression) return;
+													char.progression.stage_narrator_hints = { ...char.progression.stage_narrator_hints, [stageName]: (e.currentTarget as HTMLInputElement).value };
+												}}
+												placeholder="Scene atmosphere / pacing hint for the narrator"
+											/>
+										</div>
+									{/each}
+								</div>
+								<div class="prog-row">
+									<label class="prog-check">
+										<input type="checkbox" bind:checked={char.progression.initiator} />
+										NPC initiates (drives the interaction forward)
+									</label>
+								</div>
+								<div class="prog-field">
+									<label>Style
+									<input type="text" bind:value={char.progression.style} placeholder="e.g. warm but direct, teasing, professional" />
+									</label>
+								</div>
+								<div class="prog-field">
+									<label>Pace
+									<input type="text" bind:value={char.progression.pace} placeholder="e.g. slow_burn, patient, aggressive" />
+									</label>
+								</div>
+								<button type="button" class="btn sm danger" onclick={() => { char.progression = undefined; }}>Remove progression</button>
+							</div>
+						{:else}
+							<button type="button" class="btn sm" onclick={() => {
+								char.progression = {
+									stages: ['meet', 'chat', 'connect', 'deepen', 'resolve'],
+									min_turns_per_stage: [1, 2, 2, 2, 2],
+									advance_when: {},
+									advance_threshold: {},
+									stage_directives: {},
+									stage_narrator_hints: {},
+									initiator: true,
+									style: '',
+									pace: '',
+								};
+							}}>Enable progression</button>
+						{/if}
+					</div>
+
 					<button type="button" class="btn sm danger" onclick={() => removeCharacter(idx)}>Remove character</button>
 				</fieldset>
 			{/each}
@@ -1132,6 +1344,195 @@
 		</div>
 	{/if}
 
+	{#if activeTab === 'locations'}
+		<div class="tab-content">
+			<h2 class="sub">Locations</h2>
+			<p class="hint">Define the locations in your quest world. Assign characters from the Characters tab to each location.</p>
+
+			{#if mapLocations.length === 0}
+				<p class="muted">No locations yet. Add one to start building your quest map.</p>
+			{/if}
+
+			{#each mapLocations as loc, idx (idx)}
+				<div class="location-card">
+					<div class="location-card-header">
+						<strong>{loc.name || `Location ${idx + 1}`}</strong>
+						<button type="button" class="btn sm danger" onclick={() => {
+							const key = mapLocations[idx].key;
+							mapLocations = mapLocations.filter((_, i) => i !== idx);
+							mapOrder = mapOrder.filter(k => k !== key);
+						}}>Remove</button>
+					</div>
+
+					<label class="field-sm">
+						<span>Key <span class="hint-inline">(slug, no spaces)</span></span>
+						<input type="text" bind:value={loc.key} placeholder="tavern"
+							oninput={(e) => {
+								loc.key = (e.currentTarget as HTMLInputElement).value.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+							}} />
+					</label>
+
+					<label class="field-sm">
+						<span>Name</span>
+						<input type="text" bind:value={loc.name} placeholder="The Rusted Nail"
+							oninput={(e) => {
+								if (!loc.key) {
+									loc.key = (e.currentTarget as HTMLInputElement).value.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+								}
+							}} />
+					</label>
+
+					<label class="field-sm">
+						<span>Narrator hint <span class="hint-inline">(atmosphere for the narrator)</span></span>
+						<textarea rows="2" bind:value={loc.narrator_hint} placeholder="A dim, smoky tavern at a crossroads..."></textarea>
+					</label>
+
+					<label class="field-sm">
+						<span>Opening text <span class="hint-inline">(optional, shown on first arrival)</span></span>
+						<textarea rows="2" bind:value={loc.opening_text} placeholder="You push through the heavy oak door..."></textarea>
+					</label>
+
+					<div class="field-sm">
+						<span class="prog-label">Characters at this location</span>
+						{#if characterEntries.filter(c => c.key.trim()).length === 0}
+							<p class="muted">Define characters in the Characters tab first.</p>
+						{:else}
+							<div class="char-checkboxes">
+								{#each characterEntries.filter(c => c.key.trim()) as char (char.key)}
+									<label class="tag-check">
+										<input type="checkbox"
+											checked={loc.characters.includes(char.key)}
+											onchange={() => {
+												if (loc.characters.includes(char.key)) {
+													loc.characters = loc.characters.filter(k => k !== char.key);
+												} else {
+													loc.characters = [...loc.characters, char.key];
+												}
+											}} />
+										{char.key}
+									</label>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/each}
+
+			<button type="button" class="btn" onclick={() => {
+				mapLocations = [...mapLocations, {
+					key: '',
+					name: '',
+					narrator_hint: '',
+					opening_text: '',
+					characters: [],
+					task: '',
+					task_criteria: '',
+					min_turns: 2,
+				}];
+			}}>+ Add Location</button>
+		</div>
+	{/if}
+
+	{#if activeTab === 'quest'}
+		<div class="tab-content">
+			<h2 class="sub">Quest Sequence</h2>
+			<p class="hint">Define the order players visit locations and the task at each stop. Requires the <code>narrator_chat_quest</code> subgraph.</p>
+
+			{#if mapLocations.length === 0}
+				<p class="muted">Add locations in the Locations tab first.</p>
+			{:else}
+				<div class="field">
+					<label><strong>Start location</strong>
+					<select bind:value={mapStart}>
+						<option value="">— select —</option>
+						{#each mapLocations as loc (loc.key)}
+							{#if loc.key}
+								<option value={loc.key}>{loc.name || loc.key}</option>
+							{/if}
+						{/each}
+					</select>
+					</label>
+				</div>
+
+				<h3 class="sub">Location Order & Tasks</h3>
+				<p class="hint">Arrange locations in the order the player visits them. Define a visible task and hidden completion criteria for each.</p>
+
+				{#if mapOrder.length === 0 && mapLocations.length > 0}
+					<button type="button" class="btn sm" onclick={() => {
+						mapOrder = mapLocations.filter(l => l.key).map(l => l.key);
+						if (!mapStart && mapOrder.length > 0) mapStart = mapOrder[0];
+					}}>Auto-fill order from locations</button>
+				{/if}
+
+				{#each mapOrder as locKey, idx (locKey)}
+					{@const loc = mapLocations.find(l => l.key === locKey)}
+					{#if loc}
+						<div class="quest-step-card">
+							<div class="quest-step-header">
+								<span class="quest-step-num">{idx + 1}</span>
+								<strong>{loc.name || loc.key}</strong>
+								<div class="quest-step-actions">
+									{#if idx > 0}
+										<button type="button" class="btn sm" title="Move up" onclick={() => {
+											const arr = [...mapOrder];
+											[arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+											mapOrder = arr;
+										}}>↑</button>
+									{/if}
+									{#if idx < mapOrder.length - 1}
+										<button type="button" class="btn sm" title="Move down" onclick={() => {
+											const arr = [...mapOrder];
+											[arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+											mapOrder = arr;
+										}}>↓</button>
+									{/if}
+									<button type="button" class="btn sm danger" title="Remove from sequence" onclick={() => {
+										mapOrder = mapOrder.filter((_, i) => i !== idx);
+									}}>×</button>
+								</div>
+							</div>
+
+							<label class="field-sm">
+								<span>Task <span class="hint-inline">(visible to the player as their objective)</span></span>
+								<input type="text" bind:value={loc.task} placeholder="Retrieve the stolen ledger from the back storeroom" />
+							</label>
+
+							<label class="field-sm">
+								<span>Task criteria <span class="hint-inline">(hidden — how the AI judges completion)</span></span>
+								<textarea rows="2" bind:value={loc.task_criteria} placeholder="The player goes to the storeroom and finds or returns the ledger"></textarea>
+							</label>
+
+							<label class="field-sm inline">
+								<span>Min turns</span>
+								<input type="number" bind:value={loc.min_turns} min="1" max="20" style="width:4rem" />
+							</label>
+						</div>
+					{/if}
+				{/each}
+
+				{@const unusedLocs = mapLocations.filter(l => l.key && !mapOrder.includes(l.key))}
+				{#if unusedLocs.length > 0}
+					<div class="field">
+						<label><strong>Add location to sequence</strong>
+						<select onchange={(e) => {
+							const val = (e.currentTarget as HTMLSelectElement).value;
+							if (val) {
+								mapOrder = [...mapOrder, val];
+								(e.currentTarget as HTMLSelectElement).value = '';
+							}
+						}}>
+							<option value="">— select —</option>
+							{#each unusedLocs as loc (loc.key)}
+								<option value={loc.key}>{loc.name || loc.key}</option>
+							{/each}
+						</select>
+						</label>
+					</div>
+				{/if}
+			{/if}
+		</div>
+	{/if}
+
 	{#if errors.length > 0}
 		<div class="err-box">{#each errors as e}<p class="err">{e}</p>{/each}</div>
 	{/if}
@@ -1180,6 +1581,16 @@
 	.axis-input { width: 6rem; }
 	.axis-value { width: 3.5rem; }
 	.axis-arrow { color: #9aa0a6; font-size: 0.85rem; }
+	.progression-editor { margin-top: 0.5rem; padding: 0.6rem; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 8px; }
+	.prog-field { margin-bottom: 0.5rem; }
+	.prog-field label, .prog-field .prog-label { display: block; font-size: 0.82rem; color: #9aa0a6; margin-bottom: 0.2rem; }
+	.prog-row { margin-bottom: 0.5rem; }
+	.prog-check { font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+	.threshold-row { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.3rem; }
+	.criteria-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.35rem; }
+	.criteria-stage { min-width: 5.5rem; font-size: 0.82rem; color: #c58af9; font-weight: 600; text-transform: capitalize; }
+	.criteria-row input { flex: 1; }
+	.hint-inline { font-size: 0.78rem; color: #5f6368; font-weight: normal; }
 	.gallery-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
 	.gallery-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
 	.gallery-card-body { display: flex; gap: 0.75rem; margin-bottom: 0.5rem; }
@@ -1266,4 +1677,12 @@
 	:global([data-theme="light"]) .tabs button:hover { color: #1f2937; border-color: #cdd3db; background: #f2f5f8; }
 	:global([data-theme="light"]) .tabs button.active { color: #fff; background: #1a73e8; border-color: #1a73e8; }
 	:global([data-theme="light"]) .field-meta { border-color: #dfe3e7; background: #fafbfc; }
+	/* Location & Quest tabs */
+	.location-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
+	.location-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+	.char-checkboxes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.2rem; }
+	.quest-step-card { border: 1px solid #2a2f38; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; background: #1a1d23; }
+	.quest-step-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+	.quest-step-num { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: #c58af9; color: #fff; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+	.quest-step-actions { margin-left: auto; display: flex; gap: 0.25rem; }
 </style>

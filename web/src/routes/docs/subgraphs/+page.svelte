@@ -37,7 +37,7 @@
 		<h2>What is a subgraph?</h2>
 		<p>
 			A <strong>subgraph</strong> is the LangGraph pipeline that runs on every turn: which <strong>nodes</strong> execute
-			(narrator, character_agent, response_builder, scene_image, mood, condense, memory) and in what order. You choose one per
+			(progression, narrator, character_agent, response_builder, mood, expression_picker, scene_image, condense, memory) and in what order. You choose one per
 			story in the Story Editor (<strong>Subgraph</strong> tab). Builtin definitions live in <code>graphs/*.json</code>; you can
 			also build custom subgraphs in the <a href="/graphs">Graph Editor</a>. Graphs use <code>__start__</code> /
 			<code>__end__</code> edges only — there are no routers.
@@ -57,7 +57,15 @@
 				<tbody>
 					<tr>
 						<td><code>narrator_chat</code></td>
-						<td>narrator → character_agent → response_builder → scene_image → mood → condense → memory → end</td>
+						<td>narrator → character_agent → response_builder → mood → expression_picker → scene_image → condense → memory → end</td>
+					</tr>
+					<tr>
+						<td><code>narrator_chat_classic</code></td>
+						<td>narrator → character_agent → response_builder → mood → scene_image → condense → memory → end</td>
+					</tr>
+					<tr>
+						<td><code>narrator_chat_progression</code></td>
+						<td>progression → narrator → … (same as narrator_chat) → end</td>
 					</tr>
 					<tr>
 						<td><code>narrator_chat_lite</code></td>
@@ -91,18 +99,38 @@
 					<tr>
 						<td><code>narrator_chat</code></td>
 						<td>
-							Full pipeline: narrator prose, per-character dialogue + action, bubble assembly, optional sidebar scene image,
-							mood axes, condense summary, structured memory.
+							Full pipeline: narrator prose, per-character dialogue + action, bubble assembly, mood axes, LLM portrait variant
+							picking, optional sidebar scene image, condense summary, structured memory.
 						</td>
 						<td class="col-good-for">
-							Default for rich campaigns — character voices, mood tracking, long-term summary, gallery-driven scene art.
+							Default for rich campaigns — character voices, mood tracking, expression-matched portraits, long-term summary, gallery-driven scene art.
+						</td>
+					</tr>
+					<tr>
+						<td><code>narrator_chat_classic</code></td>
+						<td>
+							Same as <code>narrator_chat</code> but without <code>expression_picker</code> — uses the character's default
+							<code>portrait</code> field instead of LLM-selected variants.
+						</td>
+						<td class="col-good-for">
+							Full pipeline feel with fewer LLM calls; good when portrait variants are not configured.
+						</td>
+					</tr>
+					<tr>
+						<td><code>narrator_chat_progression</code></td>
+						<td>
+							Prepends <code>progression</code> to the full <code>narrator_chat</code> stack. Evaluates stage gates
+							(turn count, mood thresholds, optional criteria) and injects stage directives for NPCs and the narrator.
+						</td>
+						<td class="col-good-for">
+							Stories with NPC-driven relationship or plot arcs that advance through defined stages.
 						</td>
 					</tr>
 					<tr>
 						<td><code>narrator_chat_lite</code></td>
 						<td>
-							Narrator + character agents + bubbles + memory. Skips mood, condense, and scene_image for fewer LLM calls and
-							simpler turns.
+							Narrator + character agents + bubbles + memory. Skips mood, condense, expression_picker, and scene_image for
+							fewer LLM calls and simpler turns.
 						</td>
 						<td class="col-good-for">
 							Fast playtests, tutorials, or stories where you do not need mood compression or automatic scene picks.
@@ -125,7 +153,9 @@
 	<div class="section">
 		<h2>One-line picker</h2>
 		<ul class="picker">
-			<li><strong>Full experience:</strong> <code>narrator_chat</code></li>
+			<li><strong>Full experience (with portrait variants):</strong> <code>narrator_chat</code></li>
+			<li><strong>Full experience (static portraits):</strong> <code>narrator_chat_classic</code></li>
+			<li><strong>Stage-gated arcs:</strong> <code>narrator_chat_progression</code></li>
 			<li><strong>Faster turns:</strong> <code>narrator_chat_lite</code></li>
 			<li><strong>No narrator:</strong> <code>chat_direct</code></li>
 		</ul>

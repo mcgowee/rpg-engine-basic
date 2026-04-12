@@ -10,6 +10,11 @@ def memory_node(state: dict) -> dict:
         "mood": {},
     }
 
+    # Record location for quest stories
+    loc_state = state.get("_location_state") or {}
+    if loc_state.get("current_location"):
+        turn["location"] = loc_state["current_location"]
+
     # Character responses (dialogue + action per character)
     char_responses = state.get("_character_responses") or {}
     for key, resp in char_responses.items():

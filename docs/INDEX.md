@@ -19,6 +19,7 @@ The app also serves a copy of **SUBGRAPHS.md** at `/docs/SUBGRAPHS.md` (from `we
 | Document | Contents |
 |----------|----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Flask ↔ SvelteKit, LangGraph, play flow, main graph phases, ComfyUI |
+| [GRAPHS.md](GRAPHS.md) | Full architecture survey: every graph definition, node roles, mermaid diagrams, comparison table |
 | [SUBGRAPHS.md](SUBGRAPHS.md) | Builtin subgraph reference (keep in sync with `web/static/docs/SUBGRAPHS.md`) |
 | [BUILTIN_STORIES.md](BUILTIN_STORIES.md) | Builtin seed stories: subgraph, genre, filenames |
 | [IMAGE_ASSET_BACKLOG.md](IMAGE_ASSET_BACKLOG.md) | Planned/generated image assets for the web UI |
@@ -30,7 +31,7 @@ The app also serves a copy of **SUBGRAPHS.md** at `/docs/SUBGRAPHS.md` (from `we
 
 ## When to update what
 
-- **Change a builtin graph** (`graphs/*.json`) → update `docs/SUBGRAPHS.md`, `web/static/docs/SUBGRAPHS.md`, and verify `/docs/engine` and `/docs/subgraphs` copy on the site.
+- **Change a builtin graph** (`graphs/*.json`) → update `docs/GRAPHS.md`, `docs/SUBGRAPHS.md`, `web/static/docs/SUBGRAPHS.md`, and verify `/docs/engine` and `/docs/subgraphs` copy on the site.
 - **Add or change a builtin story** (`stories/*.json`) → update `docs/BUILTIN_STORIES.md` and the table on `/docs/stories#builtin-stories`.
 - **Add or rename a node** → update `nodes/__init__.py`, Flask `app.py` registry descriptions if any, `NODE_STATUS.md`, and the Engine Reference (loaded from API).
 - **Change play / saves / env** → `README.md`, `docs/ARCHITECTURE.md`, and player docs as needed.

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "rpg-flask": {
+      "command": "/home/mcgowee/projects/rpg-engine-basic/.venv/bin/python3",
+      "args": ["/home/mcgowee/projects/rpg-engine-basic/mcp_server.py"],
+      "env": {
+        "RPG_FLASK_URL": "http://localhost:5051",
+        "INTERNAL_API_KEY": "rpg-dev-key"
+      }
+    }
+  }
+}
