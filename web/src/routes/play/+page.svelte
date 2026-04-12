@@ -48,6 +48,31 @@
 	let expressionTransitionHint = $state<Record<string, string>>({});
 	/** Incremented per character to retrigger portrait pulse animation */
 	let portraitPulseTick = $state<Record<string, number>>({});
+	type ProgressionInfo = { stage: string; stage_index: number; turns_in_stage: number; total_stages: number; stages: string[] };
+	let progressionState = $state<Record<string, ProgressionInfo>>({});
+	// Quest/location state
+	type LocationInfo = { key: string; name: string; task: string; task_location: string; task_complete: boolean; is_first_turn: boolean };
+	type LocationState = { current_location: string; completed_tasks: string[]; task_complete_current: boolean; quest_complete: boolean };
+	type MapLocation = { name: string; task?: string; characters?: string[] };
+	type MapData = { start?: string; order?: string[]; locations?: Record<string, MapLocation> };
+	let questLocation = $state<LocationInfo | null>(null);
+	let questLocationState = $state<LocationState | null>(null);
+	let questMap = $state<MapData | null>(null);
+	let hasQuest = $derived(questMap != null && questMap.locations != null && Object.keys(questMap.locations).length > 0);
+	let inputPlaceholder = $derived.by(() => {
+		if (!hasQuest || !questLocationState || !questLocation) return 'What do you do? (Enter to send, Shift+Enter for new line)';
+		if (questLocationState.quest_complete) return 'The quest is complete! What do you do?';
+		if (questLocationState.task_complete_current) {
+			return 'Objective complete! You can explore or continue the quest.';
+		}
+		// Hint if player is not at the task location
+		if (questLocation.task_location && questLocation.key !== questLocation.task_location) {
+			const taskLocName = questMap?.locations?.[questLocation.task_location]?.name ?? questLocation.task_location;
+			return `Your objective is at ${taskLocName}. Try: "go to ${taskLocName}"`;
+		}
+		return 'What do you do? (Enter to send, Shift+Enter for new line)';
+	});
+
 	let paused = $state(false);
 	let saves = $state<SaveRow[]>([]);
 	let message = $state('');
@@ -146,12 +171,16 @@
 						label,
 						portrait,
 						portraits,
-						moods: rawMoods.map((m: Record<string, unknown>) => ({
-							axis: String(m.axis ?? 'mood'),
-							low: String(m.low ?? 'low'),
-							high: String(m.high ?? 'high'),
-							value: Number(m.value ?? 5),
-						})),
+						moods: rawMoods.map((m: Record<string, unknown>) => {
+							const lbl = String(m.label ?? '');
+							const parts = lbl.includes('→') ? lbl.split('→').map(s => s.trim()) : [];
+							return {
+								axis: String(m.axis ?? m.name ?? 'mood'),
+								low: String(m.low ?? parts[0] ?? 'low'),
+								high: String(m.high ?? parts[1] ?? 'high'),
+								value: Number(m.value ?? 5),
+							};
+						}),
 					});
 				} else {
 					parsed.push({ key: k, label, portrait, portraits, moods: [], legacyMood: Number(v.mood ?? 5) });
@@ -202,6 +231,92 @@
 					expressionTransitionHint = rest;
 					delete expressionHintTimers[ck];
 				}, 2000);
+			}
+		}
+		// Progression state — from API or initialized from character config
+		const ps = data.progression_state;
+		const charData = (data.characters as Record<string, Record<string, unknown>> | undefined);
+		const next: Record<string, ProgressionInfo> = {};
+
+		// First: populate from API progression_state (runtime data)
+		if (ps && typeof ps === 'object' && !Array.isArray(ps)) {
+			for (const [ck, val] of Object.entries(ps as Record<string, Record<string, unknown>>)) {
+				if (!val || typeof val !== 'object') continue;
+				const si = Number(val.stage_index ?? 0);
+				const charConf = charData?.[ck];
+				const prog = charConf?.progression as Record<string, unknown> | undefined;
+				const stages = (prog?.stages as string[]) ?? [];
+				next[ck] = {
+					stage: stages[si] ?? `stage_${si}`,
+					stage_index: si,
+					turns_in_stage: Number(val.turns_in_stage ?? 0),
+					total_stages: stages.length,
+					stages,
+				};
+			}
+		}
+
+		// Second: for characters with progression config but no runtime state yet (turn 0),
+		// initialize from the config so the UI shows the stages immediately
+		if (charData) {
+			for (const [ck, charConf] of Object.entries(charData)) {
+				if (next[ck]) continue; // already populated from API
+				if (!charConf || typeof charConf !== 'object') continue;
+				const prog = (charConf as Record<string, unknown>).progression as Record<string, unknown> | undefined;
+				if (!prog) continue;
+				const stages = (prog.stages as string[]) ?? [];
+				if (stages.length === 0) continue;
+				next[ck] = {
+					stage: stages[0],
+					stage_index: 0,
+					turns_in_stage: 0,
+					total_stages: stages.length,
+					stages,
+				};
+			}
+		}
+
+		if (Object.keys(next).length > 0) {
+			progressionState = next;
+		}
+
+		// Quest/location state
+		const loc = data.location;
+		if (loc && typeof loc === 'object' && !Array.isArray(loc)) {
+			const l = loc as Record<string, unknown>;
+			questLocation = {
+				key: String(l.key ?? ''),
+				name: String(l.name ?? ''),
+				task: String(l.task ?? ''),
+				task_location: String(l.task_location ?? ''),
+				task_complete: Boolean(l.task_complete),
+				is_first_turn: Boolean(l.is_first_turn),
+			};
+		}
+		const ls = data.location_state;
+		if (ls && typeof ls === 'object' && !Array.isArray(ls)) {
+			const s = ls as Record<string, unknown>;
+			questLocationState = {
+				current_location: String(s.current_location ?? ''),
+				completed_tasks: Array.isArray(s.completed_tasks) ? s.completed_tasks.map(String) : [],
+				task_complete_current: Boolean(s.task_complete_current),
+				quest_complete: Boolean(s.quest_complete),
+			};
+		}
+		const mp = data.map;
+		if (mp && typeof mp === 'object' && !Array.isArray(mp)) {
+			const m = mp as Record<string, unknown>;
+			const locs = m.locations as Record<string, Record<string, unknown>> | undefined;
+			if (locs && Object.keys(locs).length > 0) {
+				const parsed: Record<string, MapLocation> = {};
+				for (const [k, v] of Object.entries(locs)) {
+					parsed[k] = {
+						name: String(v.name ?? k),
+						task: v.task ? String(v.task) : undefined,
+						characters: Array.isArray(v.characters) ? v.characters.map(String) : undefined,
+					};
+				}
+				questMap = { start: String(m.start ?? ''), order: Array.isArray(m.order) ? m.order.map(String) : [], locations: parsed };
 			}
 		}
 	}
@@ -753,7 +868,7 @@
 					<p class="paused-note">Game is paused. Unpause in the sidebar to continue.</p>
 				{/if}
 				<div class="input-row">
-					<textarea class="inp" rows="3" placeholder="What do you do? (Enter to send, Shift+Enter for new line)" aria-label="Player input"
+					<textarea class="inp" rows="3" placeholder={inputPlaceholder} aria-label="Player input"
 						bind:value={message} disabled={loading || paused} onkeydown={onKeydown}
 					></textarea>
 					<button type="button" class="btn primary send"
@@ -799,6 +914,42 @@
 			</div>
 		</main>
 
+		{#if hasQuest && questMap?.locations}
+		<aside class="quest-panel">
+			<h2>Quest</h2>
+			{#if questLocation}
+				<div class="quest-current">
+					<span class="quest-location-name">{questLocation.name}</span>
+					{#if questLocation.task}
+						{@const atTaskLocation = questLocation.key === questLocation.task_location}
+						<div class="quest-objective" class:complete={questLocation.task_complete}>
+							<span class="quest-objective-icon">{questLocation.task_complete ? '✓' : '⚔'}</span>
+							<span class="quest-objective-text">{questLocation.task}</span>
+						</div>
+						{#if !atTaskLocation && !questLocation.task_complete && questLocation.task_location && questMap?.locations}
+							{@const taskLocName = questMap.locations[questLocation.task_location]?.name ?? questLocation.task_location}
+							<div class="quest-hint">Go to {taskLocName}</div>
+						{/if}
+					{/if}
+					{#if questLocationState?.quest_complete}
+						<div class="quest-complete-banner">Quest Complete</div>
+					{/if}
+				</div>
+			{/if}
+			<div class="quest-locations">
+				<h3>Locations</h3>
+				{#each Object.entries(questMap.locations) as [key, loc] (key)}
+					{@const isCurrent = questLocationState?.current_location === key}
+					{@const isComplete = questLocationState?.completed_tasks?.includes(key) ?? false}
+					<div class="quest-loc-item" class:current={isCurrent} class:complete={isComplete}>
+						<span class="quest-loc-indicator">{isComplete ? '✓' : isCurrent ? '●' : '○'}</span>
+						<span class="quest-loc-name">{loc.name}</span>
+					</div>
+				{/each}
+			</div>
+		</aside>
+		{/if}
+
 		{#if sidebarOpen}
 		<aside class="sidebar" transition:fade={{ duration: 100 }}>
 
@@ -826,6 +977,24 @@
 								</ul>
 							{:else if char.legacyMood !== undefined}
 								<span class="mood-badge">mood: {char.legacyMood}/10</span>
+							{/if}
+							{#if progressionState[char.key]}
+								{@const prog = progressionState[char.key]}
+								<div class="progression-display">
+									<span class="progression-label">Stage:</span>
+									<span class="progression-stage">{prog.stage.replace(/_/g, ' ')}</span>
+									<span class="progression-count">({prog.stage_index + 1}/{prog.total_stages})</span>
+									<div class="progression-bar">
+										{#each prog.stages as s, i (s)}
+											<div
+												class="progression-pip"
+												class:active={i === prog.stage_index}
+												class:completed={i < prog.stage_index}
+												title={s.replace(/_/g, ' ')}
+											></div>
+										{/each}
+									</div>
+								</div>
 							{/if}
 							{#if char.portraits && Object.keys(char.portraits).length > 0}
 								{@const ap = portraitBasename(activePortraits[char.key] || char.portrait || '')}
@@ -1027,6 +1196,14 @@
 	.char-block strong { font-size: 0.9rem; }
 	.mood-list { list-style: none; margin: 0.2rem 0 0; padding: 0; font-size: 0.82rem; }
 	.mood-list li { margin-bottom: 0.15rem; }
+	.progression-display { margin: 0.4rem 0; padding: 0.4rem 0.5rem; background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 6px; font-size: 0.82rem; }
+	.progression-label { color: #9aa0a6; }
+	.progression-stage { color: #c58af9; font-weight: 600; text-transform: capitalize; margin-left: 0.25rem; }
+	.progression-count { color: #5f6368; font-size: 0.75rem; margin-left: 0.25rem; }
+	.progression-bar { display: flex; gap: 3px; margin-top: 0.3rem; }
+	.progression-pip { flex: 1; height: 4px; border-radius: 2px; background: #2a2f38; }
+	.progression-pip.completed { background: #81c995; }
+	.progression-pip.active { background: #c58af9; }
 	.mood-range { color: #9aa0a6; font-size: 0.78rem; }
 	.mood-badge { color: #c8d5e8; font-size: 0.78rem; border: 1px solid #2d3e56; border-radius: 999px; padding: 0.16rem 0.45rem; background: #132035; display: inline-block; }
 	.memory-text { font-size: 0.85rem; line-height: 1.4; margin: 0.5rem 0 0; white-space: pre-wrap; color: #bdc1c6; }
@@ -1057,5 +1234,42 @@
 	:global([data-theme="light"]) .state-note { border-color: #d7dde7; background: #f8fbff; }
 	:global([data-theme="light"]) .paused-note { border-color: #f0d187; background: #fff9e6; color: #8a6200; }
 	:global([data-theme="light"]) .mood-badge { color: #315b8f; border-color: #cfe0f5; background: #ecf4ff; }
-	@media (max-width: 800px) { .layout { flex-direction: column; } .portrait-sidebar { display: none; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } .input-row { flex-direction: column; align-items: stretch; } .send { width: 100%; } }
+	/* Quest panel */
+	.quest-panel {
+		width: 180px; flex-shrink: 0; padding-top: 0.25rem;
+		overflow-y: auto; max-height: calc(100vh - 2rem);
+	}
+	.quest-panel h2 { font-size: 0.9rem; margin: 0 0 0.5rem; color: #e8eaed; }
+	.quest-panel h3 { font-size: 0.78rem; margin: 0.75rem 0 0.35rem; color: #9aa0a6; }
+	.quest-current { margin-bottom: 0.5rem; }
+	.quest-location-name {
+		display: block; font-size: 0.88rem; font-weight: 600; color: #c58af9;
+		margin-bottom: 0.3rem;
+	}
+	.quest-objective {
+		display: flex; align-items: flex-start; gap: 0.3rem;
+		padding: 0.4rem 0.5rem; border-radius: 6px;
+		background: #1a1a2e; border: 1px solid #2a2a4e;
+		font-size: 0.8rem; color: #bdc1c6; line-height: 1.3;
+	}
+	.quest-objective.complete {
+		background: #0d2818; border-color: #1e5631;
+	}
+	.quest-objective-icon { flex-shrink: 0; }
+	.quest-objective.complete .quest-objective-icon { color: #81c995; }
+	.quest-complete-banner {
+		margin-top: 0.5rem; padding: 0.35rem 0.5rem; border-radius: 6px;
+		background: #0d2818; border: 1px solid #1e5631;
+		color: #81c995; font-size: 0.82rem; font-weight: 600; text-align: center;
+	}
+	.quest-loc-item {
+		display: flex; align-items: center; gap: 0.35rem;
+		padding: 0.2rem 0; font-size: 0.8rem; color: #5f6368;
+	}
+	.quest-loc-item.current { color: #c58af9; font-weight: 600; }
+	.quest-loc-item.complete { color: #81c995; }
+	.quest-loc-indicator { flex-shrink: 0; font-size: 0.7rem; }
+	.quest-hint { font-size: 0.75rem; color: #f9c74f; margin-top: 0.3rem; font-style: italic; }
+
+	@media (max-width: 800px) { .layout { flex-direction: column; } .portrait-sidebar { display: none; } .quest-panel { width: 100%; max-height: none; } .sidebar { width: 100%; max-height: none; } .transcript { height: 45vh; } .input-row { flex-direction: column; align-items: stretch; } .send { width: 100%; } }
 </style>

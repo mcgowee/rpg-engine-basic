@@ -5067,7 +5067,7 @@ def internal_patch_story(story_id):
         updatable = [
             "narrator_prompt", "narrator_model", "opening",
             "player_name", "player_background", "title",
-            "description", "genre", "tone",
+            "description", "genre", "tone", "is_public",
         ]
         sets = []
         vals = []
