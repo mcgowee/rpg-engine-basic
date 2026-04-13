@@ -74,6 +74,7 @@ def init_db():
             cover_image TEXT DEFAULT '',
             story_images TEXT DEFAULT '[]',
             map TEXT DEFAULT '{}',
+            quests TEXT DEFAULT '{}',
             is_public BOOLEAN DEFAULT 0,
             play_count INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),

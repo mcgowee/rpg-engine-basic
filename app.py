@@ -1354,6 +1354,9 @@ def export_story(story_id: int):
         map_data = {}
     if map_data:
         export["map"] = map_data
+        quests_export = json.loads(row["quests"] or "{}") if "quests" in row.keys() else {}
+        if quests_export:
+            export["quests"] = quests_export
     slug = row["title"].lower().replace(" ", "_")[:50]
     return Response(
         json.dumps(export, indent=2, ensure_ascii=False),
@@ -1400,8 +1403,8 @@ def import_story():
                   nsfw_rating, nsfw_tags, opening,
                   narrator_prompt, narrator_model, player_name, player_background,
                   subgraph_name, main_graph_template_id, characters, scene_gallery,
-                  notes, cover_image, map)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  notes, cover_image, map, quests)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 g.user_id,
                 title,
@@ -1422,6 +1425,7 @@ def import_story():
                 data.get("notes", ""),
                 (data.get("cover_image") or "").strip(),
                 json.dumps(import_map),
+                json.dumps(data.get(quests) or {}),
             ),
         )
         conn.commit()
@@ -1481,6 +1485,7 @@ def _build_state_from_story(row) -> dict:
         "characters": characters,
         "_all_characters": characters if map_data.get("locations") else {},
         "map": map_data,
+        "quests": quests_data,
         "_location": {},
         "_location_state": {},
         "_task_narrator_hint": "",
