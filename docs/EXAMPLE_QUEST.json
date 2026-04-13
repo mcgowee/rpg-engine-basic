@@ -1,0 +1,76 @@
+{
+  "quests": {
+    "find_merchant_trust": {
+      "title": "Earn the Merchant's Trust",
+      "description": "Build a relationship with the merchant and complete their delivery task to gain their trust.",
+      "quest_type": "character",
+      "required_quests": [],
+      "required_progression": {},
+      "required_location": "town_square",
+      "available_when": {
+        "location": "town_square"
+      },
+      "completion_type": "composite",
+      "completion_criteria": {
+        "and": [
+          {
+            "progression": {
+              "character": "merchant",
+              "target_stage": 2,
+              "maintain_for_turns": 1
+            }
+          },
+          {
+            "task": {
+              "location": "town_square",
+              "count": 1
+            }
+          }
+        ]
+      },
+      "start_dialogue": "The merchant eyes you warily, but seems willing to give you a chance to prove yourself.",
+      "progress_dialogue": {
+        "progression_met": "The merchant seems to trust you more now.",
+        "task_met": "You've completed the merchant's request."
+      },
+      "completion_dialogue": "The merchant nods approvingly. 'You've proven yourself trustworthy. I'll remember this.'",
+      "rewards": {
+        "experience": 100,
+        "reputation": 1
+      },
+      "on_completion": {
+        "unlock_quests": ["merchants_secret"],
+        "modify_characters": {
+          "merchant": {"advance_stage": 1}
+        }
+      },
+      "is_repeatable": false,
+      "auto_start": true,
+      "can_abandon": false,
+      "priority": 1
+    },
+    "merchants_secret": {
+      "title": "The Merchant's Secret",
+      "description": "Something is troubling the merchant. Gain their full confidence to find out what.",
+      "quest_type": "character",
+      "required_quests": ["find_merchant_trust"],
+      "required_progression": {},
+      "completion_type": "progression",
+      "completion_criteria": {
+        "character": "merchant",
+        "target_stage": 4,
+        "maintain_for_turns": 2
+      },
+      "start_dialogue": "Now that you've proven yourself, the merchant seems like they want to confide something...",
+      "completion_dialogue": "The merchant finally opens up about the trouble they've been hiding.",
+      "rewards": {"experience": 200},
+      "on_completion": {
+        "unlock_quests": []
+      },
+      "is_repeatable": false,
+      "auto_start": true,
+      "can_abandon": true,
+      "priority": 2
+    }
+  }
+}

@@ -11,6 +11,7 @@ from nodes.progression import progression_node
 from nodes.response_builder import response_builder_node
 from nodes.scene_image import scene_image_node
 from nodes.task import task_node
+from nodes.quest import quest_node
 
 NODE_REGISTRY = {
     "character_agent": character_agent_node,
@@ -24,4 +25,5 @@ NODE_REGISTRY = {
     "response_builder": response_builder_node,
     "scene_image": scene_image_node,
     "task": task_node,
+    "quest": quest_node,
 }

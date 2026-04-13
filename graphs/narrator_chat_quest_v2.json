@@ -1,0 +1,25 @@
+{
+  "name": "narrator_chat_quest_v2",
+  "description": "Quest pipeline with linear location progression, visible objectives, and multi-quest tracking. Players move through locations, complete tasks, and advance story quests. No mood tracking.",
+  "nodes": [
+    "location",
+    "narrator",
+    "character_agent",
+    "response_builder",
+    "task",
+    "quest",
+    "condense",
+    "memory"
+  ],
+  "edges": [
+    {"from": "__start__", "to": "location"},
+    {"from": "location", "to": "narrator"},
+    {"from": "narrator", "to": "character_agent"},
+    {"from": "character_agent", "to": "response_builder"},
+    {"from": "response_builder", "to": "task"},
+    {"from": "task", "to": "quest"},
+    {"from": "quest", "to": "condense"},
+    {"from": "condense", "to": "memory"},
+    {"from": "memory", "to": "__end__"}
+  ]
+}
