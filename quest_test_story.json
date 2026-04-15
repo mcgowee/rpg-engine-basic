@@ -1,0 +1,131 @@
+{
+  "export_version": 2,
+  "title": "Edda's Trust",
+  "description": "A short adventure to test the quest system.",
+  "genre": "adventure",
+  "subgraph_name": "narrator_chat_quest_v2",
+  "narrator_prompt": "You are a narrator for a medieval town adventure. Be immersive but concise.",
+  "player_name": "Traveler",
+  "opening": "The road has been long. You arrive in a small busy market town.",
+  "map": {
+    "start": "town_square",
+    "order": [
+      "town_square"
+    ],
+    "locations": {
+      "town_square": {
+        "name": "Town Square",
+        "narrator_hint": "A cobblestone square ringed with market stalls.",
+        "opening_text": "You step into the town square. One woman, sturdy and watchful, restacks crates of spices alone.",
+        "characters": [
+          "merchant"
+        ],
+        "task": "Earn Edda's trust",
+        "task_criteria": "The player offered to help Edda, did something useful, or proved they are not a threat",
+        "min_turns": 2
+      }
+    }
+  },
+  "characters": {
+    "merchant": {
+      "name": "Edda",
+      "personality": "Cautious, direct, fair. Slow to trust but loyal once earned.",
+      "backstory": "Runs a spice stall inherited from her mother. Works alone since her last assistant stole from her.",
+      "progression": {
+        "stages": [
+          "stranger",
+          "acquaintance",
+          "trusted",
+          "friend",
+          "confidant"
+        ],
+        "min_turns_per_stage": [
+          1,
+          2,
+          2,
+          2,
+          2
+        ],
+        "advance_when": {
+          "stranger": "Player greets Edda politely or shows curiosity",
+          "acquaintance": "Player offers help or does something useful",
+          "trusted": "Player follows through or proves they are honest"
+        },
+        "stage_directives": {
+          "stranger": "Be polite but guarded. Short answers.",
+          "acquaintance": "Still cautious but willing to engage. Mention needing help.",
+          "trusted": "More relaxed. Hint at a deeper problem.",
+          "friend": "Genuinely like this person. Share more.",
+          "confidant": "Trust them fully. Share what has been worrying you."
+        }
+      }
+    }
+  },
+  "quests": {
+    "earn_trust": {
+      "title": "Earn Edda's Trust",
+      "quest_type": "character",
+      "required_location": "town_square",
+      "available_when": {
+        "location": "town_square"
+      },
+      "completion_type": "composite",
+      "completion_criteria": {
+        "and": [
+          {
+            "progression": {
+              "character": "merchant",
+              "target_stage": 2,
+              "maintain_for_turns": 1
+            }
+          },
+          {
+            "task": {
+              "location": "town_square",
+              "count": 1
+            }
+          }
+        ]
+      },
+      "start_dialogue": "Edda eyes you warily but does not wave you off.",
+      "completion_dialogue": "Edda nods slowly. You are alright. I will remember that.",
+      "auto_start": true,
+      "can_abandon": false,
+      "is_repeatable": false,
+      "on_completion": {
+        "unlock_quests": [
+          "eddas_secret"
+        ],
+        "modify_characters": {
+          "merchant": {
+            "advance_stage": 1
+          }
+        }
+      },
+      "rewards": {
+        "experience": 100
+      }
+    },
+    "eddas_secret": {
+      "title": "Edda's Secret",
+      "quest_type": "character",
+      "required_quests": [
+        "earn_trust"
+      ],
+      "completion_type": "progression",
+      "completion_criteria": {
+        "character": "merchant",
+        "target_stage": 4,
+        "maintain_for_turns": 1
+      },
+      "start_dialogue": "Something is weighing on Edda. She looks like she wants to say something.",
+      "completion_dialogue": "Edda exhales. I have not told anyone that. Not for years.",
+      "auto_start": true,
+      "can_abandon": true,
+      "is_repeatable": false,
+      "rewards": {
+        "experience": 200
+      }
+    }
+  }
+}
