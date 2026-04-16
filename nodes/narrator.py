@@ -116,10 +116,9 @@ Characters present: {char_list}
 Player: {message}
 
 Describe what happens next. Rules:
-- Second person, present tense
+- ALWAYS write in second person ("you wade", "you see", "you hear") and present tense. NEVER use the player's name or third person ("he", "she", "Dr. Voss walks"). This is the most important rule.
 - Show the RESULT of what the player just did — what changed, what they discover, how others react
-- CRITICAL: Do NOT write dialogue or quoted speech for {char_list}. They speak separately.
-- You may describe their body language, expressions, and physical reactions
+- CRITICAL: Do NOT write dialogue or quoted speech for {char_list}. They speak separately. Do NOT describe their actions, gestures, or expressions — only mention their presence if relevant.
 - 2-4 sentences, concise and atmospheric
 {arrival_rule}
 - Do NOT repeat descriptions from previous narration — advance the story forward
