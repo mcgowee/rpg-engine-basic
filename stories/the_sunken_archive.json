@@ -1,0 +1,78 @@
+{
+  "title": "The Sunken Archive",
+  "description": "A flooded underground library holds secrets from a lost civilization. Navigate three chambers, solve puzzles, and retrieve the Codex before the tide returns.",
+  "genre": "adventure",
+  "tone": "",
+  "opening": "The iron grate groans as you heave it aside. Below, stone steps descend into darkness, the bottom three submerged in black water that smells of salt and old paper. Your lantern catches the glint of gilded spines — thousands of books lining the walls of a vast underground chamber. A woman in wading boots stands knee-deep at the foot of the stairs, a waterproof satchel slung over one shoulder. She looks up at you with sharp, assessing eyes.\n\n\"You must be the one the university sent. I'm Maren. I've mapped the first chamber, but the tide turns in a few hours. We need to move.\"",
+  "narrator_prompt": "You are the narrator for an adventure story set in a flooded underground archive. Describe scenes in second person with vivid sensory detail — the sound of dripping water, the smell of brine and parchment, the play of lantern light on wet stone. Keep responses to 2-3 paragraphs. Do not speak as NPCs. Incorporate location and task context from the quest system.",
+  "narrator_model": "default",
+  "player_name": "Dr. Voss",
+  "player_background": "An archaeologist specializing in pre-classical texts. You were called in after sonar revealed chambers beneath the coastal ruins. You can read three dead languages, but you're not a strong swimmer.",
+  "subgraph_name": "narrator_chat_quest",
+  "characters": {
+    "maren": {
+      "prompt": "You are Maren Salk, a marine archaeologist and cave diver who has spent three weeks mapping these flooded chambers alone. You are practical, blunt, and quietly brave. You don't suffer fools but you respect competence. You know the tides intimately and keep one eye on the water level at all times. You carry a waterproof notebook where you sketch everything. You speak in short, direct sentences. You call the player 'Doc' whether they like it or not.\n\nHow she looks: early 30s, sun-weathered skin, short brown hair kept out of her face with a headband, wading boots and a canvas vest covered in pockets, a dive knife on her belt, always slightly damp.",
+      "first_line": "Good, you're here. The water's been dropping since dawn — we've got maybe three hours before it floods back. I've marked the safe paths with glow sticks. Stay on them.",
+      "model": "default",
+      "moods": [
+        {
+          "axis": "trust",
+          "low": "guarded",
+          "high": "confident",
+          "value": 4
+        },
+        {
+          "axis": "urgency",
+          "low": "calm",
+          "high": "pressed",
+          "value": 6
+        }
+      ]
+    }
+  },
+  "notes": "Demonstrates narrator_chat_quest — location node + task node with a 3-location map, linear progression, and task completion via LLM evaluation.",
+  "is_public": true,
+  "map": {
+    "start": "entry_hall",
+    "order": [
+      "entry_hall",
+      "scriptorium",
+      "vault"
+    ],
+    "locations": {
+      "entry_hall": {
+        "name": "The Entry Hall",
+        "narrator_hint": "A cavernous stone chamber lined with waterlogged bookshelves. Water reaches knee height. Glow sticks mark a path between toppled columns. A mosaic on the ceiling depicts a tree with roots that become rivers.",
+        "opening_text": "You wade into the Entry Hall. Water sloshes against shelves of ruined books. Maren's glow sticks trace a path through the debris toward a low archway on the far wall.",
+        "characters": [
+          "maren"
+        ],
+        "task": "Find the catalogue stone that maps the archive's layout",
+        "task_criteria": "The player discovers, examines, or translates the catalogue stone — a carved tablet showing the archive's floor plan",
+        "min_turns": 2
+      },
+      "scriptorium": {
+        "name": "The Scriptorium",
+        "narrator_hint": "A drier chamber elevated above the waterline. Stone desks hold clay tablets and corroded bronze tools. Ink stains mark the walls in patterns that might be writing or might be water damage. The air smells of chalk dust.",
+        "opening_text": "You climb through the archway into a raised chamber. The water doesn't reach here — the floor is dry, covered in fine dust. Rows of stone desks hold stacks of clay tablets, some cracked, some intact. Maren runs her fingers along the inscriptions, frowning.",
+        "characters": [
+          "maren"
+        ],
+        "task": "Decipher the tablet that reveals the vault's lock mechanism",
+        "task_criteria": "The player translates or interprets the key tablet, identifying how the vault door opens — a sequence, symbol, or mechanism",
+        "min_turns": 3
+      },
+      "vault": {
+        "name": "The Vault of the Codex",
+        "narrator_hint": "A small, perfectly sealed chamber. The walls are polished obsidian, reflecting lantern light in fractured patterns. A stone pedestal stands in the center. The water is rising — you can hear it gurgling through cracks in the floor.",
+        "opening_text": "The vault door grinds open, revealing a chamber no larger than a closet. Black obsidian walls throw your lantern light back at you in a dozen reflections. On a stone pedestal in the center sits a metal cylinder — sealed, dry, untouched for centuries. Then you hear it: water, rushing through cracks in the floor.",
+        "characters": [
+          "maren"
+        ],
+        "task": "Retrieve the Codex and escape before the tide floods the vault",
+        "task_criteria": "The player takes the Codex cylinder and makes it back out of the vault, or takes decisive action to secure it before the water rises",
+        "min_turns": 2
+      }
+    }
+  }
+}
