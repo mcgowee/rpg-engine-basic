@@ -27,7 +27,8 @@
           "high": "pressed",
           "value": 6
         }
-      ]
+      ],
+      "portrait": "portraits/maren.png"
     }
   },
   "notes": "Demonstrates narrator_chat_quest — location node + task node with a 3-location map, linear progression, and task completion via LLM evaluation.",
@@ -74,5 +75,6 @@
         "min_turns": 2
       }
     }
-  }
+  },
+  "cover_image": "story_sunken_archive.png"
 }

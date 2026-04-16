@@ -41,7 +41,8 @@
           "friend": "Genuinely like this person. Share more.",
           "confidant": "Trust them fully. Share what has been worrying you."
         }
-      }
+      },
+      "portrait": "portraits/edda.png"
     }
   },
   "notes": "",
@@ -131,5 +132,6 @@
         "experience": 200
       }
     }
-  }
+  },
+  "cover_image": "story_eddas_trust.png"
 }

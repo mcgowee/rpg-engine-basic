@@ -1,0 +1,131 @@
+{
+  "export_version": 1,
+  "title": "The Wolves of Ashenmoor",
+  "description": "A remote village is losing livestock to something in the forest. You're the ranger sent to investigate. Three locations, two quests — one to find the cause, one to resolve it.",
+  "genre": "dark fantasy",
+  "opening": "The village of Ashenmoor sits at the edge of a forest that doesn't appear on most maps. You rode in at dusk, passing fences smeared with blood and ash — old folk remedies against wolves. The village elder, a wiry woman named Breda, met you at the gate with a lantern and a warning: \"Don't go into the trees after dark. Whatever's out there, it isn't wolves.\"\n\nShe's put you up in the empty huntsman's lodge. Through the window, the treeline is a wall of black. Something howls — but the sound is wrong. Too low, too long.",
+  "narrator_prompt": "You are the narrator for a dark fantasy investigation set in a remote village bordering an ancient forest. Describe scenes in second person with creeping tension and folk-horror atmosphere. Use sensory detail — cold, damp, the smell of woodsmoke and animal fear. Keep responses to 2-3 paragraphs. Do not speak as NPCs. Weave in quest and location context naturally.",
+  "narrator_model": "default",
+  "player_name": "Warden Ash",
+  "player_background": "A ranger employed by the provincial governor to handle threats the local militia can't. You know tracking, herbcraft, and how to fight things that don't die easily. You've seen strange things before, but the reports from Ashenmoor made even you uneasy.",
+  "subgraph_name": "narrator_chat_quest_v2",
+  "cover_image": "story_wolves_of_ashenmoor.png",
+  "notes": "Demonstrates narrator_chat_quest_v2 — location + task + quest nodes. Two quests: a main investigation quest that auto-starts, and a side quest unlocked after the first completes. Three locations with free movement.",
+  "characters": {
+    "breda": {
+      "prompt": "You are Breda, the elder of Ashenmoor. You are 60, sharp-tongued, and deeply afraid — though you'd rather die than show it. You've lived here your whole life. You know the forest's old names and the stories the church tried to stamp out. You don't trust outsiders easily, but you trust the thing in the forest less. You speak plainly, with a rural dialect — short sentences, dry observations. You call the player 'Warden' with a mix of respect and skepticism.\n\nHow she looks: lean, weathered face, grey hair in a tight braid, heavy wool shawl over a patched dress, calloused hands, carries a walking stick that could double as a weapon.",
+      "first_line": "Three sheep this week. One goat. Whatever's doing it doesn't eat them — just tears them open and leaves. You'll find the carcasses stacked by the north fence. That's not wolf behavior, Warden.",
+      "model": "default",
+      "moods": [
+        {
+          "axis": "trust",
+          "low": "suspicious",
+          "high": "trusting",
+          "value": 3
+        },
+        {
+          "axis": "fear",
+          "low": "stoic",
+          "high": "terrified",
+          "value": 5
+        }
+      ]
+    },
+    "fenn": {
+      "prompt": "You are Fenn, a young woodcutter who lives at the forest edge. You are 22, quiet, and observant. You've been going into the forest despite Breda's warnings because your livelihood depends on it. You've seen things — tracks that are too large, trees scored with claw marks eight feet up, a clearing where nothing grows. You're scared but you won't admit it. You speak slowly, choosing words carefully. You avoid eye contact.\n\nHow she looks: tall and lean, sun-darkened skin, black hair tied back with a leather cord, woodcutter's axe always within reach, a fresh scar across the back of one hand that she won't explain.",
+      "first_line": "I've seen the tracks. They're not wolf. Too wide, and they drag — like whatever made them walks on two legs sometimes. I can show you where, if you want. But we go in daylight.",
+      "model": "default",
+      "moods": [
+        {
+          "axis": "courage",
+          "low": "frightened",
+          "high": "brave",
+          "value": 5
+        },
+        {
+          "axis": "openness",
+          "low": "withdrawn",
+          "high": "forthcoming",
+          "value": 4
+        }
+      ]
+    }
+  },
+  "map": {
+    "start": "village",
+    "order": [
+      "village",
+      "forest_edge",
+      "deep_forest"
+    ],
+    "locations": {
+      "village": {
+        "name": "Ashenmoor Village",
+        "narrator_hint": "A cluster of stone cottages around a muddy square. Smoke rises from chimneys. The livestock pens are reinforced with extra stakes. Villagers move quickly and don't linger outdoors. The huntsman's lodge where you're staying overlooks the north fence and the treeline beyond.",
+        "opening_text": "Morning light does little to improve Ashenmoor. The village square is mud and silence. A few villagers move between buildings with their heads down. The livestock pens along the north fence are smeared with ash and blood — the remains of last night's kill have already been dragged away.",
+        "characters": [
+          "breda"
+        ],
+        "task": "Gather information from the villagers about the attacks",
+        "task_criteria": "The player learns key details about the attacks — the pattern, the timing, or what the carcasses look like — through conversation with Breda or investigation of the village",
+        "min_turns": 2
+      },
+      "forest_edge": {
+        "name": "The Forest Edge",
+        "narrator_hint": "Where the village fields end and the old forest begins. The tree line is abrupt — cultivated grass gives way to ancient oaks and dense undergrowth in a sharp line. Claw marks score the bark of the outermost trees. The air smells different here — loam, rot, and something animal.",
+        "opening_text": "Fenn is waiting at the stile where the pasture meets the trees. She has her axe over one shoulder and a coil of rope at her belt. Beyond her, the forest rises like a dark wall. The claw marks on the nearest oak are fresh — pale wood showing through dark bark, gouged in parallel lines too far apart for any wolf.",
+        "characters": [
+          "fenn"
+        ],
+        "task": "Follow the tracks into the forest and find evidence of what's responsible",
+        "task_criteria": "The player follows tracks, examines claw marks, or discovers physical evidence — a lair, remains, or something that identifies the creature as not a natural wolf",
+        "min_turns": 3
+      },
+      "deep_forest": {
+        "name": "The Deep Forest",
+        "narrator_hint": "Ancient trees block most light. The ground is soft and damp. A clearing opens around a massive dead oak — its trunk split open, the hollow interior large enough to stand in. Bones are scattered at its base. The air is thick with a musk that burns the back of your throat. Something lives here.",
+        "opening_text": "The canopy closes overhead and the light goes grey-green. Fenn stops talking. The tracks converge on a clearing dominated by a dead oak so large its split trunk forms a cave. Bones litter the ground — not just sheep. You see antlers, ribcages far too large for goats, and something half-buried that might be a boot.",
+        "characters": [
+          "fenn"
+        ],
+        "task": "Confront or deal with whatever is responsible for the attacks",
+        "task_criteria": "The player takes decisive action against the creature — fighting it, driving it off, trapping it, or discovering a way to neutralize the threat",
+        "min_turns": 2
+      }
+    }
+  },
+  "quests": {
+    "investigate_attacks": {
+      "title": "The Beast of Ashenmoor",
+      "quest_type": "main",
+      "required_quests": [],
+      "auto_start": true,
+      "completion_type": "task",
+      "completion_criteria": {
+        "count": 3
+      },
+      "on_completion": {
+        "unlock_quests": [
+          "protect_the_village"
+        ]
+      },
+      "start_dialogue": "You've been sent to find what's killing the livestock. Start in the village and work your way into the forest.",
+      "completion_dialogue": "The threat has been dealt with — for now. But Ashenmoor's troubles may not be over."
+    },
+    "protect_the_village": {
+      "title": "Ward the Boundary",
+      "quest_type": "side",
+      "required_quests": [
+        "investigate_attacks"
+      ],
+      "auto_start": true,
+      "completion_type": "task",
+      "completion_criteria": {
+        "location": "village",
+        "count": 1
+      },
+      "start_dialogue": "Breda asks you to help set proper wards along the tree line — the old ways, not the blood and ash.",
+      "completion_dialogue": "The wards are set. Whether they'll hold is another question, but Ashenmoor sleeps easier tonight."
+    }
+  }
+}

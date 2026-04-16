@@ -9,7 +9,7 @@
   "player_name": "Patient",
   "player_background": "You were involved in a car accident six months ago. The other driver died. You weren't charged — it wasn't your fault — but you haven't slept through the night since. The court ordered therapy as a condition of your settlement. You don't think you need this.",
   "subgraph_name": "narrator_chat_progression",
-  "cover_image": "",
+  "cover_image": "story_sessions.png",
   "notes": "Progression system demo — therapist-driven stages from resistance to healing. Uses the narrator_chat_progression subgraph with NPC-driven stage advancement.",
   "characters": {
     "dr_ward": {
@@ -39,7 +39,14 @@
           "relapse",
           "healing"
         ],
-        "min_turns_per_stage": [2, 3, 3, 2, 2, 2],
+        "min_turns_per_stage": [
+          2,
+          3,
+          3,
+          2,
+          2,
+          2
+        ],
         "advance_when": {
           "resistance": "The patient acknowledges why they're here, mentions the accident, or shares something genuine instead of deflecting",
           "compliance": "The patient shows real emotion — frustration, sadness, anger — or admits something they've been avoiding",
