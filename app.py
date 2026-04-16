@@ -1425,7 +1425,7 @@ def import_story():
                 data.get("notes", ""),
                 (data.get("cover_image") or "").strip(),
                 json.dumps(import_map),
-                json.dumps(data.get(quests) or {}),
+                json.dumps(data.get("quests") or {}),
             ),
         )
         conn.commit()
@@ -1470,6 +1470,11 @@ def _build_state_from_story(row) -> dict:
     map_data = {}
     try:
         map_data = json.loads(row["map"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+    quests_data = {}
+    try:
+        quests_data = json.loads(row["quests"] or "{}")
     except (json.JSONDecodeError, TypeError):
         pass
     characters = json.loads(row["characters"] or "{}")
