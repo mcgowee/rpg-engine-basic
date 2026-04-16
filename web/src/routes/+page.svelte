@@ -75,7 +75,7 @@
 
 			if (rPublic.ok) {
 				const data = await rPublic.json();
-				publicStories = Array.isArray(data) ? data : [];
+				publicStories = Array.isArray(data) ? data : (Array.isArray(data?.stories) ? data.stories : []);
 			} else {
 				publicStories = [];
 				publicStoriesError = `Could not load community stories (${rPublic.status}).`;
@@ -114,6 +114,18 @@
 				<button type="button" class="btn" onclick={() => goto('/stories')}><Icon name="book" size={14} /> My Stories</button>
 				<button type="button" class="btn" onclick={() => goto('/stories/browse')}><Icon name="search" size={14} /> Browse Community</button>
 				<button type="button" class="btn" onclick={() => goto('/graphs')}><Icon name="git-branch" size={14} /> Graph Editor</button>
+			</div>
+		</div>
+
+		<div class="section play-cta">
+			<div class="play-cta-inner">
+				<div class="play-cta-text">
+					<h2>Ready to play?</h2>
+					<p>Browse <strong>{publicStories.length} community {publicStories.length === 1 ? 'story' : 'stories'}</strong> — mystery, adventure, thriller, comedy, and more. Pick one and start playing instantly.</p>
+				</div>
+				<button type="button" class="btn primary lg" onclick={() => goto('/stories/browse')}>
+					<Icon name="play" size={18} /> Browse & Play
+				</button>
 			</div>
 		</div>
 
@@ -201,6 +213,24 @@
 	h2 { margin: 0; font-size: 1.15rem; }
 	.section { margin-bottom: 2rem; }
 	.section-head { margin-bottom: 0.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid #2a2f38; }
+	.play-cta {
+		background: linear-gradient(135deg, #162a1e 0%, #0f1a14 100%);
+		border: 2px solid #3a7d54;
+		border-radius: 12px;
+		padding: 1.25rem 1.5rem;
+	}
+	.play-cta-inner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1.5rem;
+	}
+	.play-cta-text h2 { font-size: 1.25rem; margin-bottom: 0.3rem; color: #6ee7a0; }
+	.play-cta-text p { color: #b0c4b8; margin: 0; line-height: 1.45; font-size: 0.92rem; }
+	.btn.lg { padding: 0.7rem 1.6rem; font-size: 1.05rem; white-space: nowrap; }
+	@media (max-width: 600px) {
+		.play-cta-inner { flex-direction: column; text-align: center; }
+	}
 	.hero {
 		background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(15,17,20,0.85)), url('/images/hero.png') center/cover no-repeat;
 		border: 1px solid #2a2f38;
